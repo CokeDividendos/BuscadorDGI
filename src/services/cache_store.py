@@ -8,8 +8,7 @@ from src.db import get_conn
 
 def _ensure_cache_table() -> None:
     conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
+    conn.execute(
         """
         CREATE TABLE IF NOT EXISTS kv_cache (
             key TEXT PRIMARY KEY,
@@ -42,7 +41,6 @@ def cache_get(key: str) -> Optional[Any]:
     if ttl is not None:
         ttl = int(ttl)
         if (int(time.time()) - created_at) > ttl:
-            # expirado → borrar y retornar None
             cache_delete(key)
             return None
 
@@ -79,8 +77,7 @@ def cache_set(key: str, value: Any, ttl_seconds: Optional[int] = None) -> None:
 def cache_delete(key: str) -> None:
     _ensure_cache_table()
     conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM kv_cache WHERE key = ?", (key,))
+    conn.execute("DELETE FROM kv_cache WHERE key = ?", (key,))
     conn.commit()
     conn.close()
 
@@ -96,7 +93,6 @@ def cache_clear(prefix: Optional[str] = None) -> None:
     conn.commit()
     conn.close()
 
-# --- Backward compatible alias (do not remove) ---
+
 def cache_clear_all() -> None:
-    """Compatibilidad: borra todo el cache."""
     cache_clear(prefix=None)
