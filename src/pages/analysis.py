@@ -15,30 +15,26 @@ def _get_user_email() -> str:
             return v.strip().lower()
     return ""
 
-
 def _fmt_price(x, currency: str) -> str:
     if not isinstance(x, (int, float)):
         return "N/D"
     s = f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     return f"{s} {currency}".strip()
 
-
 def _fmt_delta(net, pct) -> tuple[str | None, float | None]:
     if isinstance(net, (int, float)) and isinstance(pct, (int, float)):
         return f"{net:+.2f} ({pct:+.2f}%)", float(pct)
     return None, None
 
-
 def _fmt_kpi(x, suffix: str = "", decimals: int = 2) -> str:
     return f"{x:.{decimals}f}{suffix}" if isinstance(x, (int, float)) else "N/D"
-
 
 def page_analysis():
     DAILY_LIMIT = 3
     user_email = _get_user_email()
     admin = is_admin()
 
-    with st.sidebar:
+     st.sidebar:
         if admin:
             if st.button("🧹 Limpiar caché", key="clear_cache_btn", use_container_width=True):
                 cache_clear_all()
@@ -73,13 +69,19 @@ def page_analysis():
 
     pad_l, center, pad_r = st.columns([1, 3, 1], gap="large")
 
-    with center:
-        with st.form("search_form", clear_on_submit=False):
-            ticker = st.text_input("Ticker", value="AAPL").strip().upper()
-            submitted = st.form_submit_button("🔎 Buscar")
-
+     center:
+        ticker = (st.session_state.get("ticker") or "").strip().upper()
+        submitted = bool(st.session_state.pop("do_search", False))
+        
+        # Si nunca han buscado aún, no mostramos nada
+        if not ticker:
+            st.info("Ingresa un ticker en el buscador del sidebar.")
+            return
+        
+        # Solo consume límite cuando realmente se presionó “Buscar”
         if not submitted:
             return
+
 
         if not ticker:
             st.warning("Ingresa un ticker.")
