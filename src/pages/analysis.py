@@ -2,7 +2,12 @@
 import streamlit as st
 
 from src.services.usage_limits import remaining_searches, consume_search
-from src.services.finance_data import get_price_data, get_profile_data, get_key_stats, get_dividend_kpis
+from src.services.finance_data import (
+    get_price_data,
+    get_profile_data,
+    get_key_stats,
+    get_dividend_kpis,
+)
 from src.services.logos import logo_candidates
 from src.auth import is_admin
 from src.services.cache_store import cache_clear_all
@@ -15,26 +20,33 @@ def _get_user_email() -> str:
             return v.strip().lower()
     return ""
 
+
 def _fmt_price(x, currency: str) -> str:
     if not isinstance(x, (int, float)):
         return "N/D"
     s = f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     return f"{s} {currency}".strip()
 
+
 def _fmt_delta(net, pct) -> tuple[str | None, float | None]:
     if isinstance(net, (int, float)) and isinstance(pct, (int, float)):
         return f"{net:+.2f} ({pct:+.2f}%)", float(pct)
     return None, None
 
+
 def _fmt_kpi(x, suffix: str = "", decimals: int = 2) -> str:
     return f"{x:.{decimals}f}{suffix}" if isinstance(x, (int, float)) else "N/D"
+
 
 def page_analysis():
     DAILY_LIMIT = 3
     user_email = _get_user_email()
     admin = is_admin()
 
-     st.sidebar:
+    # -----------------------------
+    # SIDEBAR
+    # -----------------------------
+    with st.sidebar:
         if admin:
             if st.button("🧹 Limpiar caché", key="clear_cache_btn", use_container_width=True):
                 cache_clear_all()
@@ -51,6 +63,9 @@ def page_analysis():
             else:
                 limit_box.warning("No se detectó el correo del usuario.")
 
+    # -----------------------------
+    # CSS (ancho centrado)
+    # -----------------------------
     st.markdown(
         """
         <style>
@@ -67,26 +82,26 @@ def page_analysis():
         unsafe_allow_html=True,
     )
 
+    # -----------------------------
+    # CONTENIDO CENTRADO
+    # -----------------------------
     pad_l, center, pad_r = st.columns([1, 3, 1], gap="large")
 
-     center:
+    with center:
+        # Ticker viene del buscador del sidebar (router)
         ticker = (st.session_state.get("ticker") or "").strip().upper()
         submitted = bool(st.session_state.pop("do_search", False))
-        
+
         # Si nunca han buscado aún, no mostramos nada
         if not ticker:
             st.info("Ingresa un ticker en el buscador del sidebar.")
             return
-        
+
         # Solo consume límite cuando realmente se presionó “Buscar”
         if not submitted:
             return
 
-
-        if not ticker:
-            st.warning("Ingresa un ticker.")
-            return
-
+        # Consume SOLO si NO es admin
         if (not admin) and user_email:
             ok, rem_after = consume_search(user_email, DAILY_LIMIT, cost=1)
             if not ok:
@@ -94,6 +109,9 @@ def page_analysis():
                 return
             limit_box.info(f"🔎 Búsquedas restantes hoy: {rem_after}/{DAILY_LIMIT}")
 
+        # -----------------------------
+        # DATA
+        # -----------------------------
         price = get_price_data(ticker) or {}
         profile = get_profile_data(ticker) or {}
         raw = profile.get("raw") if isinstance(profile, dict) else {}
@@ -111,6 +129,7 @@ def page_analysis():
 
         st.write("")
 
+        # Logo + Nombre/Precio
         c1, c2 = st.columns([0.12, 0.88], gap="small", vertical_alignment="center")
         with c1:
             if logo_url:
@@ -131,6 +150,7 @@ def page_analysis():
 
         st.divider()
 
+        # KPIs (4)
         k1, k2, k3, k4 = st.columns(4, gap="large")
         with k1:
             st.caption("Beta")
@@ -149,7 +169,7 @@ def page_analysis():
 
         st.divider()
 
-        # ✅ NUEVOS KPIs (2 filas x 3 columnas) para evitar compresión
+        # ✅ NUEVOS KPIs Dividendos (2 filas x 3 columnas)
         r1c1, r1c2, r1c3 = st.columns(3, gap="large")
         r2c1, r2c2, r2c3 = st.columns(3, gap="large")
 
