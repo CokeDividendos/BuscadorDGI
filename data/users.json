@@ -1,8 +1,0 @@
-{
-  "cokedividendos@gmail.com": {
-    "role": "admin",
-    "created_at": "GENERATED_IN_APP",
-    "algo": "pbkdf2_sha256",
-    "iterations": "200000",
-    "salt_b64": "vAVLAHzPM7e7jfGi81/Rew==",
-    "hash_b64": "JLC4+mHCTfChDgWJaxLoz4MVVf7Y972Wrtcle8nY3bw="
