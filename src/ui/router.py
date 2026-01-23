@@ -29,3 +29,20 @@ def run_app():
         page_analysis()
     elif section == "Admin · Usuarios":
         page_admin_users()
+
+    # --- BUSCADOR (debajo del usuario) ---
+    with st.sidebar.form("sidebar_search", clear_on_submit=False):
+        st.caption("Ticker")
+        _t = st.text_input(
+            label="",
+            value=st.session_state.get("ticker", "AAPL"),
+            key="ticker_sidebar",
+            placeholder="Ej: AAPL",
+        ).strip().upper()
+    
+        do_search = st.form_submit_button("🔎 Buscar", use_container_width=True)
+    
+    if do_search and _t:
+        st.session_state["ticker"] = _t
+        st.session_state["do_search"] = True
+        st.rerun()
