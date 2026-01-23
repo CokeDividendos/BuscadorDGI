@@ -1,47 +1,42 @@
-import json
+# src/pages/admin_users.py
+from __future__ import annotations
+
 import streamlit as st
-
-from src.db import load_users, hash_password, USERS_PATH
 from src.auth import is_admin
+from src.db import load_users, upsert_user
 
 
-def page_admin_users():
-    st.title("👑 Admin · Usuarios")
-
+def page_admin_users() -> None:
     if not is_admin():
         st.error("No autorizado.")
-        st.stop()
+        return
+
+    st.markdown("## 👥 Admin - Usuarios")
 
     users = load_users()
-
-    st.subheader("Usuarios actuales")
-    if not users:
-        st.info("No hay usuarios aún.")
+    if users:
+        st.caption("Usuarios existentes")
+        for email, meta in users.items():
+            st.write(f"- {email} ({meta.get('role','user')})")
     else:
-        st.dataframe(
-            [{"email": k, "role": v.get("role"), "created_at": v.get("created_at")} for k, v in users.items()],
-            use_container_width=True,
-        )
+        st.info("No hay usuarios aún (esto es raro si ya logueaste).")
 
     st.divider()
-    st.subheader("Agregar usuario (genera JSON para commitear)")
+    st.markdown("### ➕ Crear/Actualizar usuario")
 
-    email = st.text_input("Email nuevo usuario")
-    role = st.selectbox("Rol", ["user", "admin"], index=0)
-    pw = st.text_input("Contraseña temporal", type="password")
+    with st.form("create_user"):
+        email = st.text_input("Email").strip().lower()
+        pwd = st.text_input("Contraseña", type="password")
+        role = st.selectbox("Rol", ["user", "admin"], index=0)
+        ok = st.form_submit_button("Guardar")
 
-    if st.button("Generar JSON actualizado", type="primary"):
-        if not email.strip() or not pw:
-            st.error("Falta email o contraseña.")
+    if ok:
+        if not email or "@" not in email:
+            st.error("Email inválido.")
             return
-
-        email_n = email.strip().lower()
-        users[email_n] = {
-            "role": role,
-            "created_at": "GENERATED_IN_APP",
-            **hash_password(pw),
-        }
-
-        st.success("Listo. Copia este JSON y pégalo en `data/users.json`, commitea y redeploy.")
-        st.caption(f"Ruta: {USERS_PATH}")
-        st.code(json.dumps(users, indent=2, ensure_ascii=False), language="json")
+        if not pwd or len(pwd) < 6:
+            st.error("Contraseña mínima 6 caracteres.")
+            return
+        upsert_user(email, pwd, role=role)
+        st.success("Usuario guardado.")
+        st.rerun()
