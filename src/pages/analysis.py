@@ -1,5 +1,6 @@
 # src/pages/analysis.py
 import streamlit as st
+st.caption("BUILD: 2026-01-21 / A-test")
 
 from src.services.usage_limits import remaining_searches, consume_search
 from src.services.finance_data import (
@@ -208,29 +209,29 @@ def page_analysis():
    
         d1, d2, d3, = st.columns(3, gap="large")
         
-        with d1: 
-            st.markdown(f"#### {_fmt_pct(divk.get('dividend_yield'))}")
+        with d1:
             st.caption("Dividend Yield")
-            
+            st.markdown(f"#### {_fmt_pct(divk.get('dividend_yield'))}")
+
         with d2:
-            st.markdown(f"#### {_fmt_pct(divk.get('forward_div_yield'))}")
             st.caption("Forward Div. Yield")
-        
+            st.markdown(f"#### {_fmt_pct(divk.get('forward_div_yield'))}")
+
         with d3:
-            st.markdown(f"#### {_fmt_kpi(divk.get('annual_dividend'), decimals=2)}")
             st.caption("Dividendo Anual $")
-        
+            st.markdown(f"#### {_fmt_kpi(divk.get('annual_dividend'), decimals=2)}")
+
         d4, d5, d6 = st.columns(3, gap="large")
         
         with d4:
-            st.markdown(f"#### {_fmt_pct(divk.get('payout_ratio'))}")
             st.caption("PayOut Ratio %")
-        
+            st.markdown(f"#### {_fmt_pct(divk.get('payout_ratio'))}")
+
         with d5:
+            st.caption("Ex-Date fecha")
             exd = divk.get("ex_div_date")
             st.markdown(f"#### {exd if isinstance(exd, str) and exd else 'N/D'}")
-            st.caption("Ex-Date fecha")
-        
+
         with d6:
-            st.markdown(f"#### {_fmt_kpi(divk.get('next_dividend'), decimals=2)}")
             st.caption("Próximo Dividendo $")
+            st.markdown(f"#### {_fmt_kpi(divk.get('next_dividend'), decimals=2)}")
