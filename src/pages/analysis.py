@@ -108,7 +108,6 @@ def page_analysis():
 
         with colA:
             with st.container(border=True):
-                st.markdown("## Logo + Nombre + Precio + KPIs importantes")
                 st.info("Ticker cargado. Presiona **Buscar** para actualizar datos.")
 
         with colB:
@@ -160,6 +159,10 @@ def page_analysis():
     with colA:
         with st.container(border=True):
 
+            # Logo (opcional)
+            if logo_url:
+                st.image(logo_url, width=46)
+            
             # 1) Ticker + Nombre
             st.markdown(f"### {ticker} — {company_name}")
 
@@ -172,10 +175,6 @@ def page_analysis():
                     f"<div style='margin-top:-10px; font-size:0.95rem; color:{color};'>{delta_txt}</div>",
                     unsafe_allow_html=True,
                 )
-
-            # Logo (opcional)
-            if logo_url:
-                st.image(logo_url, width=46)
 
     # B) Donde estaba Geraldine Weiss: 6 cards simétricas con KPIs
     with colB:
