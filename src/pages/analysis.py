@@ -1,4 +1,6 @@
 # src/pages/analysis.py
+from __future__ import annotations
+
 import streamlit as st
 
 from src.services.usage_limits import remaining_searches, consume_search
@@ -38,22 +40,93 @@ def _fmt_kpi(x, suffix: str = "", decimals: int = 2) -> str:
     return f"{x:.{decimals}f}{suffix}" if isinstance(x, (int, float)) else "N/D"
 
 
-def _kpi_card(title: str, value: str) -> None:
-    # “card” simple con borde nativo (Streamlit moderno)
-    with st.container(border=True):
-        st.caption(title)
-        st.markdown(f"### {value}")
+def _kpi_card(label: str, value: str) -> None:
+    st.markdown(
+        f"""
+        <div class="kpi-card">
+          <div class="kpi-label">{label}</div>
+          <div class="kpi-value">{value}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
-def page_analysis():
+def page_analysis() -> None:
     DAILY_LIMIT = 3
     user_email = _get_user_email()
     admin = is_admin()
 
     # -----------------------------
-    # SIDEBAR (solo acciones + límite)
+    # CSS global (sin bordes + menos padding arriba + cards parejas)
+    # -----------------------------
+    st.markdown(
+        """
+        <style>
+          /* Menos aire arriba: pega el buscador al top */
+          div[data-testid="stAppViewContainer"] section.main div.block-container {
+            padding-top: 1.0rem !important;
+            padding-left: 2.0rem !important;
+            padding-right: 2.0rem !important;
+            max-width: 100% !important; /* que use el ancho completo */
+          }
+
+          /* Quitar “bordes”/marcos típicos de contenedores y forms */
+          div[data-testid="stForm"] {
+            border: none !important;
+            padding: 0 !important;
+          }
+
+          /* Inputs más limpios */
+          div[data-testid="stTextInput"] > div {
+            border-radius: 12px !important;
+          }
+
+          /* Cards KPI uniformes */
+          .kpi-card {
+            background: transparent;
+            border: none;
+            border-radius: 14px;
+            padding: 14px 14px 12px 14px;
+            min-height: 86px;
+          }
+          .kpi-label {
+            font-size: 0.78rem;
+            color: rgba(0,0,0,0.55);
+            margin-bottom: 6px;
+          }
+          .kpi-value {
+            font-size: 1.55rem;
+            font-weight: 700;
+            line-height: 1.1;
+          }
+
+          /* Bloque Nombre/Precio sin borde */
+          .main-card {
+            background: transparent;
+            border: none;
+            border-radius: 16px;
+            padding: 0;
+          }
+
+          /* Título compacto */
+          h2, h3 { margin-bottom: 0.25rem !important; }
+          [data-testid="stCaptionContainer"] { margin-top: -6px !important; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # -----------------------------
+    # SIDEBAR (solo controles, NO buscador)
     # -----------------------------
     with st.sidebar:
+        # Usuario arriba (lo dibuja router normalmente, pero por si acaso)
+        if st.session_state.get("auth_email"):
+            st.markdown(f"**Usuario:** {st.session_state.get('auth_email','')}")
+            st.divider()
+
+        # Cache + límites
         if admin:
             if st.button("🧹 Limpiar caché", key="clear_cache_btn", use_container_width=True):
                 cache_clear_all()
@@ -71,69 +144,51 @@ def page_analysis():
                 limit_box.warning("No se detectó el correo del usuario.")
 
     # -----------------------------
-    # BUSCADOR (arriba, en el dashboard)
+    # BUSCADOR (arriba, sin marco, ancho ~1/2 pantalla)
     # -----------------------------
-    # Fila superior: buscador limitado a ~media pantalla (estilo SeekingAlpha)
-    left_search, right_blank = st.columns([1.2, 1], gap="large")
-    with left_search:
-        with st.form("top_search", clear_on_submit=False):
-            t = st.text_input(
+    top_left, top_right = st.columns([1.15, 0.85], gap="large")
+    with top_left:
+        with st.form("main_search", clear_on_submit=False, border=False):
+            ticker_in = st.text_input(
                 label="",
-                value=st.session_state.get("ticker", "AAPL"),
-                placeholder="Ej: Ingresa un Ticker",
+                value=(st.session_state.get("ticker") or "AAPL"),
+                placeholder="Buscar ticker (ej: AAPL, MSFT, PEP)...",
+                key="ticker_main",
             ).strip().upper()
-            do_search = st.form_submit_button("🔎 Buscar", use_container_width=False)
+            submitted = st.form_submit_button("🔎 Buscar")
 
-        if do_search and t:
-            st.session_state["ticker"] = t
+        if submitted and ticker_in:
+            st.session_state["ticker"] = ticker_in
             st.session_state["do_search"] = True
             st.rerun()
 
-    st.write("")  # pequeño aire
-
     # -----------------------------
-    # Ticker y control de submit
+    # Lógica de “solo actualizar cuando se presiona Buscar”
     # -----------------------------
     ticker = (st.session_state.get("ticker") or "").strip().upper()
-    submitted = bool(st.session_state.pop("do_search", False))
+    did_search = bool(st.session_state.pop("do_search", False))
 
+    # Si no hay ticker, no mostramos datos todavía (pero sí el layout base)
     if not ticker:
-        st.info("Ingresa un ticker arriba para comenzar.")
+        st.info("Ingresa un ticker en el buscador para cargar datos.")
         return
 
-    # Si aún no presionan Buscar, mostramos dashboard “pendiente” sin llamadas
-    if not submitted:
-        # Layout 2 columnas (A: info empresa | B: cards KPIs)
-        colA, colB = st.columns([1.6, 1], gap="large")
-
-        with colA:
-            with st.container(border=True):
-                st.info("Ticker cargado. Presiona **Buscar** para actualizar datos.")
-
-        with colB:
-            with st.container(border=True):
-                st.markdown("## KPIs clave")
-                st.caption("Pendiente de búsqueda.")
-
-        st.write("")
-        tabs = st.tabs(["Dividendos", "Múltiplos", "Balance", "Estado de Resultados", "Estado de Flujo de Efectivo", "Otro"])
-        for tab in tabs:
-            with tab:
-                st.info("Pendiente de búsqueda.")
+    # Si todavía no presionaron Buscar en esta sesión, no consumimos límite ni refrescamos
+    if not did_search:
+        st.caption("Ticker cargado. Presiona **Buscar** para actualizar datos.")
         return
 
-    # -----------------------------
-    # Límite diario (solo si realmente se buscó)
-    # -----------------------------
+    # Consume SOLO si NO es admin
     if (not admin) and user_email:
         ok, rem_after = consume_search(user_email, DAILY_LIMIT, cost=1)
         if not ok:
-            limit_box.error("🚫 Búsquedas diarias alcanzadas. Vuelve mañana.")
+            # Ojo: limit_box existe en sidebar
+            st.sidebar.error("🚫 Búsquedas diarias alcanzadas. Vuelve mañana.")
             return
-        limit_box.info(f"🔎 Búsquedas restantes hoy: {rem_after}/{DAILY_LIMIT}")
+        st.sidebar.info(f"🔎 Búsquedas restantes hoy: {rem_after}/{DAILY_LIMIT}")
 
     # -----------------------------
-    # DATA (yfinance vía tus services)
+    # DATA
     # -----------------------------
     price = get_price_data(ticker) or {}
     profile = get_profile_data(ticker) or {}
@@ -151,84 +206,81 @@ def page_analysis():
     logo_url = next((u for u in logos if isinstance(u, str) and u.startswith(("http://", "https://"))), "")
 
     # -----------------------------
-    # LAYOUT PRINCIPAL (2 columnas)
+    # BLOQUE SUPERIOR: (izq) nombre/precio + (der) KPIs en tarjetas
     # -----------------------------
-    colA, colB = st.columns([1.6, 1], gap="large")
+    left, right = st.columns([1.15, 0.85], gap="large")
 
-    # A) Logo + Ticker/Nombre + Precio + Variación (sin “marco” extra arriba)
-    with colA:
-        with st.container(border=True):
+    with left:
+        st.markdown('<div class="main-card">', unsafe_allow_html=True)
 
-            # Logo (opcional)
+        # Logo + Ticker—Nombre en la MISMA línea
+        a1, a2 = st.columns([0.10, 0.90], gap="small", vertical_alignment="center")
+        with a1:
             if logo_url:
-                st.image(logo_url, width=46)
-            
-            # 1) Ticker + Nombre
+                st.image(logo_url, width=40)
+        with a2:
+            st.caption("Ticker · Nombre")
             st.markdown(f"### {ticker} — {company_name}")
 
-            # 2) Precio + variación debajo
-            st.markdown(f"## {_fmt_price(last_price, currency)}")
+        st.caption("Precio")
+        st.markdown(f"## {_fmt_price(last_price, currency)}")
 
-            if delta_txt:
-                color = "#16a34a" if (pct_val is not None and pct_val >= 0) else "#dc2626"
-                st.markdown(
-                    f"<div style='margin-top:-10px; font-size:0.95rem; color:{color};'>{delta_txt}</div>",
-                    unsafe_allow_html=True,
-                )
+        if delta_txt:
+            color = "#16a34a" if (pct_val is not None and pct_val >= 0) else "#dc2626"
+            st.markdown(
+                f"<div style='margin-top:-6px; font-size:0.95rem; color:{color}; font-weight:600;'>{delta_txt}</div>",
+                unsafe_allow_html=True,
+            )
 
-    # B) Donde estaba Geraldine Weiss: 6 cards simétricas con KPIs
-    with colB:
-        st.markdown("## KPIs clave")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-        # Elegimos 6 “de los de abajo” para que queden simétricos aquí
-        beta = _fmt_kpi(stats.get("beta"))
-        pe = stats.get("pe_ttm")
-        pe_txt = (_fmt_kpi(pe) + "x") if isinstance(pe, (int, float)) else "N/D"
-        eps = _fmt_kpi(stats.get("eps_ttm"))
-        target = _fmt_kpi(stats.get("target_1y"))
-
-        div_y = _fmt_kpi(divk.get("div_yield"), suffix="%", decimals=2)
-        fwd_y = _fmt_kpi(divk.get("fwd_div_yield"), suffix="%", decimals=2)
+    with right:
+        st.markdown("### KPIs clave")
 
         r1c1, r1c2, r1c3 = st.columns(3, gap="large")
         r2c1, r2c2, r2c3 = st.columns(3, gap="large")
 
         with r1c1:
-            _kpi_card("Beta", beta)
+            _kpi_card("Beta", _fmt_kpi(stats.get("beta")))
         with r1c2:
+            pe = stats.get("pe_ttm")
+            pe_txt = (_fmt_kpi(pe) + "x") if isinstance(pe, (int, float)) else "N/D"
             _kpi_card("PER (TTM)", pe_txt)
         with r1c3:
-            _kpi_card("EPS (TTM)", eps)
+            _kpi_card("EPS (TTM)", _fmt_kpi(stats.get("eps_ttm")))
 
         with r2c1:
-            _kpi_card("Target 1Y", target)
+            _kpi_card("Target 1Y", _fmt_kpi(stats.get("target_1y")))
         with r2c2:
-            _kpi_card("Dividend Yield", div_y)
+            _kpi_card("Dividend Yield", _fmt_kpi(divk.get("div_yield"), suffix="%", decimals=2))
         with r2c3:
-            _kpi_card("Forward Div. Yield", fwd_y)
+            _kpi_card("Forward Div. Yield", _fmt_kpi(divk.get("fwd_div_yield"), suffix="%", decimals=2))
 
-    st.write("")
+    st.write("")  # pequeño respiro
 
     # -----------------------------
-    # NAV TABS (reemplaza los 2 cuadros inferiores)
+    # TABS de navegación (gráficos abajo)
     # -----------------------------
-    tabs = st.tabs(["Dividendos", "Múltiplos", "Balance", "Estado de Resultados", "Estado de Flujo de Efectivo", "Otro"])
+    tabs = st.tabs(
+        [
+            "Dividendos",
+            "Múltiplos",
+            "Balance",
+            "Estado de Resultados",
+            "Estado de Flujo de Efectivo",
+            "Otro",
+        ]
+    )
 
     with tabs[0]:
         st.info("Aquí irán los gráficos de Dividendos (pendiente).")
-        # Ej: payout, dividend growth, yield bands, etc.
-
     with tabs[1]:
         st.info("Aquí irán los gráficos de Múltiplos (pendiente).")
-
     with tabs[2]:
         st.info("Aquí irán los gráficos de Balance (pendiente).")
-
     with tabs[3]:
         st.info("Aquí irán los gráficos de Estado de Resultados (pendiente).")
-
     with tabs[4]:
         st.info("Aquí irán los gráficos de Flujo de Efectivo (pendiente).")
-
     with tabs[5]:
-        st.info("Sección Otro (pendiente).")
+        st.info("Sección 'Otro' (pendiente).")
