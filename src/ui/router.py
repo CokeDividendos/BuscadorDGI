@@ -35,8 +35,7 @@ def run_app():
     with st.sidebar:
         st.markdown(f"**Usuario:** {st.session_state.get('auth_email','')}")
         st.divider()
-
-        st.divider()
+        
         logout_button("🚪 Cerrar sesión")
 
         sections = ["Análisis"]
