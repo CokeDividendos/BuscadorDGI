@@ -213,10 +213,8 @@ def page_analysis() -> None:
             if logo_url:
                 st.image(logo_url, width=40)
         with a2:
-            st.caption("Ticker · Nombre")
             st.markdown(f"### {ticker} — {company_name}")
 
-        st.caption("Precio")
         st.markdown(f"## {_fmt_price(last_price, currency)}")
 
         if delta_txt:
