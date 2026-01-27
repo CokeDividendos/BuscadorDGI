@@ -10,11 +10,12 @@ def is_logged_in() -> bool:
 def is_admin() -> bool:
     return (st.session_state.get("auth_role") == "admin") or (st.session_state.get("is_admin") is True)
 
-def logout_button() -> None:
-    if st.button("🚪 Cerrar sesión", key="logout_button", use_container_width=True):
+def logout_button(label: str = "🚪 Cerrar sesión") -> None:
+    if st.button(label, key="logout_button", use_container_width=True):
         for k in ["auth_ok", "auth_email", "auth_role", "is_admin"]:
             st.session_state.pop(k, None)
         st.rerun()
+
 
 def _setup_screen() -> None:
     st.markdown("## 🛠️ Crear usuario admin (primer arranque)")
