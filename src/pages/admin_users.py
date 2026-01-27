@@ -12,12 +12,12 @@ def page_admin_users() -> None:
         st.error("No autorizado.")
         return
 
-    st.markdown("## 👥 Admin · Usuarios")
+    st.markdown("## 👑 Admin · Usuarios")
 
     # ─────────────────────────────────────────────
     # ➕ Crear / Actualizar usuario (PRIMERO)
     # ─────────────────────────────────────────────
-    st.markdown("### ➕ Crear / Actualizar usuario")
+    st.markdown("### ✔️ Crear / Actualizar usuario")
 
     with st.form("create_user"):
         email = st.text_input("Email").strip().lower()
@@ -42,7 +42,7 @@ def page_admin_users() -> None:
     # ─────────────────────────────────────────────
     # 👥 Usuarios existentes (DESPUÉS)
     # ─────────────────────────────────────────────
-    st.markdown("### 👥 Usuarios existentes")
+    st.markdown("### 📄 Usuarios existentes")
 
     users = load_users()
 
