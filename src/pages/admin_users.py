@@ -1,6 +1,7 @@
 # src/pages/admin_users.py
 from __future__ import annotations
 
+import json
 import streamlit as st
 from src.auth import is_admin
 from src.db import load_users, upsert_user
@@ -11,7 +12,12 @@ def page_admin_users() -> None:
         st.error("No autorizado.")
         return
 
-        st.markdown("### ➕ Crear/Actualizar usuario")
+    st.markdown("## 👥 Admin · Usuarios")
+
+    # ─────────────────────────────────────────────
+    # ➕ Crear / Actualizar usuario (PRIMERO)
+    # ─────────────────────────────────────────────
+    st.markdown("### ➕ Crear / Actualizar usuario")
 
     with st.form("create_user"):
         email = st.text_input("Email").strip().lower()
@@ -26,21 +32,41 @@ def page_admin_users() -> None:
         if not pwd or len(pwd) < 6:
             st.error("Contraseña mínima 6 caracteres.")
             return
+
         upsert_user(email, pwd, role=role)
-        st.success("Usuario guardado.")
+        st.success("Usuario guardado correctamente.")
         st.rerun()
-    
+
     st.divider()
-    
-    st.markdown("## 👥 Admin - Usuarios")
+
+    # ─────────────────────────────────────────────
+    # 👥 Usuarios existentes (DESPUÉS)
+    # ─────────────────────────────────────────────
+    st.markdown("### 👥 Usuarios existentes")
 
     users = load_users()
+
     if users:
-        st.caption("Usuarios existentes")
         for email, meta in users.items():
-            st.write(f"- {email} ({meta.get('role','user')})")
+            st.write(f"- **{email}** ({meta.get('role', 'user')})")
+
+        st.divider()
+
+        # Visualización JSON
+        st.caption("Vista completa (JSON)")
+        st.json(users)
+
+        # Descarga del archivo
+        st.download_button(
+            label="⬇️ Descargar users.json",
+            data=json.dumps(users, indent=2, ensure_ascii=False),
+            file_name="users.json",
+            mime="application/json",
+            use_container_width=True,
+        )
     else:
-        st.info("No hay usuarios aún (esto es raro si ya logueaste).")
+        st.info("No hay usuarios registrados.")
+
 
     
    
