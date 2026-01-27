@@ -77,13 +77,11 @@ def page_analysis():
     left_search, right_blank = st.columns([1.2, 1], gap="large")
     with left_search:
         with st.form("top_search", clear_on_submit=False):
-            st.caption("Buscar ticker")
             t = st.text_input(
                 label="",
                 value=st.session_state.get("ticker", "AAPL"),
-                placeholder="Ej: AAPL",
+                placeholder="Ej: Ingresa un Ticker",
             ).strip().upper()
-
             do_search = st.form_submit_button("🔎 Buscar", use_container_width=False)
 
         if do_search and t:
