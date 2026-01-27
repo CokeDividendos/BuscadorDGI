@@ -65,7 +65,7 @@ def page_analysis() -> None:
         <style>
           /* Menos aire arriba: pega el buscador al top */
           div[data-testid="stAppViewContainer"] section.main div.block-container {
-            padding-top: 1.0rem !important;
+            padding-top: 0.5rem !important;
             padding-left: 2.0rem !important;
             padding-right: 2.0rem !important;
             max-width: 100% !important; /* que use el ancho completo */
@@ -75,6 +75,7 @@ def page_analysis() -> None:
           div[data-testid="stForm"] {
             border: none !important;
             padding: 0 !important;
+            margin: 0 !important;
           }
 
           /* Inputs más limpios */
@@ -120,6 +121,7 @@ def page_analysis() -> None:
     # -----------------------------
     # SIDEBAR (solo controles, NO buscador)
     # -----------------------------
+    with st.sidebar:
         # Cache + límites
         if admin:
             if st.button("🧹 Limpiar caché", key="clear_cache_btn", use_container_width=True):
@@ -176,7 +178,6 @@ def page_analysis() -> None:
     if (not admin) and user_email:
         ok, rem_after = consume_search(user_email, DAILY_LIMIT, cost=1)
         if not ok:
-            # Ojo: limit_box existe en sidebar
             st.sidebar.error("🚫 Búsquedas diarias alcanzadas. Vuelve mañana.")
             return
         st.sidebar.info(f"🔎 Búsquedas restantes hoy: {rem_after}/{DAILY_LIMIT}")
