@@ -159,14 +159,11 @@ def page_analysis():
     # A) Logo + Ticker/Nombre + Precio + Variación (sin “marco” extra arriba)
     with colA:
         with st.container(border=True):
-            st.markdown("## Logo + Nombre + Precio + KPIs importantes")
 
             # 1) Ticker + Nombre
-            st.caption("Ticker · Nombre")
             st.markdown(f"### {ticker} — {company_name}")
 
             # 2) Precio + variación debajo
-            st.caption("Precio")
             st.markdown(f"## {_fmt_price(last_price, currency)}")
 
             if delta_txt:
