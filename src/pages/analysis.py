@@ -63,31 +63,7 @@ def page_analysis():
             else:
                 limit_box.warning("No se detectó el correo del usuario.")
 
-    # -----------------------------
-    # CSS (ancho centrado)
-    # -----------------------------
-    st.markdown(
-        """
-        <style>
-          div[data-testid="stAppViewContainer"] section.main div.block-container {
-            max-width: 1200px !important;
-            margin: 0 auto !important;
-            padding-left: 18px !important;
-            padding-right: 18px !important;
-          }
-          h2, h3 { margin-bottom: 0.25rem !important; }
-          [data-testid="stCaptionContainer"] { margin-top: -6px !important; }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
 
-    # -----------------------------
-    # CONTENIDO CENTRADO
-    # -----------------------------
-    pad_l, center, pad_r = st.columns([1, 3, 1], gap="large")
-
-    with center:
         # Ticker viene del buscador del sidebar (router)
         ticker = (st.session_state.get("ticker") or "").strip().upper()
         submitted = bool(st.session_state.pop("do_search", False))
