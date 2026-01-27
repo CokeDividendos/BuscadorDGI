@@ -120,12 +120,6 @@ def page_analysis() -> None:
     # -----------------------------
     # SIDEBAR (solo controles, NO buscador)
     # -----------------------------
-    with st.sidebar:
-        # Usuario arriba (lo dibuja router normalmente, pero por si acaso)
-        if st.session_state.get("auth_email"):
-            st.markdown(f"**Usuario:** {st.session_state.get('auth_email','')}")
-            st.divider()
-
         # Cache + límites
         if admin:
             if st.button("🧹 Limpiar caché", key="clear_cache_btn", use_container_width=True):
