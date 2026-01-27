@@ -1,6 +1,6 @@
 import streamlit as st
 from src.db import init_db
-from src.auth import require_login, is_admin
+from src.auth import require_login, is_admin, logout_button
 from src.pages.analysis import page_analysis
 
 # NUEVO: admin page
@@ -19,25 +19,24 @@ def run_app():
             key="ticker_sidebar",
             placeholder="Ej: AAPL",
         ).strip().upper()
-    
+
         do_search = st.form_submit_button("🔎 Buscar", use_container_width=True)
-    
+
     if do_search and _t:
         st.session_state["ticker"] = _t
         st.session_state["do_search"] = True
         st.rerun()
-        
-    # ⛔ Si no está logueado, require_login dibuja la UI y devolvemos stop
+
+    # ⛔ Si no está logueado, require_login dibuja la UI y cortamos
     if not require_login():
         st.stop()
 
-    # Sidebar navegación
+    # -----------------------------
+    # SIDEBAR navegación (post-login)
+    # -----------------------------
     with st.sidebar:
         st.markdown(f"**Usuario:** {st.session_state.get('auth_email','')}")
         st.divider()
-        
-        st.divider()
-        logout_button("🚪 Cerrar sesión")
 
         sections = ["Análisis"]
         if is_admin():
@@ -45,12 +44,14 @@ def run_app():
 
         section = st.radio("Secciones", sections, index=0)
 
+        # ✅ Cerrar sesión (al final)
+        st.divider()
+        logout_button("🚪 Cerrar sesión")
+
+    # -----------------------------
+    # CONTENIDO PRINCIPAL
+    # -----------------------------
     if section == "Análisis":
         page_analysis()
     elif section == "Admin · Usuarios":
         page_admin_users()
-
-
-
-
-
