@@ -43,8 +43,8 @@ def _fmt_kpi(x, suffix: str = "", decimals: int = 2) -> str:
 def _kpi_card(label: str, value: str) -> None:
     st.markdown(
         f"""
-        <div class="kpi-card">
-          <div class="kpi-label">{label}</div>
+        < class="kpi-card">
+          < class="kpi-label">{label}</>
           <div class="kpi-value">{value}</div>
         </div>
         """,
@@ -64,13 +64,33 @@ def page_analysis() -> None:
         """
         <style>
           /* Menos aire arriba: pega el buscador al top */
-          div[data-testid="stAppViewContainer"] section.main div.block-container {
-            padding-top: 0.5rem !important;
+            /* Quitar padding superior al máximo */
+            div[data-testid="stAppViewContainer"] section.main div.block-container {
+            padding-top: 0rem !important;
             padding-left: 2.0rem !important;
             padding-right: 2.0rem !important;
-            max-width: 100% !important; /* que use el ancho completo */
+            max-width: 100% !important;
           }
-
+            
+            /* El contenedor principal también mete padding/margen */
+            section.main {
+            padding-top: 0rem !important;
+          }
+            
+            /* El primer bloque suele traer margen propio */
+            div[data-testid="stVerticalBlock"] > div:first-child {
+            margin-top: -0.75rem !important;
+          }
+          /* Oculta la barra superior (hamburger/toolbar) que agrega alto */
+            header[data-testid="stHeader"] {
+            height: 0 !important;
+          }
+            
+            /* Reduce espacio reservado arriba */
+            div[data-testid="stToolbar"] {
+            height: 0 !important;
+          }
+          
           /* Quitar “bordes”/marcos típicos de contenedores y forms */
           div[data-testid="stForm"] {
             border: none !important;
