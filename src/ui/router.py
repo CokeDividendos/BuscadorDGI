@@ -36,6 +36,9 @@ def run_app():
         st.markdown(f"**Usuario:** {st.session_state.get('auth_email','')}")
         st.divider()
 
+        st.divider()
+        logout_button("🚪 Cerrar sesión")
+
         sections = ["Análisis"]
         if is_admin():
             sections.append("Admin · Usuarios")
@@ -46,5 +49,8 @@ def run_app():
         page_analysis()
     elif section == "Admin · Usuarios":
         page_admin_users()
+
+
+
 
 
