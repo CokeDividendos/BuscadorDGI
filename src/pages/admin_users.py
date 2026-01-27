@@ -11,18 +11,7 @@ def page_admin_users() -> None:
         st.error("No autorizado.")
         return
 
-    st.markdown("## 👥 Admin - Usuarios")
-
-    users = load_users()
-    if users:
-        st.caption("Usuarios existentes")
-        for email, meta in users.items():
-            st.write(f"- {email} ({meta.get('role','user')})")
-    else:
-        st.info("No hay usuarios aún (esto es raro si ya logueaste).")
-
-    st.divider()
-    st.markdown("### ➕ Crear/Actualizar usuario")
+        st.markdown("### ➕ Crear/Actualizar usuario")
 
     with st.form("create_user"):
         email = st.text_input("Email").strip().lower()
@@ -40,3 +29,18 @@ def page_admin_users() -> None:
         upsert_user(email, pwd, role=role)
         st.success("Usuario guardado.")
         st.rerun()
+    
+    st.divider()
+    
+    st.markdown("## 👥 Admin - Usuarios")
+
+    users = load_users()
+    if users:
+        st.caption("Usuarios existentes")
+        for email, meta in users.items():
+            st.write(f"- {email} ({meta.get('role','user')})")
+    else:
+        st.info("No hay usuarios aún (esto es raro si ya logueaste).")
+
+    
+   
