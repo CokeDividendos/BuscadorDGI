@@ -259,9 +259,7 @@ def page_analysis() -> None:
         with c_info:
             # Fila superior: Ticker + Nombre
             st.markdown(f"### {ticker} — {company_name}")
-        
             st.markdown(f"## {_fmt_price(last_price, currency)}")
-        
             if delta_txt:
                 color = "#16a34a" if (pct_val is not None and pct_val >= 0) else "#dc2626"
                 st.markdown(
@@ -270,8 +268,6 @@ def page_analysis() -> None:
                 )
             else:
                 st.write("")
-
-        st.markdown("</div>", unsafe_allow_html=True)
 
     with right:
         st.markdown("### KPIs clave")
