@@ -61,82 +61,122 @@ def page_analysis() -> None:
     # CSS global (sin bordes + menos padding arriba + cards parejas)
     # -----------------------------
     st.markdown(
-        """
-        <style>
-          /* Menos aire arriba: pega el buscador al top */
-            /* Quitar padding superior al máximo */
+            """
+            <style>
+            /* =========================================================
+               LAYOUT GENERAL — eliminar aire arriba y usar todo el ancho
+               ========================================================= */
+        
+            /* Contenedor principal */
             div[data-testid="stAppViewContainer"] section.main div.block-container {
-            padding-top: 0rem !important;
-            padding-left: 2.0rem !important;
-            padding-right: 2.0rem !important;
-            max-width: 100% !important;
-          }
-            
-            /* El contenedor principal también mete padding/margen */
+                padding-top: 0rem !important;
+                padding-left: 2.0rem !important;
+                padding-right: 2.0rem !important;
+                max-width: 100% !important;
+            }
+        
+            /* El main también mete padding propio */
             section.main {
-            padding-top: 0rem !important;
-          }
-            
-            /* El primer bloque suele traer margen propio */
+                padding-top: 0rem !important;
+            }
+        
+            /* El primer bloque suele traer margen extra */
             div[data-testid="stVerticalBlock"] > div:first-child {
-            margin-top: -0.75rem !important;
-          }
-          /* Oculta la barra superior (hamburger/toolbar) que agrega alto */
+                margin-top: -0.75rem !important;
+            }
+        
+            /* Ocultar barra superior de Streamlit (responsable del aire fantasma) */
             header[data-testid="stHeader"] {
-            height: 0 !important;
-          }
-            
-            /* Reduce espacio reservado arriba */
+                height: 0 !important;
+                visibility: hidden;
+            }
+        
             div[data-testid="stToolbar"] {
-            height: 0 !important;
-          }
-          
-          /* Quitar “bordes”/marcos típicos de contenedores y forms */
-          div[data-testid="stForm"] {
-            border: none !important;
-            padding: 0 !important;
-            margin: 0 !important;
-          }
-
-          /* Inputs más limpios */
-          div[data-testid="stTextInput"] > div {
-            border-radius: 12px !important;
-          }
-
-          /* Cards KPI uniformes */
-          .kpi-card {
-            background: transparent;
-            border: none;
-            border-radius: 14px;
-            padding: 14px 14px 12px 14px;
-            min-height: 86px;
-          }
-          .kpi-label {
-            font-size: 0.78rem;
-            color: rgba(0,0,0,0.55);
-            margin-bottom: 6px;
-          }
-          .kpi-value {
-            font-size: 1.55rem;
-            font-weight: 700;
-            line-height: 1.1;
-          }
-
-          /* Bloque Nombre/Precio sin borde */
-          .main-card {
-            background: transparent;
-            border: none;
-            border-radius: 16px;
-            padding: 0;
-          }
-
-          /* Título compacto */
-          h2, h3 { margin-bottom: 0.25rem !important; }
-          [data-testid="stCaptionContainer"] { margin-top: -6px !important; }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+                height: 0 !important;
+            }
+        
+            /* =========================================================
+               FORMS, INPUTS Y CONTENEDORES — sin bordes ni marcos
+               ========================================================= */
+        
+            /* Quitar bordes y padding de formularios */
+            div[data-testid="stForm"] {
+                border: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+        
+            /* Inputs limpios */
+            div[data-testid="stTextInput"] > div {
+                border-radius: 12px !important;
+                border: none !important;
+            }
+        
+            /* Botones sin marco pesado */
+            button {
+                border-radius: 10px !important;
+            }
+        
+            /* =========================================================
+               BLOQUE NOMBRE / PRECIO
+               ========================================================= */
+        
+            .main-card {
+                background: transparent;
+                border: none;
+                border-radius: 16px;
+                padding: 0;
+            }
+        
+            /* =========================================================
+               KPI CARDS — tamaño uniforme, sin borde
+               ========================================================= */
+        
+            .kpi-card {
+                background: transparent;
+                border: none !important;
+                border-radius: 14px;
+                padding: 14px 14px 12px 14px;
+                min-height: 86px;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+            }
+        
+            .kpi-label {
+                font-size: 0.78rem;
+                color: rgba(0,0,0,0.55);
+                margin-bottom: 6px;
+            }
+        
+            .kpi-value {
+                font-size: 1.55rem;
+                font-weight: 700;
+                line-height: 1.1;
+            }
+        
+            /* =========================================================
+               TÍTULOS Y ESPACIADOS COMPACTOS
+               ========================================================= */
+        
+            h2, h3 {
+                margin-bottom: 0.25rem !important;
+            }
+        
+            [data-testid="stCaptionContainer"] {
+                margin-top: -6px !important;
+            }
+        
+            /* Tabs más pegadas arriba */
+            div[data-testid="stTabs"] {
+                margin-top: 0.75rem !important;
+            }
+        
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        
 
     # -----------------------------
     # SIDEBAR (solo controles, NO buscador)
