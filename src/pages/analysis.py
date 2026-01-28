@@ -181,14 +181,21 @@ def page_analysis() -> None:
     # -----------------------------
     # BUSCADOR (ENTER para buscar, sin botón)
     # -----------------------------
+    def _submit_search() -> None:
+        raw = (st.session_state.get("ticker_main") or "").strip().upper()
+        if raw:
+            st.session_state["ticker"] = raw
+            st.session_state["do_search"] = True
+    
     top_left, _top_right = st.columns([1.15, 0.85], gap="large")
     with top_left:
         st.text_input(
-            label="",
-            value=(st.session_state.get("ticker") or ""),
+            "Ticker",
+            value=(st.session_state.get("ticker") or "AAPL"),
             placeholder="Buscar ticker (ej: AAPL, MSFT, PEP)...",
             key="ticker_main",
-            on_change=_submit_search_from_input,  # <-- ENTER dispara búsqueda
+            label_visibility="collapsed",
+            on_change=_submit_search,  # <-- Enter dispara la búsqueda
         )
 
     # -----------------------------
