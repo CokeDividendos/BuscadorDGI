@@ -260,22 +260,16 @@ def page_analysis() -> None:
             # Fila superior: Ticker + Nombre
             st.markdown(f"### {ticker} — {company_name}")
         
-            # Fila inferior: Precio + Variación (en una mini-grilla de 2 columnas)
-            p1, p2 = st.columns([0.55, 0.45], gap="small", vertical_alignment="center")
+            st.markdown(f"## {_fmt_price(last_price, currency)}")
         
-            with p1:
-                st.markdown(f"## {_fmt_price(last_price, currency)}")
-        
-            with p2:
-                if delta_txt:
-                    color = "#16a34a" if (pct_val is not None and pct_val >= 0) else "#dc2626"
-                    st.markdown(
-                        f"<div style='text-align:left; margin-top:10px; font-size:0.95rem; color:{color}; font-weight:600;'>{delta_txt}</div>",
-                        unsafe_allow_html=True,
-                    )
-                else:
-                    st.write("")
-
+            if delta_txt:
+                color = "#16a34a" if (pct_val is not None and pct_val >= 0) else "#dc2626"
+                st.markdown(
+                    f"<div style='text-align:left; margin-top:10px; font-size:0.95rem; color:{color}; font-weight:600;'>{delta_txt}</div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.write("")
 
         st.markdown("</div>", unsafe_allow_html=True)
 
