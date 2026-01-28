@@ -246,21 +246,35 @@ def page_analysis() -> None:
     with left:
         st.markdown('<div class="main-card">', unsafe_allow_html=True)
 
-        a1, a2 = st.columns([0.10, 0.90], gap="small", vertical_alignment="center")
-        with a1:
+        # Logo (izq) ocupa visualmente 2 filas; Info (der) con 2 filas: arriba nombre, abajo precio+variación
+        c_logo, c_info = st.columns([0.12, 0.88], gap="medium", vertical_alignment="center")
+        
+        with c_logo:
             if logo_url:
-                st.image(logo_url, width=40)
-        with a2:
-            st.markdown(f"## {ticker} — {company_name}")
+                st.image(logo_url, width=52)  # un poco más grande para que se note el "rowspan"
+            else:
+                st.write("")  # mantiene el espacio si no hay logo
+        
+        with c_info:
+            # Fila superior: Ticker + Nombre
+            st.markdown(f"### {ticker} — {company_name}")
+        
+            # Fila inferior: Precio + Variación (en una mini-grilla de 2 columnas)
+            p1, p2 = st.columns([0.55, 0.45], gap="small", vertical_alignment="center")
+        
+            with p1:
+                st.markdown(f"## {_fmt_price(last_price, currency)}")
+        
+            with p2:
+                if delta_txt:
+                    color = "#16a34a" if (pct_val is not None and pct_val >= 0) else "#dc2626"
+                    st.markdown(
+                        f"<div style='text-align:left; margin-top:10px; font-size:0.95rem; color:{color}; font-weight:600;'>{delta_txt}</div>",
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.write("")
 
-        st.markdown(f"## {_fmt_price(last_price, currency)}")
-
-        if delta_txt:
-            color = "#16a34a" if (pct_val is not None and pct_val >= 0) else "#dc2626"
-            st.markdown(
-                f"<div style='margin-top:-6px; font-size:0.95rem; color:{color}; font-weight:600;'>{delta_txt}</div>",
-                unsafe_allow_html=True,
-            )
 
         st.markdown("</div>", unsafe_allow_html=True)
 
