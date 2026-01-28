@@ -51,7 +51,12 @@ def _kpi_card(label: str, value: str) -> None:
         """,
         unsafe_allow_html=True,
     )
-
+def _on_ticker_submit() -> None:
+    t = (st.session_state.get("ticker_main") or "").strip().upper()
+    if not t:
+        return
+    st.session_state["ticker"] = t
+    st.session_state["do_search"] = True
 
 def page_analysis() -> None:
     DAILY_LIMIT = 3
@@ -193,32 +198,25 @@ def page_analysis() -> None:
     # -----------------------------
     # BUSCADOR (arriba, sin marco, input + botón en la MISMA fila)
     # -----------------------------
+    # -----------------------------
+    # BUSCADOR (arriba, sin botón: Enter dispara búsqueda)
+    # -----------------------------
     top_left, top_right = st.columns([1.15, 0.85], gap="large")
     with top_left:
-        with st.form("main_search", clear_on_submit=False, border=False):
-            c_in, c_btn = st.columns([0.78, 0.22], gap="small")
-
-            with c_in:
-                ticker_in = st.text_input(
-                    label="",
-                    value=(st.session_state.get("ticker") or "AAPL"),
-                    placeholder="Buscar ticker (ej: AAPL, MSFT, PEP)...",
-                    key="ticker_main",
-                ).strip().upper()
-
-            with c_btn:
-                submitted = st.form_submit_button("🔎 Buscar", use_container_width=True)
-
-        if submitted and ticker_in:
-            st.session_state["ticker"] = ticker_in
-            st.session_state["do_search"] = True
-            st.rerun()
-
-    # -----------------------------
-    # Lógica de “solo actualizar cuando se presiona Buscar”
-    # -----------------------------
-    ticker = (st.session_state.get("ticker") or "").strip().upper()
-    did_search = bool(st.session_state.pop("do_search", False))
+        st.text_input(
+            label="",
+            value=(st.session_state.get("ticker") or "AAPL"),
+            placeholder="Buscar ticker (ej: AAPL, MSFT, PEP)...",
+            key="ticker_main",
+            on_change=_on_ticker_submit,
+        )
+    
+    
+        # -----------------------------
+        # Lógica de “solo actualizar cuando se presiona Buscar”
+        # -----------------------------
+        ticker = (st.session_state.get("ticker") or "").strip().upper()
+        did_search = bool(st.session_state.pop("do_search", False))
 
     if not ticker:
         st.info("Ingresa un ticker en el buscador para cargar datos.")
