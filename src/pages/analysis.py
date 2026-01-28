@@ -197,7 +197,7 @@ def page_analysis() -> None:
             label_visibility="collapsed",
             on_change=_submit_search,  # <-- Enter dispara la búsqueda
         )
-
+    st.markdown()
     # -----------------------------
     # Lógica de “solo actualizar cuando se presiona Enter”
     # -----------------------------
