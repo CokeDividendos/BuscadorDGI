@@ -177,6 +177,7 @@ def page_analysis() -> None:
                 limit_box.info(f"🔎 Búsquedas restantes hoy: {rem}/{DAILY_LIMIT}")
             else:
                 limit_box.warning("No se detectó el correo del usuario.")
+        
 
     # -----------------------------
     # BUSCADOR (ENTER para buscar, sin botón)
@@ -218,7 +219,7 @@ def page_analysis() -> None:
         if not ok:
             st.sidebar.error("🚫 Búsquedas diarias alcanzadas. Vuelve mañana.")
             return
-        st.sidebar.info(f"🔎 Búsquedas restantes hoy: {rem_after}/{DAILY_LIMIT}")
+        limit_box.info(f"🔎 Búsquedas restantes hoy: {rem_after}/{DAILY_LIMIT}")
 
     # -----------------------------
     # DATA
