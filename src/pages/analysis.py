@@ -11,32 +11,39 @@ import yfinance as yf
 PRIMARY_ORANGE = "#f97316"
 PRIMARY_BLUE = "#0ea5e9"
 PRIMARY_PINK = "#ec4899"
+YEARS = 5
+CACHE_TTL_SECONDS = 60 * 60 * 24 * 30  # 30 días
 
-
-@st.cache_data(ttl=60 * 60, show_spinner=False)
-def _load_dividend_inputs(ticker: str):
+@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
+def _load_dividend_inputs(ticker: str, years: int = YEARS):
     """
-    Carga base para dividendos. Cacheado para no reventar yfinance.
+    Carga base para dividendos (cache 30 días).
     Retorna: dividends (Series), cashflow (DataFrame), price_daily (DataFrame)
     """
     t = yf.Ticker(ticker)
+
     dividends = t.dividends.copy()
     cashflow = t.cashflow.copy()
-    price_daily = t.history(period="max", interval="1d", auto_adjust=False).copy()
+
+    # yfinance solo soporta period="5y" (no "6y"), así que usamos 5y para estandarizar
+    price_daily = t.history(period=f"{years}y", interval="1d", auto_adjust=False).copy()
+
     return dividends, cashflow, price_daily
 
 
-def _annual_dividends(dividends: pd.Series, price_daily: pd.DataFrame) -> pd.Series:
+def _annual_dividends(dividends: pd.Series) -> pd.Series:
     if dividends is None or dividends.empty:
         return pd.Series(dtype=float)
 
     annual = dividends.resample("Y").sum().astype(float).dropna()
     annual.index = annual.index.year
 
-    if price_daily is not None and not price_daily.empty:
-        start_year, end_year = price_daily.index[[0, -1]].year
-        annual = annual.loc[start_year:end_year]
+    # últimos 5 años completos (excluye el año actual por ser parcial)
+    current_year = pd.Timestamp.today().year
+    last_full_year = current_year - 1
+    start_year = last_full_year - (YEARS - 1)
 
+    annual = annual.loc[start_year:last_full_year]
     return annual
 
 
@@ -96,16 +103,15 @@ def _build_dividend_evolution_chart(annual: pd.Series, cagr_5y: float | None) ->
 
 
 def _build_dividend_safety_chart(cashflow: pd.DataFrame) -> tuple[go.Figure | None, pd.DataFrame | None, str | None]:
-    """
-    Sostenibilidad: FCF vs Dividendos Pagados + FCF Payout (%)
-    Retorna (fig, df_fcf, warning_msg)
-    """
     if cashflow is None or cashflow.empty:
         return None, None, "No hay datos de cash-flow disponibles."
 
     try:
         cf = cashflow.transpose().copy()
         cf.index = cf.index.year
+
+        # últimos 5 años
+        cf = cf.sort_index().tail(YEARS)
 
         fcf_col, div_col = "Free Cash Flow", "Cash Dividends Paid"
         if fcf_col not in cf.columns or div_col not in cf.columns:
@@ -121,35 +127,13 @@ def _build_dividend_safety_chart(cashflow: pd.DataFrame) -> tuple[go.Figure | No
         df["FCF Payout (%)"] = (df["Dividendos Pagados"] / df["FCF"]) * 100
 
         fig = go.Figure()
-        fig.add_trace(
-            go.Bar(
-                x=df.index,
-                y=df["FCF"],
-                name="FCF",
-                marker_color=PRIMARY_ORANGE,
-            )
-        )
-        fig.add_trace(
-            go.Bar(
-                x=df.index,
-                y=df["Dividendos Pagados"],
-                name="Dividendos Pagados",
-                marker_color=PRIMARY_BLUE,
-            )
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=df.index,
-                y=df["FCF Payout (%)"],
-                name="FCF Payout (%)",
-                mode="lines+markers",
-                yaxis="y2",
-                line=dict(color=PRIMARY_PINK),
-            )
-        )
+        fig.add_trace(go.Bar(x=df.index, y=df["FCF"], name="FCF", marker_color=PRIMARY_ORANGE))
+        fig.add_trace(go.Bar(x=df.index, y=df["Dividendos Pagados"], name="Dividendos Pagados", marker_color=PRIMARY_BLUE))
+        fig.add_trace(go.Scatter(x=df.index, y=df["FCF Payout (%)"], name="FCF Payout (%)",
+                                 mode="lines+markers", yaxis="y2", line=dict(color=PRIMARY_PINK)))
 
         fig.update_layout(
-            title="FCF vs Dividendos Pagados y FCF Payout Ratio",
+            title=f"Seguridad del Dividendo — últimos {YEARS} años",
             xaxis_title="Año",
             yaxis_title="USD",
             yaxis2=dict(title="FCF Payout (%)", overlaying="y", side="right"),
@@ -161,6 +145,7 @@ def _build_dividend_safety_chart(cashflow: pd.DataFrame) -> tuple[go.Figure | No
 
     except Exception as e:
         return None, None, f"No se pudo generar el gráfico de sostenibilidad: {e}"
+
 
 
 def _build_geraldine_weiss_chart(
@@ -505,8 +490,20 @@ def page_analysis() -> None:
     # -----------------------------
     # Lógica de “solo actualizar cuando se presiona Enter”
     # -----------------------------
-    ticker = (st.session_state.get("ticker") or "").strip().upper()
-    did_search = bool(st.session_state.pop("do_search", False))
+    last_loaded = st.session_state.get("last_loaded_ticker", "")
+
+    # Si nunca se ha cargado nada y no vienen por Enter: no hagas nada
+    if not ticker:
+        st.info("Ingresa un ticker en el buscador para cargar datos.")
+        return
+    
+    # Si NO presionaron Enter, pero el ticker ya fue cargado antes, renderiza igual (sin consumir límite)
+    if not did_search and ticker == last_loaded:
+        pass  # seguimos, pero NO consumimos intentos
+    elif not did_search and ticker != last_loaded:
+        st.caption("Ticker cargado. Presiona **Enter** para actualizar datos.")
+        return
+
 
     if not ticker:
         st.info("Ingresa un ticker en el buscador para cargar datos.")
@@ -516,6 +513,9 @@ def page_analysis() -> None:
         st.caption("Ticker cargado. Presiona **Enter** para actualizar datos.")
         return
 
+    st.session_state["last_loaded_ticker"] = ticker
+
+    
     # Consume SOLO si NO es admin
     if (not admin) and user_email:
         ok, rem_after = consume_search(user_email, DAILY_LIMIT, cost=1)
@@ -612,70 +612,50 @@ def page_analysis() -> None:
     )
 
     with tabs[0]:
-        # ==========================
-        # Dividendos — Opción B (Galería: eliges 1 y se expande)
-        # ==========================
         st.markdown("### Dividendos")
     
-        view = st.radio(
-            "Selecciona un gráfico",
-            ["Geraldine Weiss", "Evolución del dividendo", "Seguridad del dividendo"],
-            horizontal=True,
-            key="div_view_selector",
-        )
+        # Carga cacheada 30 días (NO debería golpear yfinance al cambiar de gráfico)
+        dividends_s, cashflow_df, price_daily_df = _load_dividend_inputs(ticker, YEARS)
+        annual = _annual_dividends(dividends_s)
+        cagr_5y = _div_cagr_5y_strict(annual)  # queda N/D por ahora
     
-        # Cargar inputs base (cacheados)
-        dividends_s, cashflow_df, price_daily_df = _load_dividend_inputs(ticker)
-        annual = _annual_dividends(dividends_s, price_daily_df)
-        cagr_5y = _div_cagr_from_annual(annual, years=5)
+        t_weiss, t_evo, t_safe = st.tabs(["🟣 Geraldine Weiss", "🟧 Evolución del dividendo", "🟦 Seguridad del dividendo"])
     
-        if view == "Evolución del dividendo":
-            with st.container():
-                if annual.empty:
-                    st.warning("No hay dividendos suficientes para construir la evolución anual.")
-                else:
-                    fig = _build_dividend_evolution_chart(annual, cagr_5y)
-                    st.plotly_chart(fig, use_container_width=True, key=f"div_evol_{ticker}")
+        with t_weiss:
+            fig, m, warn = _build_geraldine_weiss_chart(price_daily_df, annual, cagr_5y)
+            if warn:
+                st.warning(warn)
+            else:
+                cols = st.columns(6)
+                cols[0].metric("Precio Actual", f"${m['Precio Actual']:.2f}")
+                cols[1].metric("Dividendo Anual", f"${m['Dividendo Anual']:.2f}")
+                cols[2].metric("Yield Máximo", f"{m['Yield Máximo']*100:.2f}%")
+                cols[3].metric("Yield Mínimo", f"{m['Yield Mínimo']*100:.2f}%")
+                cols[4].metric("Sobrevalorado", f"${m['Sobrevalorado']:.2f}")
+                cols[5].metric("Infravalorado", f"${m['Infravalorado']:.2f}")
+                st.plotly_chart(fig, use_container_width=True, key=f"gw_{ticker}")
     
-                    # tabla resumen compacta
-                    st.markdown("#### Resumen por año")
-                    st.dataframe(
-                        pd.DataFrame({"Dividendo Anual ($)": annual.round(4)}),
-                        use_container_width=True,
-                    )
+        with t_evo:
+            if annual.empty:
+                st.warning("No hay dividendos suficientes para construir la evolución anual (últimos 5 años).")
+            else:
+                fig = _build_dividend_evolution_chart(annual, cagr_5y)
+                st.plotly_chart(fig, use_container_width=True, key=f"div_evol_{ticker}")
+                st.markdown("#### Resumen por año")
+                st.dataframe(pd.DataFrame({"Dividendo Anual ($)": annual.round(4)}), use_container_width=True)
     
-        elif view == "Seguridad del dividendo":
-            with st.container():
-                fig, df_fcf, warn = _build_dividend_safety_chart(cashflow_df)
-                if warn:
-                    st.warning(warn)
-                else:
-                    st.plotly_chart(fig, use_container_width=True, key=f"div_safety_{ticker}")
-    
-                    # mini tabla (últimos años)
-                    if df_fcf is not None and not df_fcf.empty:
-                        st.markdown("#### Tabla (FCF, Dividendos Pagados, FCF Payout %)")
-                        out = df_fcf.copy()
-                        out["FCF Payout (%)"] = out["FCF Payout (%)"].round(2)
-                        st.dataframe(out.tail(8), use_container_width=True)
-    
-        else:  # Geraldine Weiss
-            with st.container():
-                fig, m, warn = _build_geraldine_weiss_chart(price_daily_df, annual, cagr_5y)
-                if warn:
-                    st.warning(warn)
-                else:
-                    # métricas arriba (como tu UI antigua)
-                    cols = st.columns(7)
-                    cols[0].metric("Precio Actual", f"${m['Precio Actual']:.2f}")
-                    cols[1].metric("Dividendo Anual", f"${m['Dividendo Anual']:.2f}")
-                    cols[2].metric("CAGR 5Y", f"{m['CAGR 5Y']:.2f}%" if m["CAGR 5Y"] is not None else "N/D")
-                    cols[3].metric("Yield Máximo", f"{m['Yield Máximo']*100:.2f}%")
-                    cols[4].metric("Yield Mínimo", f"{m['Yield Mínimo']*100:.2f}%")
-                    cols[5].metric("Sobrevalorado", f"${m['Sobrevalorado']:.2f}")
-                    cols[6].metric("Infravalorado", f"${m['Infravalorado']:.2f}")
-    
-                    st.plotly_chart(fig, use_container_width=True, key=f"gw_{ticker}")
+        with t_safe:
+            fig, df_fcf, warn = _build_dividend_safety_chart(cashflow_df)
+            if warn:
+                st.warning(warn)
+            else:
+                st.plotly_chart(fig, use_container_width=True, key=f"div_safety_{ticker}")
+                if df_fcf is not None and not df_fcf.empty:
+                    out = df_fcf.copy()
+                    out["FCF Payout (%)"] = out["FCF Payout (%)"].round(2)
+                    st.markdown("#### Tabla (últimos 5 años)")
+                    st.dataframe(out, use_container_width=True)
+
     
 
     with tabs[1]:
