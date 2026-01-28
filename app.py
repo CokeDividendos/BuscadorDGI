@@ -14,7 +14,7 @@ from src.ui.router import run_app  # noqa: E402
 st.set_page_config(
     page_title="Buscador DGI",
     layout="wide",
-    initial_sidebar_state="expanded",  # <-- sidebar abierto por defecto
+    initial_sidebar_state="expanded",
 )
 
 run_app()
