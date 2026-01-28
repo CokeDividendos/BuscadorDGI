@@ -66,9 +66,9 @@ def _kpi_card(label: str, value: str) -> None:
     )
 
 
-def _years_ago_start(years: int) -> date:
+def _years_ago_start(years: int) -> pd.Timestamp:
     # Buffer ~2 meses para asegurar data del primer año
-    return date.today() - timedelta(days=int(years * 365.25) + 60)
+    return pd.Timestamp(date.today() - timedelta(days=int(years * 365.25) + 60))
 
 
 def _safe_float(x) -> float | None:
@@ -84,6 +84,17 @@ def _safe_float(x) -> float | None:
 
 
 # =========================================================
+# Submit ticker con ENTER (sin botón)
+# =========================================================
+def _submit_ticker_enter() -> None:
+    raw = (st.session_state.get("ticker_main") or "").strip().upper()
+    if not raw:
+        return
+    st.session_state["ticker"] = raw
+    st.session_state["do_search"] = True
+
+
+# =========================================================
 # Cache (30 días) — datos para gráficos Dividendos
 # =========================================================
 @st.cache_data(ttl=TTL_30D, show_spinner=False)
@@ -94,6 +105,9 @@ def _yf_history_5y(ticker: str) -> pd.DataFrame:
         return pd.DataFrame()
     df = df.reset_index().rename(columns={"Date": "date"})
     df["date"] = pd.to_datetime(df["date"])
+    # dejar índice tz-naive (por si viniera con tz)
+    if hasattr(df["date"].dt, "tz") and df["date"].dt.tz is not None:
+        df["date"] = df["date"].dt.tz_localize(None)
     return df.set_index("date")
 
 
@@ -103,8 +117,15 @@ def _yf_dividends(ticker: str) -> pd.Series:
     s = tk.dividends
     if s is None or len(s) == 0:
         return pd.Series(dtype="float64")
+
     s.index = pd.to_datetime(s.index)
-    start = pd.Timestamp(_years_ago_start(YEARS_BACK))
+
+    # ✅ FIX: si viene con timezone (ej America/New_York), lo dejamos tz-naive
+    if getattr(s.index, "tz", None) is not None:
+        s.index = s.index.tz_localize(None)
+
+    start = _years_ago_start(YEARS_BACK)
+    # start es tz-naive; ahora el índice también
     return s[s.index >= start]
 
 
@@ -116,7 +137,6 @@ def _yf_cashflow_annual(ticker: str) -> pd.DataFrame:
         return pd.DataFrame()
 
     df = cf.transpose().copy()
-    # índice a año
     try:
         df.index = pd.to_datetime(df.index).year
     except Exception:
@@ -152,11 +172,10 @@ def _annual_dividends_5y(divs: pd.Series) -> pd.Series:
 
 
 def _cagr_from_annual_divs(annual: pd.Series) -> float | None:
-    # CAGR usando primer año vs penúltimo (evita año incompleto actual)
     if annual is None or len(annual) < 3:
         return None
     first = _safe_float(annual.iloc[0])
-    penultimate = _safe_float(annual.iloc[-2])
+    penultimate = _safe_float(annual.iloc[-2])  # evita año actual incompleto
     if not first or not penultimate or first <= 0:
         return None
     n_years = int(annual.index[-2] - annual.index[0])
@@ -173,7 +192,6 @@ def _dividend_panel_selector() -> str:
     st.markdown(
         """
         <style>
-          /* estiliza botones "card" sólo dentro de este panel */
           .div-card button {
             border-radius: 14px !important;
             padding: 12px 12px !important;
@@ -181,9 +199,7 @@ def _dividend_panel_selector() -> str:
             white-space: pre-line !important;
             border: 1px solid rgba(0,0,0,0.12) !important;
           }
-          .div-card button:hover {
-            border-color: rgba(0,0,0,0.25) !important;
-          }
+          .div-card button:hover { border-color: rgba(0,0,0,0.25) !important; }
           .div-card-active button {
             border-color: rgba(255,140,0,0.65) !important;
             box-shadow: 0 0 0 3px rgba(255,140,0,0.12) !important;
@@ -432,7 +448,7 @@ def page_analysis() -> None:
     admin = is_admin()
 
     # -----------------------------
-    # CSS base (mantener estilo validado + cards selector)
+    # CSS base
     # -----------------------------
     st.markdown(
         """
@@ -443,10 +459,6 @@ def page_analysis() -> None:
             padding-right: 2.0rem !important;
             max-width: 100% !important;
           }
-
-          div[data-testid="stForm"] { border: none !important; padding: 0 !important; margin: 0 !important; }
-
-          div[data-testid="stTextInput"] > div { border-radius: 12px !important; }
 
           .kpi-card {
             background: transparent;
@@ -488,26 +500,20 @@ def page_analysis() -> None:
                 limit_box.warning("No se detectó el correo del usuario.")
 
     # -----------------------------
-    # BUSCADOR (arriba)
+    # BUSCADOR (ENTER, sin botón)
     # -----------------------------
     top_left, _ = st.columns([1.15, 0.85], gap="large")
     with top_left:
-        with st.form("main_search", clear_on_submit=False, border=False):
-            ticker_in = st.text_input(
-                label="",
-                value=(st.session_state.get("ticker") or "AAPL"),
-                placeholder="Buscar ticker (ej: AAPL, MSFT, PEP)...",
-                key="ticker_main",
-            ).strip().upper()
-            submitted = st.form_submit_button("🔎 Buscar")
-
-        if submitted and ticker_in:
-            st.session_state["ticker"] = ticker_in
-            st.session_state["do_search"] = True
-            st.rerun()
+        st.text_input(
+            label="",
+            value=(st.session_state.get("ticker") or "AAPL"),
+            placeholder="Buscar ticker (ej: AAPL, MSFT, PEP)...",
+            key="ticker_main",
+            on_change=_submit_ticker_enter,  # ✅ Enter / blur
+        )
 
     # -----------------------------
-    # Control de refresh (sin romper UI al cambiar selector)
+    # Control de refresh / consumo de intentos
     # -----------------------------
     ticker = (st.session_state.get("ticker") or "").strip().upper()
     did_search = bool(st.session_state.pop("do_search", False))
@@ -519,10 +525,10 @@ def page_analysis() -> None:
     last_loaded = st.session_state.get("last_loaded_ticker")
     has_loaded = bool(st.session_state.get("has_loaded_data", False))
 
-    # OJO: ya NO retornamos si did_search=False
+    # refresca si: Enter, primera vez, o cambió ticker
     needs_refresh = bool(did_search) or (not has_loaded) or (last_loaded != ticker)
 
-    # Consume SOLO cuando el usuario presiona Buscar (did_search)
+    # Consume SOLO cuando presionas Enter (did_search=True)
     if needs_refresh and did_search and (not admin) and user_email:
         ok, rem_after = consume_search(user_email, DAILY_LIMIT, cost=1)
         if not ok:
