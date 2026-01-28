@@ -309,7 +309,50 @@ def page_analysis() -> None:
     )
 
     with tabs[0]:
-        st.info("Aquí irán los gráficos de Dividendos (pendiente).")
+        # -----------------------------
+        # DIVIDENDOS — Galería (Opción B)
+        # -----------------------------
+        if "div_view" not in st.session_state:
+            st.session_state["div_view"] = "Geraldine Weiss"  # default
+    
+        # "Galería" de 3 opciones (cards/botones)
+        g1, g2, g3 = st.columns(3, gap="large")
+    
+        def _pick(label: str) -> None:
+            st.session_state["div_view"] = label
+    
+        with g1:
+            if st.button("📈 Geraldine Weiss", use_container_width=True):
+                _pick("Geraldine Weiss")
+    
+        with g2:
+            if st.button("💰 Evolución del dividendo", use_container_width=True):
+                _pick("Evolución del dividendo")
+    
+        with g3:
+            if st.button("🛡️ Seguridad del dividendo", use_container_width=True):
+                _pick("Seguridad del dividendo")
+    
+        st.write("")  # respiro
+    
+        selected = st.session_state["div_view"]
+    
+        # Panel expandido (sección grande)
+        st.markdown(f"#### {selected}")
+    
+        # Aquí enchufamos cada gráfico
+        if selected == "Geraldine Weiss":
+            # TODO: pegar aquí tu lógica 2-D (Weiss), adaptándola a las fuentes de datos actuales
+            st.info("Pendiente: Gráfico de Geraldine Weiss (placeholder).")
+    
+        elif selected == "Evolución del dividendo":
+            # TODO: pegar aquí tu lógica 2-A (histórico anual + CAGR) y/o yield histórico 2-C si aplica
+            st.info("Pendiente: Evolución del dividendo (placeholder).")
+    
+        else:  # "Seguridad del dividendo"
+            # TODO: pegar aquí tu lógica 2-B (FCF vs dividendos + payout)
+            st.info("Pendiente: Seguridad del dividendo (placeholder).")
+
     with tabs[1]:
         st.info("Aquí irán los gráficos de Múltiplos (pendiente).")
     with tabs[2]:
