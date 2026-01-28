@@ -9,8 +9,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import streamlit as st  # noqa: E402
-
 from src.ui.router import run_app  # noqa: E402
 
-st.set_page_config(page_title="Buscador DGI", layout="wide")
+st.set_page_config(
+    page_title="Buscador DGI",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
 run_app()
