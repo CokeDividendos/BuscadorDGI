@@ -8,34 +8,48 @@ from src.pages.admin_users import page_admin_users
 
 
 def run_app():
-    # ------------------------------------------------------------
-    # CSS GLOBAL (aplica a todas las páginas: login + post-login)
-    # ------------------------------------------------------------
-    st.markdown(
-        """
-        <style>
-          /* Oculta el header superior de Streamlit (reduce el “aire fantasma”) */
-          header[data-testid="stHeader"] {
-            height: 0 !important;
-            visibility: hidden;
-          }
-          div[data-testid="stToolbar"] { height: 0 !important; }
-
-          /* Sidebar “fijo”: oculta el botón de colapsar/expandir */
-          [data-testid="collapsedControl"] { display: none !important; }
-
-          /* Ajuste opcional: deja el main pegado arriba */
-          section.main { padding-top: 0rem !important; }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
     init_db()
 
     # ⛔ Si no está logueado, require_login dibuja la UI y detenemos
     if not require_login():
         st.stop()
+
+    # =========================================================
+    # CSS GLOBAL (incluye: sidebar SIEMPRE visible)
+    # =========================================================
+    st.markdown(
+        """
+        <style>
+        /* --- Forzar sidebar visible siempre --- */
+        section[data-testid="stSidebar"] {
+            transform: none !important;
+            margin-left: 0 !important;
+            visibility: visible !important;
+            min-width: 290px !important;
+            max-width: 290px !important;
+        }
+
+        /* Oculta el control para colapsar/expandir (evita que lo cierren) */
+        button[data-testid="collapsedControl"] {
+            display: none !important;
+        }
+
+        /* Ajusta padding superior general */
+        div[data-testid="stAppViewContainer"] section.main div.block-container {
+            padding-top: 0rem !important;
+            padding-left: 2.0rem !important;
+            padding-right: 2.0rem !important;
+            max-width: 100% !important;
+        }
+
+        section.main { padding-top: 0rem !important; }
+
+        h2, h3 { margin-bottom: 0.25rem !important; }
+        [data-testid="stCaptionContainer"] { margin-top: -6px !important; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # Sidebar navegación (solo post-login)
     with st.sidebar:
