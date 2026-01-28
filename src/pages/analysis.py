@@ -41,10 +41,11 @@ def _fmt_kpi(x, suffix: str = "", decimals: int = 2) -> str:
 
 
 def _kpi_card(label: str, value: str) -> None:
+    # HTML correcto (antes estaba mal y se imprimía como texto)
     st.markdown(
         f"""
-        < class="kpi-card">
-          < class="kpi-label">{label}</>
+        <div class="kpi-card">
+          <div class="kpi-label">{label}</div>
           <div class="kpi-value">{value}</div>
         </div>
         """,
@@ -58,131 +59,121 @@ def page_analysis() -> None:
     admin = is_admin()
 
     # -----------------------------
-    # CSS global (sin bordes + menos padding arriba + cards parejas)
+    # CSS global (sin bordes + sin aire arriba + cards parejas)
     # -----------------------------
     st.markdown(
-            """
-            <style>
-            /* =========================================================
-               LAYOUT GENERAL — eliminar aire arriba y usar todo el ancho
-               ========================================================= */
-        
-            /* Contenedor principal */
-            div[data-testid="stAppViewContainer"] section.main div.block-container {
-                padding-top: 0rem !important;
-                padding-left: 2.0rem !important;
-                padding-right: 2.0rem !important;
-                max-width: 100% !important;
-            }
-        
-            /* El main también mete padding propio */
-            section.main {
-                padding-top: 0rem !important;
-            }
-        
-            /* El primer bloque suele traer margen extra */
-            div[data-testid="stVerticalBlock"] > div:first-child {
-                margin-top: -0.75rem !important;
-            }
-        
-            /* Ocultar barra superior de Streamlit (responsable del aire fantasma) */
-            header[data-testid="stHeader"] {
-                height: 0 !important;
-                visibility: hidden;
-            }
-        
-            div[data-testid="stToolbar"] {
-                height: 0 !important;
-            }
-        
-            /* =========================================================
-               FORMS, INPUTS Y CONTENEDORES — sin bordes ni marcos
-               ========================================================= */
-        
-            /* Quitar bordes y padding de formularios */
-            div[data-testid="stForm"] {
-                border: none !important;
-                padding: 0 !important;
-                margin: 0 !important;
-            }
-        
-            /* Inputs limpios */
-            div[data-testid="stTextInput"] > div {
-                border-radius: 12px !important;
-                border: none !important;
-            }
-        
-            /* Botones sin marco pesado */
-            button {
-                border-radius: 10px !important;
-            }
-        
-            /* =========================================================
-               BLOQUE NOMBRE / PRECIO
-               ========================================================= */
-        
-            .main-card {
-                background: transparent;
-                border: none;
-                border-radius: 16px;
-                padding: 0;
-            }
-        
-            /* =========================================================
-               KPI CARDS — tamaño uniforme, sin borde
-               ========================================================= */
-        
-            .kpi-card {
-                background: transparent;
-                border: none !important;
-                border-radius: 14px;
-                padding: 14px 14px 12px 14px;
-                min-height: 86px;
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-            }
-        
-            .kpi-label {
-                font-size: 0.78rem;
-                color: rgba(0,0,0,0.55);
-                margin-bottom: 6px;
-            }
-        
-            .kpi-value {
-                font-size: 1.55rem;
-                font-weight: 700;
-                line-height: 1.1;
-            }
-        
-            /* =========================================================
-               TÍTULOS Y ESPACIADOS COMPACTOS
-               ========================================================= */
-        
-            h2, h3 {
-                margin-bottom: 0.25rem !important;
-            }
-        
-            [data-testid="stCaptionContainer"] {
-                margin-top: -6px !important;
-            }
-        
-            /* Tabs más pegadas arriba */
-            div[data-testid="stTabs"] {
-                margin-top: 0.75rem !important;
-            }
-        
-            </style>
-            """,
-            unsafe_allow_html=True,
-        )
-        
+        """
+        <style>
+        /* =========================================================
+           LAYOUT GENERAL — eliminar aire arriba y usar todo el ancho
+           ========================================================= */
+
+        div[data-testid="stAppViewContainer"] section.main div.block-container {
+            padding-top: 0rem !important;
+            padding-left: 2.0rem !important;
+            padding-right: 2.0rem !important;
+            max-width: 100% !important;
+        }
+
+        section.main {
+            padding-top: 0rem !important;
+        }
+
+        div[data-testid="stVerticalBlock"] > div:first-child {
+            margin-top: -0.75rem !important;
+        }
+
+        /* Ocultar barra superior de Streamlit (responsable del aire fantasma) */
+        header[data-testid="stHeader"] {
+            height: 0 !important;
+            visibility: hidden;
+        }
+
+        div[data-testid="stToolbar"] {
+            height: 0 !important;
+        }
+
+        /* =========================================================
+           FORMS, INPUTS Y CONTENEDORES — sin bordes ni marcos
+           ========================================================= */
+
+        div[data-testid="stForm"] {
+            border: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+
+        div[data-testid="stTextInput"] > div {
+            border-radius: 12px !important;
+            border: none !important;
+        }
+
+        button {
+            border-radius: 10px !important;
+        }
+
+        /* =========================================================
+           BLOQUE NOMBRE / PRECIO
+           ========================================================= */
+
+        .main-card {
+            background: transparent;
+            border: none;
+            border-radius: 16px;
+            padding: 0;
+        }
+
+        /* =========================================================
+           KPI CARDS — tamaño uniforme, sin borde
+           ========================================================= */
+
+        .kpi-card {
+            background: transparent;
+            border: none !important;
+            border-radius: 14px;
+            padding: 14px 14px 12px 14px;
+            min-height: 86px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .kpi-label {
+            font-size: 0.78rem;
+            color: rgba(0,0,0,0.55);
+            margin-bottom: 6px;
+        }
+
+        .kpi-value {
+            font-size: 1.55rem;
+            font-weight: 700;
+            line-height: 1.1;
+        }
+
+        /* =========================================================
+           TÍTULOS Y ESPACIADOS COMPACTOS
+           ========================================================= */
+
+        h2, h3 {
+            margin-bottom: 0.25rem !important;
+        }
+
+        [data-testid="stCaptionContainer"] {
+            margin-top: -6px !important;
+        }
+
+        div[data-testid="stTabs"] {
+            margin-top: 0.75rem !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # -----------------------------
     # SIDEBAR (solo controles, NO buscador)
     # -----------------------------
     with st.sidebar:
-        # Cache + límites
         if admin:
             if st.button("🧹 Limpiar caché", key="clear_cache_btn", use_container_width=True):
                 cache_clear_all()
@@ -200,18 +191,23 @@ def page_analysis() -> None:
                 limit_box.warning("No se detectó el correo del usuario.")
 
     # -----------------------------
-    # BUSCADOR (arriba, sin marco, ancho ~1/2 pantalla)
+    # BUSCADOR (arriba, sin marco, input + botón en la MISMA fila)
     # -----------------------------
     top_left, top_right = st.columns([1.15, 0.85], gap="large")
     with top_left:
         with st.form("main_search", clear_on_submit=False, border=False):
-            ticker_in = st.text_input(
-                label="",
-                value=(st.session_state.get("ticker") or "AAPL"),
-                placeholder="Buscar ticker (ej: AAPL, MSFT, PEP)...",
-                key="ticker_main",
-            ).strip().upper()
-            submitted = st.form_submit_button("🔎 Buscar")
+            c_in, c_btn = st.columns([0.78, 0.22], gap="small")
+
+            with c_in:
+                ticker_in = st.text_input(
+                    label="",
+                    value=(st.session_state.get("ticker") or "AAPL"),
+                    placeholder="Buscar ticker (ej: AAPL, MSFT, PEP)...",
+                    key="ticker_main",
+                ).strip().upper()
+
+            with c_btn:
+                submitted = st.form_submit_button("🔎 Buscar", use_container_width=True)
 
         if submitted and ticker_in:
             st.session_state["ticker"] = ticker_in
@@ -224,17 +220,14 @@ def page_analysis() -> None:
     ticker = (st.session_state.get("ticker") or "").strip().upper()
     did_search = bool(st.session_state.pop("do_search", False))
 
-    # Si no hay ticker, no mostramos datos todavía (pero sí el layout base)
     if not ticker:
         st.info("Ingresa un ticker en el buscador para cargar datos.")
         return
 
-    # Si todavía no presionaron Buscar en esta sesión, no consumimos límite ni refrescamos
     if not did_search:
         st.caption("Ticker cargado. Presiona **Buscar** para actualizar datos.")
         return
 
-    # Consume SOLO si NO es admin
     if (not admin) and user_email:
         ok, rem_after = consume_search(user_email, DAILY_LIMIT, cost=1)
         if not ok:
@@ -261,21 +254,20 @@ def page_analysis() -> None:
     logo_url = next((u for u in logos if isinstance(u, str) and u.startswith(("http://", "https://"))), "")
 
     # -----------------------------
-    # BLOQUE SUPERIOR: (izq) nombre/precio + (der) KPIs en tarjetas
+    # BLOQUE SUPERIOR: (izq) nombre/precio + (der) KPIs
     # -----------------------------
     left, right = st.columns([1.15, 0.85], gap="large")
 
     with left:
         st.markdown('<div class="main-card">', unsafe_allow_html=True)
 
-        # Logo + Ticker—Nombre en la MISMA línea
         a1, a2 = st.columns([0.10, 0.90], gap="small", vertical_alignment="center")
         with a1:
             if logo_url:
                 st.image(logo_url, width=40)
         with a2:
             st.markdown(f"### {ticker} — {company_name}")
-            
+
         st.markdown(f"## {_fmt_price(last_price, currency)}")
 
         if delta_txt:
@@ -309,7 +301,7 @@ def page_analysis() -> None:
         with r2c3:
             _kpi_card("Forward Div. Yield", _fmt_kpi(divk.get("fwd_div_yield"), suffix="%", decimals=2))
 
-    st.write("")  # pequeño respiro
+    st.write("")
 
     # -----------------------------
     # TABS de navegación (gráficos abajo)
