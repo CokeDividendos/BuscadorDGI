@@ -41,7 +41,6 @@ def _fmt_kpi(x, suffix: str = "", decimals: int = 2) -> str:
 
 
 def _kpi_card(label: str, value: str) -> None:
-    # HTML correcto (antes estaba mal y se imprimía como texto)
     st.markdown(
         f"""
         <div class="kpi-card">
@@ -51,12 +50,16 @@ def _kpi_card(label: str, value: str) -> None:
         """,
         unsafe_allow_html=True,
     )
-def _on_ticker_submit() -> None:
-    t = (st.session_state.get("ticker_main") or "").strip().upper()
-    if not t:
+
+
+def _submit_search_from_input() -> None:
+    """Se dispara al presionar Enter en el input (on_change)."""
+    raw = (st.session_state.get("ticker_main") or "").strip().upper()
+    if not raw:
         return
-    st.session_state["ticker"] = t
+    st.session_state["ticker"] = raw
     st.session_state["do_search"] = True
+
 
 def page_analysis() -> None:
     DAILY_LIMIT = 3
@@ -64,80 +67,69 @@ def page_analysis() -> None:
     admin = is_admin()
 
     # -----------------------------
-    # CSS global (sin bordes + sin aire arriba + cards parejas)
+    # CSS global (sin bordes + menos padding arriba + cards parejas)
     # -----------------------------
     st.markdown(
         """
         <style>
-        /* =========================================================
-           LAYOUT GENERAL — eliminar aire arriba y usar todo el ancho
-           ========================================================= */
+          /* =========================================================
+             LAYOUT GENERAL — eliminar aire arriba y usar todo el ancho
+             ========================================================= */
 
-        div[data-testid="stAppViewContainer"] section.main div.block-container {
+          div[data-testid="stAppViewContainer"] section.main div.block-container {
             padding-top: 0rem !important;
             padding-left: 2.0rem !important;
             padding-right: 2.0rem !important;
             max-width: 100% !important;
-        }
+          }
 
-        section.main {
-            padding-top: 0rem !important;
-        }
+          section.main { padding-top: 0rem !important; }
 
-        div[data-testid="stVerticalBlock"] > div:first-child {
+          /* Reduce margen del primer bloque */
+          div[data-testid="stVerticalBlock"] > div:first-child {
             margin-top: -0.75rem !important;
-        }
+          }
 
-        /* Ocultar barra superior de Streamlit (responsable del aire fantasma) */
-        header[data-testid="stHeader"] {
+          /* Oculta header superior (responsable del “aire fantasma”) */
+          header[data-testid="stHeader"] {
             height: 0 !important;
             visibility: hidden;
-        }
-        
-        /* Oculta el botón que colapsa/expande el sidebar */
-        button[data-testid="stSidebarCollapseButton"] { display: none !important; 
-        
-        }
+          }
+          div[data-testid="stToolbar"] { height: 0 !important; }
 
-        div[data-testid="stToolbar"] {
-            height: 0 !important;
-        }
+          /* Mantener sidebar “siempre disponible”: ocultar botón de colapsar */
+          [data-testid="collapsedControl"] { display: none !important; }
 
-        /* =========================================================
-           FORMS, INPUTS Y CONTENEDORES — sin bordes ni marcos
-           ========================================================= */
+          /* =========================================================
+             FORMS, INPUTS Y CONTENEDORES — sin bordes ni marcos
+             ========================================================= */
 
-        div[data-testid="stForm"] {
+          div[data-testid="stForm"] {
             border: none !important;
             padding: 0 !important;
             margin: 0 !important;
-        }
+          }
 
-        div[data-testid="stTextInput"] > div {
+          /* input limpio */
+          div[data-testid="stTextInput"] > div {
             border-radius: 12px !important;
             border: none !important;
-        }
+          }
 
-        button {
-            border-radius: 10px !important;
-        }
-
-        /* =========================================================
-           BLOQUE NOMBRE / PRECIO
-           ========================================================= */
-
-        .main-card {
+          /* =========================================================
+             BLOQUE NOMBRE / PRECIO
+             ========================================================= */
+          .main-card {
             background: transparent;
-            border: none;
+            border: none !important;
             border-radius: 16px;
             padding: 0;
-        }
+          }
 
-        /* =========================================================
-           KPI CARDS — tamaño uniforme, sin borde
-           ========================================================= */
-
-        .kpi-card {
+          /* =========================================================
+             KPI CARDS — tamaño uniforme, sin borde
+             ========================================================= */
+          .kpi-card {
             background: transparent;
             border: none !important;
             border-radius: 14px;
@@ -146,42 +138,28 @@ def page_analysis() -> None:
             display: flex;
             flex-direction: column;
             justify-content: center;
-        }
-
-        .kpi-label {
+          }
+          .kpi-label {
             font-size: 0.78rem;
             color: rgba(0,0,0,0.55);
             margin-bottom: 6px;
-        }
-
-        .kpi-value {
+          }
+          .kpi-value {
             font-size: 1.55rem;
             font-weight: 700;
             line-height: 1.1;
-        }
+          }
 
-        /* =========================================================
-           TÍTULOS Y ESPACIADOS COMPACTOS
-           ========================================================= */
-
-        h2, h3 {
-            margin-bottom: 0.25rem !important;
-        }
-
-        [data-testid="stCaptionContainer"] {
-            margin-top: -6px !important;
-        }
-
-        div[data-testid="stTabs"] {
-            margin-top: 0.75rem !important;
-        }
+          h2, h3 { margin-bottom: 0.25rem !important; }
+          [data-testid="stCaptionContainer"] { margin-top: -6px !important; }
+          div[data-testid="stTabs"] { margin-top: 0.75rem !important; }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
     # -----------------------------
-    # SIDEBAR (solo controles, NO buscador)
+    # SIDEBAR (controles)
     # -----------------------------
     with st.sidebar:
         if admin:
@@ -201,36 +179,33 @@ def page_analysis() -> None:
                 limit_box.warning("No se detectó el correo del usuario.")
 
     # -----------------------------
-    # BUSCADOR (arriba, sin marco, input + botón en la MISMA fila)
+    # BUSCADOR (ENTER para buscar, sin botón)
     # -----------------------------
-    # -----------------------------
-    # BUSCADOR (arriba, sin botón: Enter dispara búsqueda)
-    # -----------------------------
-    top_left, top_right = st.columns([1.15, 0.85], gap="large")
+    top_left, _top_right = st.columns([1.15, 0.85], gap="large")
     with top_left:
         st.text_input(
             label="",
-            value=(st.session_state.get("ticker") or "AAPL"),
+            value=(st.session_state.get("ticker") or ""),
             placeholder="Buscar ticker (ej: AAPL, MSFT, PEP)...",
             key="ticker_main",
-            on_change=_on_ticker_submit,
+            on_change=_submit_search_from_input,  # <-- ENTER dispara búsqueda
         )
-    
-    
-        # -----------------------------
-        # Lógica de “solo actualizar cuando se presiona Buscar”
-        # -----------------------------
-        ticker = (st.session_state.get("ticker") or "").strip().upper()
-        did_search = bool(st.session_state.pop("do_search", False))
+
+    # -----------------------------
+    # Lógica de “solo actualizar cuando se presiona Enter”
+    # -----------------------------
+    ticker = (st.session_state.get("ticker") or "").strip().upper()
+    did_search = bool(st.session_state.pop("do_search", False))
 
     if not ticker:
         st.info("Ingresa un ticker en el buscador para cargar datos.")
         return
 
     if not did_search:
-        st.caption("Ticker cargado. Presiona **Buscar** para actualizar datos.")
+        st.caption("Ticker cargado. Presiona **Enter** para actualizar datos.")
         return
 
+    # Consume SOLO si NO es admin
     if (not admin) and user_email:
         ok, rem_after = consume_search(user_email, DAILY_LIMIT, cost=1)
         if not ok:
@@ -257,7 +232,7 @@ def page_analysis() -> None:
     logo_url = next((u for u in logos if isinstance(u, str) and u.startswith(("http://", "https://"))), "")
 
     # -----------------------------
-    # BLOQUE SUPERIOR: (izq) nombre/precio + (der) KPIs
+    # BLOQUE SUPERIOR
     # -----------------------------
     left, right = st.columns([1.15, 0.85], gap="large")
 
@@ -307,7 +282,7 @@ def page_analysis() -> None:
     st.write("")
 
     # -----------------------------
-    # TABS de navegación (gráficos abajo)
+    # TABS
     # -----------------------------
     tabs = st.tabs(
         [
