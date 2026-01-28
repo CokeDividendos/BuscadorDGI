@@ -93,6 +93,11 @@ def page_analysis() -> None:
             height: 0 !important;
             visibility: hidden;
         }
+        
+        /* Oculta el botón que colapsa/expande el sidebar */
+        button[data-testid="stSidebarCollapseButton"] { display: none !important; 
+        
+        }
 
         div[data-testid="stToolbar"] {
             height: 0 !important;
