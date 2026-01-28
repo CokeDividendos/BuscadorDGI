@@ -251,7 +251,7 @@ def page_analysis() -> None:
             if logo_url:
                 st.image(logo_url, width=40)
         with a2:
-            st.markdown(f"### {ticker} — {company_name}")
+            st.markdown(f"## {ticker} — {company_name}")
 
         st.markdown(f"## {_fmt_price(last_price, currency)}")
 
