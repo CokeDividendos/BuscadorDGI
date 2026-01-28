@@ -266,66 +266,27 @@ def page_analysis() -> None:
 
     with right:
         st.markdown("### KPIs clave")
-    
-        # -----------------------------
-        # KPI superiores (nuevos)
-        # -----------------------------
-        annual_dividend = None
-    
-        # 1) Intentar obtener dividendo anual desde yfinance
-        try:
-            import yfinance as yf  # type: ignore
-    
-            yf_tk = yf.Ticker(ticker)
-            info = getattr(yf_tk, "info", {}) or {}
-    
-            # Preferimos el "trailingAnnualDividendRate" si existe (más directo)
-            annual_dividend = info.get("trailingAnnualDividendRate")
-    
-            # Fallback: dividendRate (forward annual dividend)
-            if annual_dividend is None:
-                annual_dividend = info.get("dividendRate")
-    
-        except Exception:
-            annual_dividend = None
-    
-        # 2) Dividend yield calculado (anual / precio)
-        dividend_yield_calc = None
-        if isinstance(annual_dividend, (int, float)) and isinstance(last_price, (int, float)) and last_price != 0:
-            dividend_yield_calc = (annual_dividend / last_price) * 100
-    
-        # Texto para mostrar
-        annual_div_txt = (
-            f"{annual_dividend:.2f} {currency}".strip()
-            if isinstance(annual_dividend, (int, float))
-            else "N/D"
-        )
-        div_yield_txt = _fmt_kpi(dividend_yield_calc, suffix="%", decimals=2)
-    
-        # CAGR 5Y pendiente por ahora
-        cagr_5y_txt = "Pendiente"
-    
+
         r1c1, r1c2, r1c3 = st.columns(3, gap="large")
         r2c1, r2c2, r2c3 = st.columns(3, gap="large")
-    
+
         with r1c1:
-            _kpi_card("Dividendo anual", annual_div_txt)
+            _kpi_card("Beta", _fmt_kpi(stats.get("beta")))
         with r1c2:
-            _kpi_card("Dividend Yield", div_yield_txt)
+            pe = stats.get("pe_ttm")
+            pe_txt = (_fmt_kpi(pe) + "x") if isinstance(pe, (int, float)) else "N/D"
+            _kpi_card("PER (TTM)", pe_txt)
         with r1c3:
-            _kpi_card("CAGR Div. 5Y", cagr_5y_txt)
-    
-        # -----------------------------
-        # KPI inferiores (se quedan igual por ahora)
-        # -----------------------------
+            _kpi_card("EPS (TTM)", _fmt_kpi(stats.get("eps_ttm")))
+
         with r2c1:
             _kpi_card("Target 1Y", _fmt_kpi(stats.get("target_1y")))
         with r2c2:
             _kpi_card("Dividend Yield", _fmt_kpi(divk.get("div_yield"), suffix="%", decimals=2))
         with r2c3:
             _kpi_card("Forward Div. Yield", _fmt_kpi(divk.get("fwd_div_yield"), suffix="%", decimals=2))
-    
-    st.write("")  # pequeño respiro
+
+    st.write("")
 
 
     # -----------------------------
