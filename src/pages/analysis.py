@@ -1,8 +1,7 @@
 # src/pages/analysis.py
 from __future__ import annotations
 
-import math
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -12,24 +11,23 @@ import yfinance as yf
 from src.auth import is_admin
 from src.services.cache_store import cache_clear_all
 from src.services.finance_data import (
+    get_dividend_kpis,
     get_key_stats,
     get_price_data,
     get_profile_data,
-    get_dividend_kpis,  # mantiene tu versión actual (si existe en tu repo)
 )
 from src.services.logos import logo_candidates
 from src.services.usage_limits import consume_search, remaining_searches
 
+# =========================================================
+# Constantes
+# =========================================================
+YEARS_BACK = 5
+TTL_30D = 60 * 60 * 24 * 30  # 30 días
+
 
 # =========================================================
-# Constantes (estandarización)
-# =========================================================
-YEARS = 5
-DIVIDENDS_CACHE_TTL_SECONDS = 60 * 60 * 24 * 30  # 30 días
-
-
-# =========================================================
-# Helpers UI / formato
+# Helpers generales
 # =========================================================
 def _get_user_email() -> str:
     for key in ["auth_email", "user_email", "email", "username", "user", "logged_email"]:
@@ -40,7 +38,7 @@ def _get_user_email() -> str:
 
 
 def _fmt_price(x, currency: str) -> str:
-    if not isinstance(x, (int, float)) or (isinstance(x, float) and (math.isnan(x) or math.isinf(x))):
+    if not isinstance(x, (int, float)):
         return "N/D"
     s = f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     return f"{s} {currency}".strip()
@@ -53,9 +51,7 @@ def _fmt_delta(net, pct) -> tuple[str | None, float | None]:
 
 
 def _fmt_kpi(x, suffix: str = "", decimals: int = 2) -> str:
-    if not isinstance(x, (int, float)) or (isinstance(x, float) and (math.isnan(x) or math.isinf(x))):
-        return "N/D"
-    return f"{x:.{decimals}f}{suffix}"
+    return f"{x:.{decimals}f}{suffix}" if isinstance(x, (int, float)) else "N/D"
 
 
 def _kpi_card(label: str, value: str) -> None:
@@ -70,96 +66,170 @@ def _kpi_card(label: str, value: str) -> None:
     )
 
 
-# =========================================================
-# Dividendos: carga y cálculos (cache 30 días)
-# =========================================================
-@st.cache_data(ttl=DIVIDENDS_CACHE_TTL_SECONDS, show_spinner=False)
-def _load_dividend_inputs(ticker: str, years: int) -> dict:
-    """
-    Datos que cambian como mucho trimestralmente -> cache 30 días.
-    OJO: al cambiar entre gráficos, esto se re-ejecuta pero pega al cache (no consume API).
-    """
-    t = yf.Ticker(ticker)
-
-    # Precio diario últimos N años
-    price_daily = t.history(period=f"{years}y", interval="1d", auto_adjust=False)
-    if isinstance(price_daily, pd.DataFrame) and not price_daily.empty:
-        if "Close" not in price_daily.columns:
-            # fallback típico por si viene distinto
-            close_cols = [c for c in price_daily.columns if str(c).lower() == "close"]
-            if close_cols:
-                price_daily["Close"] = price_daily[close_cols[0]]
-        price_daily = price_daily[["Close"]].dropna()
-    else:
-        price_daily = pd.DataFrame(columns=["Close"])
-
-    # Dividendos (serie completa; filtraremos a 5y)
-    dividends = t.dividends
-    if dividends is None or not isinstance(dividends, pd.Series):
-        dividends = pd.Series(dtype=float)
-    else:
-        dividends = dividends.dropna().astype(float)
-
-    # Cashflow (normalmente anual; yfinance suele traer 4 años)
-    cashflow = t.cashflow
-    if cashflow is None or not isinstance(cashflow, pd.DataFrame):
-        cashflow = pd.DataFrame()
-
-    return {"price_daily": price_daily, "dividends": dividends, "cashflow": cashflow}
+def _years_ago_start(years: int) -> date:
+    # Buffer ~2 meses para asegurar data del primer año
+    return date.today() - timedelta(days=int(years * 365.25) + 60)
 
 
-def _annual_dividends_last_years(dividends: pd.Series, years: int) -> pd.Series:
-    if dividends.empty:
-        return pd.Series(dtype=float)
-
-    ann = dividends.resample("Y").sum().dropna().astype(float)
-    ann.index = ann.index.year
-
-    current_year = datetime.now().year
-    full_years = ann[ann.index < current_year]
-    if full_years.empty:
-        full_years = ann
-
-    end = int(full_years.index.max())
-    start = end - (years - 1)
-    out = full_years.loc[start:end]
-    return out.dropna()
-
-
-def _cagr_from_annual(annual: pd.Series) -> float | None:
-    """
-    CAGR usando primer año vs último año del rango (ya filtrado a N años).
-    """
-    if annual is None or len(annual) < 2:
+def _safe_float(x) -> float | None:
+    try:
+        if x is None:
+            return None
+        v = float(x)
+        if pd.isna(v):
+            return None
+        return v
+    except Exception:
         return None
-    first = float(annual.iloc[0])
-    last = float(annual.iloc[-1])
-    n = (int(annual.index[-1]) - int(annual.index[0]))
-    if first <= 0 or n <= 0:
+
+
+# =========================================================
+# Cache (30 días) — datos para gráficos Dividendos
+# =========================================================
+@st.cache_data(ttl=TTL_30D, show_spinner=False)
+def _yf_history_5y(ticker: str) -> pd.DataFrame:
+    tk = yf.Ticker(ticker)
+    df = tk.history(period=f"{YEARS_BACK}y", interval="1d", auto_adjust=False)
+    if df is None or df.empty:
+        return pd.DataFrame()
+    df = df.reset_index().rename(columns={"Date": "date"})
+    df["date"] = pd.to_datetime(df["date"])
+    return df.set_index("date")
+
+
+@st.cache_data(ttl=TTL_30D, show_spinner=False)
+def _yf_dividends(ticker: str) -> pd.Series:
+    tk = yf.Ticker(ticker)
+    s = tk.dividends
+    if s is None or len(s) == 0:
+        return pd.Series(dtype="float64")
+    s.index = pd.to_datetime(s.index)
+    start = pd.Timestamp(_years_ago_start(YEARS_BACK))
+    return s[s.index >= start]
+
+
+@st.cache_data(ttl=TTL_30D, show_spinner=False)
+def _yf_cashflow_annual(ticker: str) -> pd.DataFrame:
+    tk = yf.Ticker(ticker)
+    cf = tk.cashflow
+    if cf is None or cf.empty:
+        return pd.DataFrame()
+
+    df = cf.transpose().copy()
+    # índice a año
+    try:
+        df.index = pd.to_datetime(df.index).year
+    except Exception:
+        df.index = pd.Index([int(str(x)[:4]) for x in df.index])
+
+    df = df.sort_index()
+    return df.tail(YEARS_BACK)
+
+
+@st.cache_data(ttl=TTL_30D, show_spinner=False)
+def _yf_info(ticker: str) -> dict:
+    tk = yf.Ticker(ticker)
+    try:
+        return dict(tk.info or {})
+    except Exception:
+        return {}
+
+
+# =========================================================
+# Dividendos — cálculos y gráficos (últimos 5 años)
+# =========================================================
+def _annual_dividends_5y(divs: pd.Series) -> pd.Series:
+    if divs is None or divs.empty:
+        return pd.Series(dtype="float64")
+
+    annual = divs.resample("Y").sum().astype(float).dropna()
+    annual.index = annual.index.year
+
+    current_year = datetime.today().year
+    min_year = current_year - YEARS_BACK
+    annual = annual[(annual.index >= min_year) & (annual.index <= current_year)]
+    return annual
+
+
+def _cagr_from_annual_divs(annual: pd.Series) -> float | None:
+    # CAGR usando primer año vs penúltimo (evita año incompleto actual)
+    if annual is None or len(annual) < 3:
         return None
-    return ((last / first) ** (1 / n) - 1) * 100
+    first = _safe_float(annual.iloc[0])
+    penultimate = _safe_float(annual.iloc[-2])
+    if not first or not penultimate or first <= 0:
+        return None
+    n_years = int(annual.index[-2] - annual.index[0])
+    if n_years <= 0:
+        return None
+    return ((penultimate / first) ** (1 / n_years) - 1) * 100
 
 
-# =========================================================
-# Gráficos Dividendos (últimos 5 años)
-# =========================================================
-def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: pd.Series) -> None:
-    annual = _annual_dividends_last_years(dividends, YEARS)
+def _dividend_panel_selector() -> str:
+    """
+    Selector estilo 'cards' (sin radio circular).
+    Devuelve: 'gw' | 'evol' | 'seg'
+    """
+    st.markdown(
+        """
+        <style>
+          /* estiliza botones "card" sólo dentro de este panel */
+          .div-card button {
+            border-radius: 14px !important;
+            padding: 12px 12px !important;
+            text-align: left !important;
+            white-space: pre-line !important;
+            border: 1px solid rgba(0,0,0,0.12) !important;
+          }
+          .div-card button:hover {
+            border-color: rgba(0,0,0,0.25) !important;
+          }
+          .div-card-active button {
+            border-color: rgba(255,140,0,0.65) !important;
+            box-shadow: 0 0 0 3px rgba(255,140,0,0.12) !important;
+          }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if "div_panel" not in st.session_state:
+        st.session_state["div_panel"] = "gw"
+
+    c1, c2, c3 = st.columns(3, gap="large")
+
+    def render_card(col, key: str, title: str, subtitle: str, emoji: str) -> None:
+        active = st.session_state.get("div_panel") == key
+        cls = "div-card div-card-active" if active else "div-card"
+        with col:
+            st.markdown(f'<div class="{cls}">', unsafe_allow_html=True)
+            clicked = st.button(f"{emoji}  {title}\n{subtitle}", key=f"divsel_{key}", use_container_width=True)
+            st.markdown("</div>", unsafe_allow_html=True)
+            if clicked:
+                st.session_state["div_panel"] = key
+
+    render_card(c1, "gw", "Geraldine Weiss", "Bandas de valoración por yield", "📈")
+    render_card(c2, "evol", "Evolución del dividendo", "Dividendo anual + CAGR", "💵")
+    render_card(c3, "seg", "Seguridad del dividendo", "FCF vs dividendos + payout", "🛡️")
+
+    return str(st.session_state.get("div_panel") or "gw")
+
+
+def _render_dividend_chart_evolution(ticker: str) -> None:
+    divs = _yf_dividends(ticker)
+    annual = _annual_dividends_5y(divs)
 
     if annual.empty:
-        st.warning("No hay dividendos suficientes para graficar la evolución (últimos 5 años).")
+        st.warning("No hay datos suficientes de dividendos para este ticker.")
         return
 
-    cagr = _cagr_from_annual(annual)
-    if cagr is None:
-        title = f"Evolución del dividendo anual — {ticker} (últimos {YEARS} años)"
-    else:
-        title = f"Evolución del dividendo anual — {ticker} | CAGR: {cagr:.2f}% (últimos {YEARS} años)"
+    cagr = _cagr_from_annual_divs(annual)
+    title = f"📌 CAGR {cagr:.2f}% anual (últimos {YEARS_BACK} años)" if cagr is not None else "📌 CAGR no disponible"
 
     fig = go.Figure()
     fig.add_trace(
         go.Bar(
-            x=annual.index.astype(str),
+            x=annual.index,
             y=annual.values,
             name="Dividendo anual",
             text=[f"${v:.2f}" for v in annual.values],
@@ -170,224 +240,187 @@ def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: 
         title=title,
         xaxis_title="Año",
         yaxis_title="Dividendo ($)",
-        height=460,
-        margin=dict(l=20, r=20, t=60, b=30),
+        height=450,
+        margin=dict(l=30, r=30, t=60, b=30),
     )
-    st.plotly_chart(fig, use_container_width=True, key=f"div_evo_{ticker}")
+    st.plotly_chart(fig, use_container_width=True)
 
-    with st.expander("Ver tabla (últimos 5 años)"):
+    with st.expander("Ver tabla anual", expanded=False):
         st.dataframe(
-            pd.DataFrame({"Año": annual.index, "Dividendo anual": annual.values}).set_index("Año"),
+            pd.DataFrame({"Año": annual.index.astype(int), "Dividendo anual ($)": annual.values.round(4)}),
             use_container_width=True,
+            hide_index=True,
         )
 
 
-def _pick_cashflow_cols(df: pd.DataFrame) -> tuple[str | None, str | None]:
-    """
-    Intenta mapear columnas típicas de yfinance cashflow.
-    """
-    if df is None or df.empty:
-        return None, None
-
-    cols = set(df.columns)
-
-    fcf_candidates = [
-        "Free Cash Flow",
-        "FreeCashFlow",
-        "freeCashFlow",
-    ]
-    div_candidates = [
-        "Cash Dividends Paid",
-        "CashDividendsPaid",
-        "cashDividendsPaid",
-        "Dividends Paid",
-        "DividendsPaid",
-    ]
-
-    fcf_col = next((c for c in fcf_candidates if c in cols), None)
-    div_col = next((c for c in div_candidates if c in cols), None)
-
-    # Si no existe FCF, intentar aproximar con OCF - CapEx
-    if fcf_col is None:
-        ocf_candidates = ["Total Cash From Operating Activities", "Operating Cash Flow", "OperatingCashFlow"]
-        capex_candidates = ["Capital Expenditures", "CapitalExpenditures", "capex"]
-        ocf = next((c for c in ocf_candidates if c in cols), None)
-        capex = next((c for c in capex_candidates if c in cols), None)
-        if ocf and capex:
-            # creamos columna temporal en copia, pero fuera es mejor computar directo en chart
-            fcf_col = "__FCF_DERIVED__"
-    return fcf_col, div_col
-
-
-def _plot_dividend_safety(ticker: str, cashflow: pd.DataFrame) -> None:
-    if cashflow is None or cashflow.empty:
-        st.warning("No hay datos de cashflow suficientes para graficar seguridad del dividendo.")
+def _render_dividend_chart_safety(ticker: str) -> None:
+    cf = _yf_cashflow_annual(ticker)
+    if cf.empty:
+        st.warning("No hay datos de cashflow disponibles para este ticker.")
         return
 
-    # yfinance suele traer columnas por periodo (datetime) y filas por concepto.
-    df = cashflow.transpose().copy()
-    df.index = pd.to_datetime(df.index, errors="coerce")
-    df = df.dropna(subset=[df.index.name] if df.index.name else None, axis=0, errors="ignore")
-    df["Year"] = df.index.year
-    df = df.set_index("Year")
-
-    fcf_col, div_col = _pick_cashflow_cols(df)
-    if div_col is None:
-        st.warning("No se encontró la columna de dividendos pagados en cashflow.")
+    fcf_col, div_col = "Free Cash Flow", "Cash Dividends Paid"
+    if fcf_col not in cf.columns or div_col not in cf.columns:
+        st.warning("No se encontraron columnas de FCF o Dividendos en el cash-flow (yfinance).")
         return
 
-    # Seleccionar últimos YEARS años disponibles
-    df = df.sort_index()
-    df = df.tail(YEARS)
+    fcf = pd.to_numeric(cf[fcf_col], errors="coerce")
+    div_paid = pd.to_numeric(cf[div_col], errors="coerce").abs()
 
-    # FCF: directo o derivado
-    if fcf_col == "__FCF_DERIVED__":
-        ocf_candidates = ["Total Cash From Operating Activities", "Operating Cash Flow", "OperatingCashFlow"]
-        capex_candidates = ["Capital Expenditures", "CapitalExpenditures", "capex"]
-        ocf = next((c for c in ocf_candidates if c in df.columns), None)
-        capex = next((c for c in capex_candidates if c in df.columns), None)
-        if not ocf or not capex:
-            st.warning("No se pudo derivar FCF (faltan OCF o CapEx).")
-            return
-        fcf = pd.to_numeric(df[ocf], errors="coerce") - pd.to_numeric(df[capex], errors="coerce")
-    else:
-        if fcf_col is None or fcf_col not in df.columns:
-            st.warning("No se encontró FCF en cashflow (ni se pudo derivar).")
-            return
-        fcf = pd.to_numeric(df[fcf_col], errors="coerce")
-
-    div_paid = pd.to_numeric(df[div_col], errors="coerce").abs()
-
-    out = pd.DataFrame({"FCF": fcf, "Dividendos pagados": div_paid}).dropna()
-    if out.empty:
-        st.warning("No hay filas suficientes para graficar seguridad del dividendo.")
+    df = pd.DataFrame({"FCF": fcf, "Dividendos Pagados": div_paid}).dropna()
+    if df.empty:
+        st.warning("No hay datos suficientes para calcular la sostenibilidad del dividendo.")
         return
 
-    out["FCF Payout (%)"] = (out["Dividendos pagados"] / out["FCF"]) * 100
+    df["FCF Payout (%)"] = (df["Dividendos Pagados"] / df["FCF"].replace(0, pd.NA)) * 100
 
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=out.index.astype(str), y=out["FCF"], name="FCF", text=out["FCF"].round(0), textposition="outside"))
+    fig.add_trace(go.Bar(x=df.index, y=df["FCF"], name="FCF", text=df["FCF"].round(0), textposition="outside"))
     fig.add_trace(
         go.Bar(
-            x=out.index.astype(str),
-            y=out["Dividendos pagados"],
-            name="Dividendos pagados",
-            text=out["Dividendos pagados"].round(0),
+            x=df.index,
+            y=df["Dividendos Pagados"],
+            name="Dividendos Pagados",
+            text=df["Dividendos Pagados"].round(0),
             textposition="outside",
         )
     )
     fig.add_trace(
         go.Scatter(
-            x=out.index.astype(str),
-            y=out["FCF Payout (%)"],
+            x=df.index,
+            y=df["FCF Payout (%)"],
             name="FCF Payout (%)",
             mode="lines+markers+text",
             yaxis="y2",
-            text=[f"{v:.0f}%" if pd.notna(v) else "" for v in out["FCF Payout (%)"]],
-            textposition="top center",
+            text=[f"{v:.0f}%" if pd.notna(v) else "" for v in df["FCF Payout (%)"]],
+            textposition="top right",
         )
     )
     fig.update_layout(
-        title=f"Seguridad del dividendo — {ticker} (últimos {YEARS} años disponibles)",
-        xaxis_title="Año",
+        title=f"FCF vs Dividendos Pagados y FCF Payout (últimos {YEARS_BACK} años)",
+        xaxis_title="Año fiscal",
         yaxis_title="USD",
         yaxis2=dict(title="FCF Payout (%)", overlaying="y", side="right"),
         barmode="group",
-        height=520,
-        margin=dict(l=20, r=20, t=60, b=30),
+        height=500,
+        margin=dict(l=30, r=30, t=60, b=30),
     )
-    st.plotly_chart(fig, use_container_width=True, key=f"div_safe_{ticker}")
+    st.plotly_chart(fig, use_container_width=True)
 
-    with st.expander("Ver tabla (últimos 5 años)"):
-        st.dataframe(out, use_container_width=True)
+    with st.expander("Ver datos", expanded=False):
+        st.dataframe(df.reset_index().rename(columns={"index": "Año"}), use_container_width=True, hide_index=True)
 
 
-def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.Series) -> None:
-    """
-    Bandas GW: usa rendimientos (yield) min/max observados en el rango (últimos 5 años).
-    """
-    if price_daily is None or price_daily.empty:
-        st.warning("No hay precio diario suficiente para Geraldine Weiss.")
+def _render_dividend_chart_gw(ticker: str) -> None:
+    price = _yf_history_5y(ticker)
+    divs = _yf_dividends(ticker)
+    annual = _annual_dividends_5y(divs)
+
+    if price.empty or annual.empty:
+        st.warning("No hay datos suficientes para calcular el Método Geraldine Weiss.")
         return
 
-    annual = _annual_dividends_last_years(dividends, YEARS)
-    if annual.empty:
-        st.warning("No hay dividendos suficientes para Geraldine Weiss (últimos 5 años).")
-        return
+    cagr = _cagr_from_annual_divs(annual)
+    current_year = datetime.today().year
 
-    cagr = _cagr_from_annual(annual)
-
-    # Mensual: último precio del mes
-    monthly = price_daily.resample("M").last().copy()
-    monthly["Year"] = monthly.index.year
-
-    current_year = datetime.now().year
-    last_year = int(annual.index.max())
-    last_div = float(annual.loc[last_year])
-
-    def _adj_div(year: int) -> float | None:
+    def div_for_year(year: int) -> float | None:
         if year in annual.index:
-            return float(annual.loc[year])
-        # Proyección simple para año actual si no está cerrado
-        if year == current_year and cagr is not None and (year - 1) in annual.index:
-            return float(annual.loc[year - 1]) * (1 + cagr / 100.0)
+            return _safe_float(annual.loc[year])
+        if year == current_year and cagr is not None:
+            prev_year = year - 1
+            if prev_year in annual.index:
+                base = _safe_float(annual.loc[prev_year])
+                if base is not None:
+                    return base * (1 + cagr / 100)
         return None
 
-    monthly["DivAnual"] = monthly["Year"].apply(lambda y: _adj_div(int(y)))
-    monthly = monthly.dropna(subset=["DivAnual", "Close"])
+    monthly = price[["Close"]].resample("M").last().dropna().reset_index()
+    monthly["Año"] = monthly["date"].dt.year
+    monthly["Dividendo Anual"] = monthly["Año"].apply(lambda y: div_for_year(int(y)))
+    monthly = monthly.dropna(subset=["Dividendo Anual"])
     if monthly.empty:
-        st.warning("No hay datos suficientes para calcular yields GW en el rango.")
+        st.warning("No fue posible construir la serie mensual para Geraldine Weiss.")
         return
 
-    monthly["Yield"] = monthly["DivAnual"] / monthly["Close"]
+    monthly["Yield"] = monthly["Dividendo Anual"] / monthly["Close"]
     y_min = float(monthly["Yield"].min())
     y_max = float(monthly["Yield"].max())
 
-    # Bandas (precio teórico)
-    monthly["Sobrevalorado"] = monthly["DivAnual"] / y_min if y_min > 0 else None
-    monthly["Infravalorado"] = monthly["DivAnual"] / y_max if y_max > 0 else None
+    info = _yf_info(ticker)
+    current_price = _safe_float(info.get("currentPrice")) or _safe_float(price["Close"].iloc[-1])
 
-    # Plot: precio diario + bandas mensuales (step-like)
+    last_year = int(monthly["Año"].max())
+    last_div = _safe_float(monthly[monthly["Año"] == last_year]["Dividendo Anual"].iloc[-1]) or 0.0
+
+    kcols = st.columns(6, gap="large")
+    kcols[0].metric("Precio actual", f"${current_price:.2f}" if current_price else "N/D")
+    kcols[1].metric("Dividendo anual", f"${last_div:.2f}")
+    kcols[2].metric("CAGR 5y", f"{cagr:.2f}%" if cagr is not None else "N/D")
+    kcols[3].metric("Yield máx", f"{y_max:.2%}")
+    kcols[4].metric("Yield mín", f"{y_min:.2%}")
+    kcols[5].metric("Infravalorado", f"${(last_div / y_max):.2f}" if y_max else "N/D")
+
+    years = sorted(monthly["Año"].unique().tolist())
+    x_sobre, y_sobre, x_infra, y_infra = [], [], [], []
+    last_date = price.index.max()
+
+    for yr in years:
+        dv = div_for_year(int(yr))
+        if dv is None:
+            continue
+        start = pd.to_datetime(f"{int(yr)}-01-01")
+        end = pd.to_datetime(f"{int(yr) + 1}-01-01")
+        if end > last_date:
+            end = last_date
+        x_sobre.extend([start, end])
+        y_sobre.extend([dv / y_min, dv / y_min])
+        x_infra.extend([start, end])
+        y_infra.extend([dv / y_max, dv / y_max])
+
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=price_daily.index, y=price_daily["Close"], mode="lines", name="Precio (diario)"))
-    fig.add_trace(go.Scatter(x=monthly.index, y=monthly["Sobrevalorado"], mode="lines", name="Banda sobrevalorado", line=dict(dash="dot")))
-    fig.add_trace(go.Scatter(x=monthly.index, y=monthly["Infravalorado"], mode="lines", name="Banda infravalorado", line=dict(dash="dot")))
+    fig.add_trace(go.Scatter(x=price.index, y=price["Close"], mode="lines", name="Precio"))
+    fig.add_trace(go.Scatter(x=x_sobre, y=y_sobre, mode="lines", name="Sobrevalorado", line=dict(dash="dot")))
+    fig.add_trace(go.Scatter(x=x_infra, y=y_infra, mode="lines", name="Infravalorado", line=dict(dash="dot")))
 
-    # Precio actual (último close)
-    current_price = float(price_daily["Close"].iloc[-1])
-    fig.add_trace(
-        go.Scatter(
-            x=[price_daily.index[-1]],
-            y=[current_price],
-            mode="markers+text",
-            name="Precio actual",
-            text=[f"${current_price:.2f}"],
-            textposition="top center",
+    if current_price is not None:
+        fig.add_trace(
+            go.Scatter(
+                x=[price.index[-1]],
+                y=[current_price],
+                mode="markers+text",
+                name="Precio actual",
+                text=[f"${current_price:.2f}"],
+                textposition="top center",
+            )
         )
-    )
 
-    title = f"Geraldine Weiss — {ticker} (últimos {YEARS} años)"
     fig.update_layout(
-        title=title,
+        title=f"Bandas de Geraldine Weiss (últimos {YEARS_BACK} años) — {ticker}",
         xaxis_title="Fecha",
         yaxis_title="Precio ($)",
         height=520,
         margin=dict(l=20, r=20, t=60, b=40),
     )
-    st.plotly_chart(fig, use_container_width=True, key=f"gw_{ticker}")
+    st.plotly_chart(fig, use_container_width=True)
 
-    # métricas rápidas
-    cols = st.columns(6)
-    cols[0].metric("Precio actual", f"${current_price:,.2f}")
-    cols[1].metric("Div. anual (último)", f"${last_div:,.2f}")
-    cols[2].metric("CAGR div.", f"{cagr:.2f}%" if cagr is not None else "N/D")
-    cols[3].metric("Yield mín.", f"{y_min:.2%}")
-    cols[4].metric("Yield máx.", f"{y_max:.2%}")
-    cols[5].metric("Infravalorado (teórico)", f"${(last_div / y_max):,.2f}" if y_max > 0 else "N/D")
+    with st.expander("Ver datos (mensual)", expanded=False):
+        show = monthly.rename(columns={"Close": "Precio"}).copy()
+        show["Yield"] = (show["Yield"] * 100).round(2)
+        st.dataframe(show, use_container_width=True, hide_index=True)
 
-    with st.expander("Ver tabla mensual (GW)"):
-        show = monthly[["Close", "DivAnual", "Yield", "Sobrevalorado", "Infravalorado"]].copy()
-        st.dataframe(show, use_container_width=True)
+
+def _render_dividend_tab(ticker: str) -> None:
+    st.markdown(f"#### Dividendos — últimos {YEARS_BACK} años")
+
+    choice = _dividend_panel_selector()
+    st.markdown("---")
+
+    if choice == "gw":
+        _render_dividend_chart_gw(ticker)
+    elif choice == "evol":
+        _render_dividend_chart_evolution(ticker)
+    else:
+        _render_dividend_chart_safety(ticker)
 
 
 # =========================================================
@@ -399,32 +432,22 @@ def page_analysis() -> None:
     admin = is_admin()
 
     # -----------------------------
-    # CSS (incluye tabs estilo “pills” + bordes limpio)
+    # CSS base (mantener estilo validado + cards selector)
     # -----------------------------
     st.markdown(
         """
         <style>
-          /* Contenedor principal */
           div[data-testid="stAppViewContainer"] section.main div.block-container {
-            padding-top: 0.35rem !important;
+            padding-top: 0.5rem !important;
             padding-left: 2.0rem !important;
             padding-right: 2.0rem !important;
             max-width: 100% !important;
           }
 
-          /* Quitar borde de forms */
-          div[data-testid="stForm"] {
-            border: none !important;
-            padding: 0 !important;
-            margin: 0 !important;
-          }
+          div[data-testid="stForm"] { border: none !important; padding: 0 !important; margin: 0 !important; }
 
-          /* Inputs más limpios */
-          div[data-testid="stTextInput"] > div {
-            border-radius: 12px !important;
-          }
+          div[data-testid="stTextInput"] > div { border-radius: 12px !important; }
 
-          /* KPI cards */
           .kpi-card {
             background: transparent;
             border: none;
@@ -432,47 +455,20 @@ def page_analysis() -> None:
             padding: 14px 14px 12px 14px;
             min-height: 86px;
           }
-          .kpi-label {
-            font-size: 0.78rem;
-            color: rgba(0,0,0,0.55);
-            margin-bottom: 6px;
-          }
-          .kpi-value {
-            font-size: 1.55rem;
-            font-weight: 700;
-            line-height: 1.1;
-          }
+          .kpi-label { font-size: 0.78rem; color: rgba(0,0,0,0.55); margin-bottom: 6px; }
+          .kpi-value { font-size: 1.55rem; font-weight: 700; line-height: 1.1; }
 
-          /* Bloque principal */
-          .main-card {
-            background: transparent;
-            border: none;
-            border-radius: 16px;
-            padding: 0;
-          }
+          .main-card { background: transparent; border: none; border-radius: 16px; padding: 0; }
 
-          /* Títulos compactos */
           h2, h3 { margin-bottom: 0.25rem !important; }
           [data-testid="stCaptionContainer"] { margin-top: -6px !important; }
-
-          /* ---- Tabs: look más moderno (pills) ---- */
-          div[data-testid="stTabs"] button[role="tab"] {
-            border-radius: 999px !important;
-            padding: 8px 14px !important;
-            margin-right: 6px !important;
-            border: 1px solid rgba(0,0,0,0.08) !important;
-          }
-          div[data-testid="stTabs"] button[role="tab"][aria-selected="true"]{
-            border: 1px solid rgba(0,0,0,0.18) !important;
-            font-weight: 700 !important;
-          }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
     # -----------------------------
-    # Sidebar (controles + límites) — FIX duplicado: usamos un solo box
+    # SIDEBAR
     # -----------------------------
     with st.sidebar:
         if admin:
@@ -492,30 +488,27 @@ def page_analysis() -> None:
                 limit_box.warning("No se detectó el correo del usuario.")
 
     # -----------------------------
-    # Buscador (Enter) — sin botón y sin warnings de label vacío
+    # BUSCADOR (arriba)
     # -----------------------------
-    if "ticker" not in st.session_state:
-        st.session_state["ticker"] = "AAPL"
-    if "ticker_main" not in st.session_state:
-        st.session_state["ticker_main"] = st.session_state.get("ticker", "AAPL")
-    if "loaded_ticker" not in st.session_state:
-        st.session_state["loaded_ticker"] = ""
+    top_left, _ = st.columns([1.15, 0.85], gap="large")
+    with top_left:
+        with st.form("main_search", clear_on_submit=False, border=False):
+            ticker_in = st.text_input(
+                label="",
+                value=(st.session_state.get("ticker") or "AAPL"),
+                placeholder="Buscar ticker (ej: AAPL, MSFT, PEP)...",
+                key="ticker_main",
+            ).strip().upper()
+            submitted = st.form_submit_button("🔎 Buscar")
 
-    def _submit_search_enter() -> None:
-        val = (st.session_state.get("ticker_main") or "").strip().upper()
-        if val:
-            st.session_state["ticker"] = val
+        if submitted and ticker_in:
+            st.session_state["ticker"] = ticker_in
             st.session_state["do_search"] = True
+            st.rerun()
 
-    # input ancho
-    st.text_input(
-        "Ticker",
-        key="ticker_main",
-        label_visibility="collapsed",
-        placeholder="Buscar ticker (ej: AAPL, MSFT, PEP)...",
-        on_change=_submit_search_enter,  # Enter / perder foco
-    )
-
+    # -----------------------------
+    # Control de refresh (sin romper UI al cambiar selector)
+    # -----------------------------
     ticker = (st.session_state.get("ticker") or "").strip().upper()
     did_search = bool(st.session_state.pop("do_search", False))
 
@@ -523,37 +516,31 @@ def page_analysis() -> None:
         st.info("Ingresa un ticker en el buscador para cargar datos.")
         return
 
-    # Gate: solo consumir y “refrescar” cuando presionan Enter (do_search)
-    # pero permitir navegar tabs sin reiniciar ni pedir re-ingreso
-    if not did_search:
-        # Si ya cargamos este ticker alguna vez, dejamos ver todo sin consumir
-        if st.session_state.get("loaded_ticker") != ticker:
-            st.caption("Ticker cargado. Presiona **Enter** para actualizar datos.")
+    last_loaded = st.session_state.get("last_loaded_ticker")
+    has_loaded = bool(st.session_state.get("has_loaded_data", False))
+
+    # OJO: ya NO retornamos si did_search=False
+    needs_refresh = bool(did_search) or (not has_loaded) or (last_loaded != ticker)
+
+    # Consume SOLO cuando el usuario presiona Buscar (did_search)
+    if needs_refresh and did_search and (not admin) and user_email:
+        ok, rem_after = consume_search(user_email, DAILY_LIMIT, cost=1)
+        if not ok:
+            st.sidebar.error("🚫 Búsquedas diarias alcanzadas. Vuelve mañana.")
             return
-
-    # Si presionó Enter, consumir límite (no admin)
-    if did_search:
-        if (not admin) and user_email:
-            ok, rem_after = consume_search(user_email, DAILY_LIMIT, cost=1)
-            if not ok:
-                # Reutiliza el mismo box (no duplica)
-                with st.sidebar:
-                    limit_box.error("🚫 Búsquedas diarias alcanzadas. Vuelve mañana.")
-                return
-            with st.sidebar:
-                limit_box.info(f"🔎 Búsquedas restantes hoy: {rem_after}/{DAILY_LIMIT}")
-
-        # marcamos ticker como “cargado” para que al cambiar tabs no pida Enter otra vez
-        st.session_state["loaded_ticker"] = ticker
+        st.sidebar.info(f"🔎 Búsquedas restantes hoy: {rem_after}/{DAILY_LIMIT}")
 
     # -----------------------------
-    # DATA (tu pipeline actual)
+    # DATA (servicios actuales)
     # -----------------------------
     price = get_price_data(ticker) or {}
     profile = get_profile_data(ticker) or {}
     raw = profile.get("raw") if isinstance(profile, dict) else {}
     stats = get_key_stats(ticker) or {}
     divk = get_dividend_kpis(ticker) or {}
+
+    st.session_state["last_loaded_ticker"] = ticker
+    st.session_state["has_loaded_data"] = True
 
     company_name = raw.get("longName") or raw.get("shortName") or profile.get("shortName") or ticker
     last_price = price.get("last_price")
@@ -565,29 +552,28 @@ def page_analysis() -> None:
     logo_url = next((u for u in logos if isinstance(u, str) and u.startswith(("http://", "https://"))), "")
 
     # -----------------------------
-    # BLOQUE SUPERIOR: izquierda (logo + nombre/precio) / derecha KPIs
+    # BLOQUE SUPERIOR
     # -----------------------------
     left, right = st.columns([1.15, 0.85], gap="large")
 
     with left:
         st.markdown('<div class="main-card">', unsafe_allow_html=True)
 
-        # Logo ocupando “dos filas” (simulado con columnas + align)
-        c_logo, c_text = st.columns([0.12, 0.88], gap="small", vertical_alignment="center")
-        with c_logo:
+        a1, a2 = st.columns([0.10, 0.90], gap="small", vertical_alignment="center")
+        with a1:
             if logo_url:
-                st.image(logo_url, width=46)
-
-        with c_text:
+                st.image(logo_url, width=44)
+        with a2:
             st.markdown(f"### {ticker} — {company_name}")
-            st.markdown(f"## {_fmt_price(last_price, currency)}")
 
-            if delta_txt:
-                color = "#16a34a" if (pct_val is not None and pct_val >= 0) else "#dc2626"
-                st.markdown(
-                    f"<div style='margin-top:-6px; font-size:0.95rem; color:{color}; font-weight:600;'>{delta_txt}</div>",
-                    unsafe_allow_html=True,
-                )
+        st.markdown(f"## {_fmt_price(last_price, currency)}")
+
+        if delta_txt:
+            color = "#16a34a" if (pct_val is not None and pct_val >= 0) else "#dc2626"
+            st.markdown(
+                f"<div style='margin-top:-6px; font-size:0.95rem; color:{color}; font-weight:600;'>{delta_txt}</div>",
+                unsafe_allow_html=True,
+            )
 
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -616,7 +602,7 @@ def page_analysis() -> None:
     st.write("")
 
     # -----------------------------
-    # TABS principales
+    # TABS
     # -----------------------------
     tabs = st.tabs(
         [
@@ -629,35 +615,9 @@ def page_analysis() -> None:
         ]
     )
 
-    # =========================================================
-    # TAB: Dividendos (Opción B — galería/selector bonito via tabs “pills”)
-    # =========================================================
     with tabs[0]:
-        # Cargamos inputs (cache 30 días)
-        inputs = _load_dividend_inputs(ticker, YEARS)
-        price_daily = inputs["price_daily"]
-        dividends = inputs["dividends"]
-        cashflow = inputs["cashflow"]
+        _render_dividend_tab(ticker)
 
-        # Selector interno moderno (sin círculos)
-        sub_tabs = st.tabs(
-            [
-                "📌 Geraldine Weiss",
-                "📈 Evolución del dividendo",
-                "🛡️ Seguridad del dividendo",
-            ]
-        )
-
-        with sub_tabs[0]:
-            _plot_geraldine_weiss(ticker, price_daily, dividends)
-
-        with sub_tabs[1]:
-            _plot_dividend_evolution(ticker, price_daily, dividends)
-
-        with sub_tabs[2]:
-            _plot_dividend_safety(ticker, cashflow)
-
-    # Otros tabs aún pendientes
     with tabs[1]:
         st.info("Aquí irán los gráficos de Múltiplos (pendiente).")
     with tabs[2]:
