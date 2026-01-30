@@ -402,6 +402,7 @@ def page_analysis() -> None:
     # -----------------------------
     # CSS (incluye tabs estilo “pills” + bordes limpio)
     # -----------------------------
+    # Reemplaza el bloque st.markdown(...) que contiene CSS global por ESTE bloque:
     st.markdown(
         """
         <style>
@@ -412,26 +413,28 @@ def page_analysis() -> None:
             padding-right: 2.0rem !important;
             max-width: 100% !important;
           }
-
+    
           /* Quitar borde de forms */
           div[data-testid="stForm"] {
             border: none !important;
             padding: 0 !important;
             margin: 0 !important;
           }
-
+    
           /* Inputs más limpios */
           div[data-testid="stTextInput"] > div {
             border-radius: 12px !important;
           }
-
-          /* KPI cards */
+    
+          /* KPI cards: rectangulares y sin borde inferior */
           .kpi-card {
             background: transparent;
-            border: none;
-            border-radius: 14px;
+            border: 1px solid rgba(0,0,0,0.06); /* poner 'none' si quieres sin marco */
+            border-radius: 0 !important;
             padding: 14px 14px 12px 14px;
             min-height: 86px;
+            box-shadow: none !important;
+            border-bottom: none !important;
           }
           .kpi-label {
             font-size: 0.78rem;
@@ -443,19 +446,19 @@ def page_analysis() -> None:
             font-weight: 700;
             line-height: 1.1;
           }
-
+    
           /* Bloque principal */
           .main-card {
             background: transparent;
             border: none;
-            border-radius: 16px;
+            border-radius: 0 !important;
             padding: 0;
           }
-
+    
           /* Títulos compactos */
           h2, h3 { margin-bottom: 0.25rem !important; }
           [data-testid="stCaptionContainer"] { margin-top: -6px !important; }
-
+    
           /* ---- Tabs: simple tab style (no pills) ---- */
           div[data-testid="stTabs"] button[role="tab"] {
             border-radius: 6px !important;
