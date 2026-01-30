@@ -147,7 +147,6 @@ def _cagr_from_annual(annual: pd.Series) -> Optional[float]:
 # =========================================================
 # Gráficos Dividendos
 # =========================================================
-# ---- REEMPLAZAR: _plot_dividend_evolution ----
 def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: pd.Series) -> None:
     annual = _annual_dividends_last_years(dividends, YEARS)
 
@@ -187,7 +186,6 @@ def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: 
         st.dataframe(pd.DataFrame({"Año": annual.index, "Dividendo anual": annual.values}).set_index("Año"), use_container_width=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
-# ---- FIN _plot_dividend_evolution ----
 
 
 def _pick_cashflow_cols(df: pd.DataFrame) -> Tuple[Optional[str], Optional[str]]:
@@ -217,7 +215,6 @@ def _pick_cashflow_cols(df: pd.DataFrame) -> Tuple[Optional[str], Optional[str]]
     return fcf_col, div_col
 
 
-# ---- REEMPLAZAR: _plot_dividend_safety ----
 def _plot_dividend_safety(ticker: str, cashflow: pd.DataFrame) -> None:
     if cashflow is None or cashflow.empty:
         st.warning("No hay datos de cashflow suficientes para graficar seguridad del dividendo.")
@@ -299,48 +296,8 @@ def _plot_dividend_safety(ticker: str, cashflow: pd.DataFrame) -> None:
         st.dataframe(out, use_container_width=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
-# ---- FIN _plot_dividend_safety ----
-    
-    fig = go.Figure()
-    fig.add_trace(go.Bar(x=out.index.astype(str), y=out["FCF"], name="FCF", text=out["FCF"].round(0), textposition="outside"))
-    fig.add_trace(
-        go.Bar(
-            x=out.index.astype(str),
-            y=out["Dividendos pagados"],
-            name="Dividendos pagados",
-            text=out["Dividendos pagados"].round(0),
-            textposition="outside",
-        )
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=out.index.astype(str),
-            y=out["FCF Payout (%)"],
-            name="FCF Payout (%)",
-            mode="lines+markers+text",
-            yaxis="y2",
-            text=[f"{v:.0f}%" if pd.notna(v) else "" for v in out["FCF Payout (%)"]],
-            textposition="top center",
-        )
-    )
-    fig.update_layout(
-        title=f"Seguridad del dividendo — {ticker} (últimos {YEARS} años disponibles)",
-        xaxis_title="Año",
-        yaxis_title="USD",
-        yaxis2=dict(title="FCF Payout (%)", overlaying="y", side="right"),
-        barmode="group",
-        height=520,
-        margin=dict(l=20, r=20, t=60, b=30),
-    )
-    st.plotly_chart(fig, use_container_width=True, key=f"div_safe_{ticker}")
-
-    with st.expander("Ver tabla (últimos 5 años)"):
-        st.dataframe(out, use_container_width=True)
-
-    st.markdown('</div>', unsafe_allow_html=True)
 
 
-# ---- REEMPLAZAR: _plot_geraldine_weiss ----
 def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.Series) -> None:
     if price_daily is None or price_daily.empty:
         st.warning("No hay precio diario suficiente para Geraldine Weiss.")
@@ -422,48 +379,6 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
         st.dataframe(show, use_container_width=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
-# ---- FIN _plot_geraldine_weiss ----
-
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=price_daily.index, y=price_daily["Close"], mode="lines", name="Precio (diario)"))
-    fig.add_trace(go.Scatter(x=monthly.index, y=monthly["Sobrevalorado"], mode="lines", name="Banda sobrevalorado", line=dict(dash="dot")))
-    fig.add_trace(go.Scatter(x=monthly.index, y=monthly["Infravalorado"], mode="lines", name="Banda infravalorado", line=dict(dash="dot")))
-
-    current_price = float(price_daily["Close"].iloc[-1])
-    fig.add_trace(
-        go.Scatter(
-            x=[price_daily.index[-1]],
-            y=[current_price],
-            mode="markers+text",
-            name="Precio actual",
-            text=[f"${current_price:.2f}"],
-            textposition="top center",
-        )
-    )
-
-    title = f"Geraldine Weiss — {ticker} (últimos {YEARS} años)"
-    fig.update_layout(
-        title=title,
-        xaxis_title="Fecha",
-        yaxis_title="Precio ($)",
-        height=520,
-        margin=dict(l=20, r=20, t=60, b=40),
-    )
-    st.plotly_chart(fig, use_container_width=True, key=f"gw_{ticker}")
-
-    cols = st.columns(6)
-    cols[0].metric("Precio actual", f"${current_price:,.2f}")
-    cols[1].metric("Div. anual (último)", f"${last_div:,.2f}")
-    cols[2].metric("CAGR div.", f"{cagr:.2f}%" if cagr is not None else "N/D")
-    cols[3].metric("Yield mín.", f"{y_min:.2%}")
-    cols[4].metric("Yield máx.", f"{y_max:.2%}")
-    cols[5].metric("Infravalorado (teórico)", f"${(last_div / y_max):,.2f}" if y_max > 0 else "N/D")
-
-    with st.expander("Ver tabla mensual (GW)"):
-        show = monthly[["Close", "DivAnual", "Yield", "Sobrevalorado", "Infravalorado"]].copy()
-        st.dataframe(show, use_container_width=True)
-
-    st.markdown('</div>', unsafe_allow_html=True)
 
 
 # =========================================================
@@ -481,6 +396,7 @@ def page_analysis() -> None:
         .search-middle > div[data-testid="stTextInput"] { max-width: 640px; margin: 0 auto; }
         div[data-testid="stTextInput"] input { border: none !important; box-shadow:none !important; }
         .tab-card { background: #ffffff; border-radius: 12px; padding: 12px; box-shadow: 0 6px 18px rgba(20,20,20,0.08); margin-bottom: 12px; }
+        .kpi-panel { padding: 14px; }
         .kpi-card { background: transparent; border: none; padding: 10px 6px; }
         .kpi-label { font-size: 0.78rem; color: rgba(0,0,0,0.55); margin-bottom:6px; }
         .kpi-value { font-size: 1.4rem; font-weight:700; }
@@ -577,71 +493,67 @@ def page_analysis() -> None:
                 color = "#16a34a" if (pct_val is not None and pct_val >= 0) else "#dc2626"
                 st.markdown(f"<div style='margin-top:-6px; color:{color}; font-weight:600'>{delta_txt}</div>", unsafe_allow_html=True)
 
-    # KPIs (incluye 4 dividendos)
-        # ---------- KPIs (reordenados: 4 arriba, 4 abajo) ----------
-        # ---- REEMPLAZAR: bloque de KPIs dentro de page_analysis() (with right:) ----
-        # ---------- KPIs (reordenados: tarjeta con 4 arriba + 4 abajo) ----------
-        with right:
-            # Abrimos tarjeta que contiene TODOS los KPIs
-            st.markdown('<div class="tab-card kpi-panel">', unsafe_allow_html=True)
-            st.markdown("### KPIs clave")
-    
-            # Fila superior: 4 KPIs generales (Beta, PER, EPS, Target)
-            top_cols = st.columns(4, gap="large")
-            with top_cols[0]:
-                _kpi_card("Beta", _fmt_kpi(stats.get("beta")))
-            with top_cols[1]:
-                pe = stats.get("pe_ttm")
-                pe_txt = (_fmt_kpi(pe) + "x") if isinstance(pe, (int, float)) else "N/D"
-                _kpi_card("PER (TTM)", pe_txt)
-            with top_cols[2]:
-                _kpi_card("EPS (TTM)", _fmt_kpi(stats.get("eps_ttm")))
-            with top_cols[3]:
-                _kpi_card("Target 1Y", _fmt_kpi(stats.get("target_1y")))
-    
-            # Fila inferior: 4 KPIs relacionados con dividendos (div_yield, fwd, annual, payout)
-            bottom_cols = st.columns(4, gap="large")
-    
-            div_yield = _divk_get(divk, "div_yield", "dividend_yield", "dividendYield", "dividend_yield_pct")
-            fwd_div_yield = _divk_get(divk, "fwd_div_yield", "forward_div_yield", "forward_dividend_yield")
-            annual_div = _divk_get(divk, "annual_dividend", "annual_div", "annualDividend")
-            payout = _divk_get(divk, "payout_ratio", "payout", "payoutRatio")
-    
-            with bottom_cols[0]:
-                val = "N/D"
-                if isinstance(div_yield, (int, float)):
-                    val = _fmt_kpi(div_yield, suffix="%", decimals=2)
-                elif div_yield:
-                    val = _fmt_kpi(div_yield)
-                _kpi_card("Dividend Yield", val)
-    
-            with bottom_cols[1]:
-                val = "N/D"
-                if isinstance(fwd_div_yield, (int, float)):
-                    val = _fmt_kpi(fwd_div_yield, suffix="%", decimals=2)
-                elif fwd_div_yield:
-                    val = _fmt_kpi(fwd_div_yield)
-                _kpi_card("Forward Div. Yield", val)
-    
-            with bottom_cols[2]:
-                val = "N/D"
-                if isinstance(annual_div, (int, float)):
-                    val = _fmt_kpi(annual_div, decimals=2)
-                elif annual_div:
-                    val = _fmt_kpi(annual_div)
-                _kpi_card("Div. anual ($)", val)
-    
-            with bottom_cols[3]:
-                val = "N/D"
-                if isinstance(payout, (int, float)):
-                    val = _fmt_kpi(payout, suffix="%", decimals=0)
-                elif payout:
-                    val = _fmt_kpi(payout)
-                _kpi_card("PayOut Ratio", val)
-    
-            # Cerramos tarjeta
-            st.markdown('</div>', unsafe_allow_html=True)
-    # ---- FIN bloque KPIs ----
+    # ---------- KPIs (reordenados: tarjeta con 4 arriba + 4 abajo) ----------
+    with right:
+        # Abrimos tarjeta que contiene TODOS los KPIs
+        st.markdown('<div class="tab-card kpi-panel">', unsafe_allow_html=True)
+        st.markdown("### KPIs clave")
+
+        # Fila superior: 4 KPIs generales (Beta, PER, EPS, Target)
+        top_cols = st.columns(4, gap="large")
+        with top_cols[0]:
+            _kpi_card("Beta", _fmt_kpi(stats.get("beta")))
+        with top_cols[1]:
+            pe = stats.get("pe_ttm")
+            pe_txt = (_fmt_kpi(pe) + "x") if isinstance(pe, (int, float)) else "N/D"
+            _kpi_card("PER (TTM)", pe_txt)
+        with top_cols[2]:
+            _kpi_card("EPS (TTM)", _fmt_kpi(stats.get("eps_ttm")))
+        with top_cols[3]:
+            _kpi_card("Target 1Y", _fmt_kpi(stats.get("target_1y")))
+
+        # Fila inferior: 4 KPIs relacionados con dividendos (div_yield, fwd, annual, payout)
+        bottom_cols = st.columns(4, gap="large")
+
+        div_yield = _divk_get(divk, "div_yield", "dividend_yield", "dividendYield", "dividend_yield_pct")
+        fwd_div_yield = _divk_get(divk, "fwd_div_yield", "forward_div_yield", "forward_dividend_yield")
+        annual_div = _divk_get(divk, "annual_dividend", "annual_div", "annualDividend")
+        payout = _divk_get(divk, "payout_ratio", "payout", "payoutRatio")
+
+        with bottom_cols[0]:
+            val = "N/D"
+            if isinstance(div_yield, (int, float)):
+                val = _fmt_kpi(div_yield, suffix="%", decimals=2)
+            elif div_yield:
+                val = _fmt_kpi(div_yield)
+            _kpi_card("Dividend Yield", val)
+
+        with bottom_cols[1]:
+            val = "N/D"
+            if isinstance(fwd_div_yield, (int, float)):
+                val = _fmt_kpi(fwd_div_yield, suffix="%", decimals=2)
+            elif fwd_div_yield:
+                val = _fmt_kpi(fwd_div_yield)
+            _kpi_card("Forward Div. Yield", val)
+
+        with bottom_cols[2]:
+            val = "N/D"
+            if isinstance(annual_div, (int, float)):
+                val = _fmt_kpi(annual_div, decimals=2)
+            elif annual_div:
+                val = _fmt_kpi(annual_div)
+            _kpi_card("Div. anual ($)", val)
+
+        with bottom_cols[3]:
+            val = "N/D"
+            if isinstance(payout, (int, float)):
+                val = _fmt_kpi(payout, suffix="%", decimals=0)
+            elif payout:
+                val = _fmt_kpi(payout)
+            _kpi_card("PayOut Ratio", val)
+
+        # Cerramos tarjeta
+        st.markdown('</div>', unsafe_allow_html=True)
 
     st.divider()
 
