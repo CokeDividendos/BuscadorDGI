@@ -22,7 +22,7 @@ from src.services.logos import logo_candidates
 from src.services.usage_limits import consume_search, remaining_searches
 
 # =========================================================
-# Constantes (estandarización)
+# Constantes
 # =========================================================
 YEARS = 5
 DIVIDENDS_CACHE_TTL_SECONDS = 60 * 60 * 24 * 30  # 30 días
@@ -75,12 +75,8 @@ def _kpi_card(label: str, value: str) -> None:
 # =========================================================
 @st.cache_data(ttl=DIVIDENDS_CACHE_TTL_SECONDS, show_spinner=False)
 def _load_dividend_inputs(ticker: str, years: int) -> Dict[str, Any]:
-    """
-    Devuelve dict con price_daily (DataFrame), dividends (Series) y cashflow (DataFrame).
-    """
     t = yf.Ticker(ticker)
 
-    # Precio diario últimos N años
     try:
         price_daily = t.history(period=f"{years}y", interval="1d", auto_adjust=False)
     except Exception:
@@ -95,14 +91,12 @@ def _load_dividend_inputs(ticker: str, years: int) -> Dict[str, Any]:
     else:
         price_daily = pd.DataFrame(columns=["Close"])
 
-    # Dividendos (serie)
     dividends = t.dividends
     if dividends is None or not isinstance(dividends, pd.Series):
         dividends = pd.Series(dtype=float)
     else:
         dividends = dividends.dropna().astype(float)
 
-    # Cashflow (DataFrame)
     cashflow = t.cashflow
     if cashflow is None or not isinstance(cashflow, pd.DataFrame):
         cashflow = pd.DataFrame()
@@ -129,9 +123,6 @@ def _annual_dividends_last_years(dividends: pd.Series, years: int) -> pd.Series:
 
 
 def _cagr_from_annual(annual: pd.Series) -> Optional[float]:
-    """
-    CAGR usando primer año vs último año del rango (ya filtrado a N años).
-    """
     if annual is None or len(annual) < 2:
         return None
     first = float(annual.iloc[0])
@@ -143,7 +134,7 @@ def _cagr_from_annual(annual: pd.Series) -> Optional[float]:
 
 
 # =========================================================
-# Gráficos Dividendos (últimos 5 años)
+# Gráficos Dividendos
 # =========================================================
 def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: pd.Series) -> None:
     annual = _annual_dividends_last_years(dividends, YEARS)
@@ -185,19 +176,12 @@ def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: 
 
 
 def _pick_cashflow_cols(df: pd.DataFrame) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Intenta mapear columnas típicas de yfinance cashflow.
-    """
     if df is None or df.empty:
         return None, None
 
     cols = set(df.columns)
 
-    fcf_candidates = [
-        "Free Cash Flow",
-        "FreeCashFlow",
-        "freeCashFlow",
-    ]
+    fcf_candidates = ["Free Cash Flow", "FreeCashFlow", "freeCashFlow"]
     div_candidates = [
         "Cash Dividends Paid",
         "CashDividendsPaid",
@@ -209,7 +193,6 @@ def _pick_cashflow_cols(df: pd.DataFrame) -> Tuple[Optional[str], Optional[str]]
     fcf_col = next((c for c in fcf_candidates if c in cols), None)
     div_col = next((c for c in div_candidates if c in cols), None)
 
-    # Si no existe FCF, intentar aproximar con OCF - CapEx
     if fcf_col is None:
         ocf_candidates = ["Total Cash From Operating Activities", "Operating Cash Flow", "OperatingCashFlow"]
         capex_candidates = ["Capital Expenditures", "CapitalExpenditures", "capex"]
@@ -225,10 +208,8 @@ def _plot_dividend_safety(ticker: str, cashflow: pd.DataFrame) -> None:
         st.warning("No hay datos de cashflow suficientes para graficar seguridad del dividendo.")
         return
 
-    # yfinance suele traer columnas por periodo (datetime) y filas por concepto.
     df = cashflow.transpose().copy()
     df.index = pd.to_datetime(df.index, errors="coerce")
-    # Evitar filas con índice NaT
     df = df.loc[df.index.notna()]
     df["Year"] = df.index.year
     df = df.set_index("Year")
@@ -238,11 +219,8 @@ def _plot_dividend_safety(ticker: str, cashflow: pd.DataFrame) -> None:
         st.warning("No se encontró la columna de dividendos pagados en cashflow.")
         return
 
-    # Seleccionar últimos YEARS años disponibles
-    df = df.sort_index()
-    df = df.tail(YEARS)
+    df = df.sort_index().tail(YEARS)
 
-    # FCF: directo o derivado
     if fcf_col == "__FCF_DERIVED__":
         ocf_candidates = ["Total Cash From Operating Activities", "Operating Cash Flow", "OperatingCashFlow"]
         capex_candidates = ["Capital Expenditures", "CapitalExpenditures", "capex"]
@@ -305,9 +283,6 @@ def _plot_dividend_safety(ticker: str, cashflow: pd.DataFrame) -> None:
 
 
 def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.Series) -> None:
-    """
-    Bandas GW: usa rendimientos (yield) min/max observados en el rango (últimos 5 años).
-    """
     if price_daily is None or price_daily.empty:
         st.warning("No hay precio diario suficiente para Geraldine Weiss.")
         return
@@ -319,7 +294,6 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
 
     cagr = _cagr_from_annual(annual)
 
-    # Mensual: último precio del mes
     monthly = price_daily.resample("M").last().copy()
     monthly["Year"] = monthly.index.year
 
@@ -330,7 +304,6 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
     def _adj_div(year: int) -> Optional[float]:
         if year in annual.index:
             return float(annual.loc[year])
-        # Proyección simple para año actual si no está cerrado
         if year == current_year and cagr is not None and (year - 1) in annual.index:
             return float(annual.loc[year - 1]) * (1 + cagr / 100.0)
         return None
@@ -375,7 +348,6 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
     )
     st.plotly_chart(fig, use_container_width=True, key=f"gw_{ticker}")
 
-    # métricas rápidas
     cols = st.columns(6)
     cols[0].metric("Precio actual", f"${current_price:,.2f}")
     cols[1].metric("Div. anual (último)", f"${last_div:,.2f}")
@@ -398,7 +370,7 @@ def page_analysis() -> None:
     admin = is_admin()
 
     # -----------------------------
-    # CSS global (incluye tarjetas rectangulares)
+    # CSS global (tarjetas rectangulares)
     # -----------------------------
     st.markdown(
         """
@@ -438,11 +410,11 @@ def page_analysis() -> None:
                 limit_box.warning("No se detectó el correo del usuario.")
 
     # -----------------------------
-    # Buscador: form claro con botón
+    # Buscador (form)
     # -----------------------------
     st.markdown("## 🔎 Buscador")
-    with st.form("search_form"):
-        ticker_in = st.text_input("Ticker (ej: AAPL, MSFT, KO)", value="AAPL")
+    with st.form("search_form", clear_on_submit=False):
+        ticker_in = st.text_input("Ticker (ej: AAPL, MSFT, KO)", value="AAPL", key="ticker_main")
         submitted = st.form_submit_button("Buscar")
 
     if not submitted:
@@ -454,7 +426,7 @@ def page_analysis() -> None:
         st.error("Ticker vacío.")
         return
 
-    # Consumo límite (solo si no admin)
+    # Consumo límite
     if (not admin) and user_email:
         ok, rem_after = consume_search(user_email, DAILY_LIMIT, cost=1)
         if not ok:
@@ -463,7 +435,7 @@ def page_analysis() -> None:
         st.sidebar.info(f"🔎 Búsquedas restantes hoy: {rem_after}/{DAILY_LIMIT}")
 
     # -----------------------------
-    # Carga datos (usando servicios)
+    # Carga datos
     # -----------------------------
     price = get_price_data(ticker) or {}
     profile = get_profile_data(ticker) or {}
@@ -481,10 +453,11 @@ def page_analysis() -> None:
     logo_url = next((u for u in logos if isinstance(u, str) and u.startswith(("http://", "https://"))), "")
 
     # -----------------------------
-    # UI: encabezado y KPIs
+    # Encabezado (logo + nombre + precio) y KPIs
     # -----------------------------
     left, right = st.columns([1.2, 0.8], gap="large")
     with left:
+        # logo original (restaurado)
         if logo_url:
             st.image(logo_url, width=56)
         st.markdown(f"### {ticker} — {company_name}")
@@ -508,22 +481,46 @@ def page_analysis() -> None:
     st.divider()
 
     # -----------------------------
-    # Dividendos: pestañas con gráficos
+    # Main tabs (restauradas)
     # -----------------------------
-    inputs = _load_dividend_inputs(ticker, YEARS)
-    price_daily = inputs["price_daily"]
-    dividends = inputs["dividends"]
-    cashflow = inputs["cashflow"]
+    main_tabs = st.tabs(
+        [
+            "Dividendos",
+            "Múltiplos",
+            "Balance",
+            "Estado de Resultados",
+            "Estado de Flujo de Efectivo",
+            "Otro",
+        ]
+    )
 
-    st.markdown("### 📈 Dividendos")
-    tabs = st.tabs(["Geraldine Weiss", "Evolución del dividendo", "Seguridad del dividendo"])
-    with tabs[0]:
-        _plot_geraldine_weiss(ticker, price_daily, dividends)
-    with tabs[1]:
-        _plot_dividend_evolution(ticker, price_daily, dividends)
-    with tabs[2]:
-        _plot_dividend_safety(ticker, cashflow)
+    # TAB Dividendos con sub-tabs
+    with main_tabs[0]:
+        inputs = _load_dividend_inputs(ticker, YEARS)
+        price_daily = inputs["price_daily"]
+        dividends = inputs["dividends"]
+        cashflow = inputs["cashflow"]
 
-    # Otros bloques (placeholder)
+        sub_tabs = st.tabs(["📌 Geraldine Weiss", "📈 Evolución del dividendo", "🛡️ Seguridad del dividendo"])
+        with sub_tabs[0]:
+            _plot_geraldine_weiss(ticker, price_daily, dividends)
+        with sub_tabs[1]:
+            _plot_dividend_evolution(ticker, price_daily, dividends)
+        with sub_tabs[2]:
+            _plot_dividend_safety(ticker, cashflow)
+
+    # Otros tabs: placeholders - conserva estructura para futuros gráficos
+    with main_tabs[1]:
+        st.info("Aquí irán los gráficos de Múltiplos (pendiente).")
+    with main_tabs[2]:
+        st.info("Aquí irán los gráficos de Balance (pendiente).")
+    with main_tabs[3]:
+        st.info("Aquí irán los gráficos de Estado de Resultados (pendiente).")
+    with main_tabs[4]:
+        st.info("Aquí irán los gráficos de Flujo de Efectivo (pendiente).")
+    with main_tabs[5]:
+        st.info("Sección 'Otro' (pendiente).")
+
+    # Debug / extras: muestra divk resumido
     st.markdown("### 🔬 Otros KPIs")
     st.write(divk)
