@@ -408,28 +408,20 @@ def page_analysis() -> None:
         <style>
           /* Contenedor principal */
           div[data-testid="stAppViewContainer"] section.main div.block-container {
-            padding-top: 0.35rem !important;
-            padding-left: 2.0rem !important;
-            padding-right: 2.0rem !important;
-            max-width: 100% !important;
+            max-width: 980px !important;
+            margin: 0 auto !important;
+            padding-left: 18px !important;
+            padding-right: 18px !important;
           }
+          div[data-testid="stVerticalBlock"] { max-width: 980px !important; }
     
-          /* Quitar borde de forms */
-          div[data-testid="stForm"] {
-            border: none !important;
-            padding: 0 !important;
-            margin: 0 !important;
-          }
-    
-          /* Inputs más limpios */
-          div[data-testid="stTextInput"] > div {
-            border-radius: 12px !important;
-          }
+          h2, h3 { margin-bottom: 0.25rem !important; }
+          [data-testid="stCaptionContainer"] { margin-top: -6px !important; }
     
           /* KPI cards: rectangulares y sin borde inferior */
           .kpi-card {
             background: transparent;
-            border: 1px solid rgba(0,0,0,0.06); /* poner 'none' si quieres sin marco */
+            border: 1px solid rgba(0,0,0,0.06);
             border-radius: 0 !important;
             padding: 14px 14px 12px 14px;
             min-height: 86px;
@@ -455,11 +447,7 @@ def page_analysis() -> None:
             padding: 0;
           }
     
-          /* Títulos compactos */
-          h2, h3 { margin-bottom: 0.25rem !important; }
-          [data-testid="stCaptionContainer"] { margin-top: -6px !important; }
-    
-          /* ---- Tabs: simple tab style (no pills) ---- */
+          /* ---- Tabs: simple tab style ---- */
           div[data-testid="stTabs"] button[role="tab"] {
             border-radius: 6px !important;
             padding: 8px 14px !important;
