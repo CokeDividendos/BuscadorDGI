@@ -412,6 +412,7 @@ def page_analysis() -> None:
     # -----------------------------
     # Buscador (form)
     # -----------------------------
+    st.markdown("## 🔎 Buscador")
     with st.form("search_form", clear_on_submit=False):
         ticker_in = st.text_input("Ticker (ej: AAPL, MSFT, KO)", value="AAPL", key="ticker_main")
         submitted = st.form_submit_button("Buscar")
@@ -476,6 +477,8 @@ def page_analysis() -> None:
             _kpi_card("PER (TTM)", pe_txt)
         with c3:
             _kpi_card("EPS (TTM)", _fmt_kpi(stats.get("eps_ttm")))
+
+    st.divider()
 
     # -----------------------------
     # Main tabs (restauradas)
