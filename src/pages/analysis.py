@@ -227,8 +227,7 @@ def _plot_dividend_safety(ticker: str, cashflow: pd.DataFrame) -> None:
     # yfinance suele traer columnas por periodo (datetime) y filas por concepto.
     df = cashflow.transpose().copy()
     df.index = pd.to_datetime(df.index, errors="coerce")
-    # Evita crash: filtrar filas con índice NaT en lugar de usar dropna(subset=...)
-    df = df.loc[df.index.notna()]
+    df = df.dropna(subset=[df.index.name] if df.index.name else None, axis=0, errors="ignore")
     df["Year"] = df.index.year
     df = df.set_index("Year")
 
@@ -402,31 +401,36 @@ def page_analysis() -> None:
     # -----------------------------
     # CSS (incluye tabs estilo “pills” + bordes limpio)
     # -----------------------------
-    # Reemplaza el bloque st.markdown(...) que contiene CSS global por ESTE bloque:
     st.markdown(
         """
         <style>
           /* Contenedor principal */
           div[data-testid="stAppViewContainer"] section.main div.block-container {
-            max-width: 980px !important;
-            margin: 0 auto !important;
-            padding-left: 18px !important;
-            padding-right: 18px !important;
+            padding-top: 0.35rem !important;
+            padding-left: 2.0rem !important;
+            padding-right: 2.0rem !important;
+            max-width: 100% !important;
           }
-          div[data-testid="stVerticalBlock"] { max-width: 980px !important; }
-    
-          h2, h3 { margin-bottom: 0.25rem !important; }
-          [data-testid="stCaptionContainer"] { margin-top: -6px !important; }
-    
-          /* KPI cards: rectangulares y sin borde inferior */
+
+          /* Quitar borde de forms */
+          div[data-testid="stForm"] {
+            border: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+          }
+
+          /* Inputs más limpios */
+          div[data-testid="stTextInput"] > div {
+            border-radius: 12px !important;
+          }
+
+          /* KPI cards */
           .kpi-card {
             background: transparent;
-            border: 1px solid rgba(0,0,0,0.06);
-            border-radius: 0 !important;
+            border: none;
+            border-radius: 14px;
             padding: 14px 14px 12px 14px;
             min-height: 86px;
-            box-shadow: none !important;
-            border-bottom: none !important;
           }
           .kpi-label {
             font-size: 0.78rem;
@@ -438,29 +442,29 @@ def page_analysis() -> None:
             font-weight: 700;
             line-height: 1.1;
           }
-    
+
           /* Bloque principal */
           .main-card {
             background: transparent;
             border: none;
-            border-radius: 0 !important;
+            border-radius: 16px;
             padding: 0;
           }
-    
-          /* ---- Tabs: simple tab style ---- */
+
+          /* Títulos compactos */
+          h2, h3 { margin-bottom: 0.25rem !important; }
+          [data-testid="stCaptionContainer"] { margin-top: -6px !important; }
+
+          /* ---- Tabs: look más moderno (pills) ---- */
           div[data-testid="stTabs"] button[role="tab"] {
-            border-radius: 6px !important;
+            border-radius: 999px !important;
             padding: 8px 14px !important;
             margin-right: 6px !important;
-            border: none !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            border-bottom: 2px solid transparent !important;
+            border: 1px solid rgba(0,0,0,0.08) !important;
           }
           div[data-testid="stTabs"] button[role="tab"][aria-selected="true"]{
-            border-bottom: 3px solid #ff7a18 !important;
+            border: 1px solid rgba(0,0,0,0.18) !important;
             font-weight: 700 !important;
-            background: transparent !important;
           }
         </style>
         """,
@@ -539,4 +543,128 @@ def page_analysis() -> None:
             with st.sidebar:
                 limit_box.info(f"🔎 Búsquedas restantes hoy: {rem_after}/{DAILY_LIMIT}")
 
-    # (el resto del archivo continúa igual: carga de datos, creación de tabs/st.tabs, etc.)
+        # marcamos ticker como “cargado” para que al cambiar tabs no pida Enter otra vez
+        st.session_state["loaded_ticker"] = ticker
+
+    # -----------------------------
+    # DATA (tu pipeline actual)
+    # -----------------------------
+    price = get_price_data(ticker) or {}
+    profile = get_profile_data(ticker) or {}
+    raw = profile.get("raw") if isinstance(profile, dict) else {}
+    stats = get_key_stats(ticker) or {}
+    divk = get_dividend_kpis(ticker) or {}
+
+    company_name = raw.get("longName") or raw.get("shortName") or profile.get("shortName") or ticker
+    last_price = price.get("last_price")
+    currency = price.get("currency") or ""
+    delta_txt, pct_val = _fmt_delta(price.get("net_change"), price.get("pct_change"))
+
+    website = (profile.get("website") or raw.get("website") or "") if isinstance(profile, dict) else ""
+    logos = logo_candidates(website) if website else []
+    logo_url = next((u for u in logos if isinstance(u, str) and u.startswith(("http://", "https://"))), "")
+
+    # -----------------------------
+    # BLOQUE SUPERIOR: izquierda (logo + nombre/precio) / derecha KPIs
+    # -----------------------------
+    left, right = st.columns([1.15, 0.85], gap="large")
+
+    with left:
+        st.markdown('<div class="main-card">', unsafe_allow_html=True)
+
+        # Logo ocupando “dos filas” (simulado con columnas + align)
+        c_logo, c_text = st.columns([0.12, 0.88], gap="small", vertical_alignment="center")
+        with c_logo:
+            if logo_url:
+                st.image(logo_url, width=46)
+
+        with c_text:
+            st.markdown(f"### {ticker} — {company_name}")
+            st.markdown(f"## {_fmt_price(last_price, currency)}")
+
+            if delta_txt:
+                color = "#16a34a" if (pct_val is not None and pct_val >= 0) else "#dc2626"
+                st.markdown(
+                    f"<div style='margin-top:-6px; font-size:0.95rem; color:{color}; font-weight:600;'>{delta_txt}</div>",
+                    unsafe_allow_html=True,
+                )
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with right:
+        st.markdown("### KPIs clave")
+
+        r1c1, r1c2, r1c3 = st.columns(3, gap="large")
+        r2c1, r2c2, r2c3 = st.columns(3, gap="large")
+
+        with r1c1:
+            _kpi_card("Beta", _fmt_kpi(stats.get("beta")))
+        with r1c2:
+            pe = stats.get("pe_ttm")
+            pe_txt = (_fmt_kpi(pe) + "x") if isinstance(pe, (int, float)) else "N/D"
+            _kpi_card("PER (TTM)", pe_txt)
+        with r1c3:
+            _kpi_card("EPS (TTM)", _fmt_kpi(stats.get("eps_ttm")))
+
+        with r2c1:
+            _kpi_card("Target 1Y", _fmt_kpi(stats.get("target_1y")))
+        with r2c2:
+            _kpi_card("Dividend Yield", _fmt_kpi(divk.get("div_yield"), suffix="%", decimals=2))
+        with r2c3:
+            _kpi_card("Forward Div. Yield", _fmt_kpi(divk.get("fwd_div_yield"), suffix="%", decimals=2))
+
+    st.write("")
+
+    # -----------------------------
+    # TABS principales
+    # -----------------------------
+    tabs = st.tabs(
+        [
+            "Dividendos",
+            "Múltiplos",
+            "Balance",
+            "Estado de Resultados",
+            "Estado de Flujo de Efectivo",
+            "Otro",
+        ]
+    )
+
+    # =========================================================
+    # TAB: Dividendos (Opción B — galería/selector bonito via tabs “pills”)
+    # =========================================================
+    with tabs[0]:
+        # Cargamos inputs (cache 30 días)
+        inputs = _load_dividend_inputs(ticker, YEARS)
+        price_daily = inputs["price_daily"]
+        dividends = inputs["dividends"]
+        cashflow = inputs["cashflow"]
+
+        # Selector interno moderno (sin círculos)
+        sub_tabs = st.tabs(
+            [
+                "📌 Geraldine Weiss",
+                "📈 Evolución del dividendo",
+                "🛡️ Seguridad del dividendo",
+            ]
+        )
+
+        with sub_tabs[0]:
+            _plot_geraldine_weiss(ticker, price_daily, dividends)
+
+        with sub_tabs[1]:
+            _plot_dividend_evolution(ticker, price_daily, dividends)
+
+        with sub_tabs[2]:
+            _plot_dividend_safety(ticker, cashflow)
+
+    # Otros tabs aún pendientes
+    with tabs[1]:
+        st.info("Aquí irán los gráficos de Múltiplos (pendiente).")
+    with tabs[2]:
+        st.info("Aquí irán los gráficos de Balance (pendiente).")
+    with tabs[3]:
+        st.info("Aquí irán los gráficos de Estado de Resultados (pendiente).")
+    with tabs[4]:
+        st.info("Aquí irán los gráficos de Flujo de Efectivo (pendiente).")
+    with tabs[5]:
+        st.info("Sección 'Otro' (pendiente).")
