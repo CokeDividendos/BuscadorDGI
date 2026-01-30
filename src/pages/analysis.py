@@ -422,7 +422,6 @@ def page_analysis() -> None:
                 limit_box.warning("No se detectó el correo del usuario.")
 
     # Buscador (Enter activa)
-    st.markdown("## 🔎 Buscador")
     c_left, c_mid, c_right = st.columns([1, 2, 1])
     with c_mid:
         st.markdown('<div class="search-middle">', unsafe_allow_html=True)
