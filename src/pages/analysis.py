@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 from datetime import datetime
+from typing import Any, Dict, Optional, Tuple
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -21,10 +22,11 @@ from src.services.logos import logo_candidates
 from src.services.usage_limits import consume_search, remaining_searches
 
 # =========================================================
-# Constantes
+# Constantes (estandarización)
 # =========================================================
 YEARS = 5
 DIVIDENDS_CACHE_TTL_SECONDS = 60 * 60 * 24 * 30  # 30 días
+
 
 # =========================================================
 # Helpers UI / formato
@@ -37,20 +39,20 @@ def _get_user_email() -> str:
     return ""
 
 
-def _fmt_price(x, currency: str) -> str:
+def _fmt_price(x: Any, currency: str) -> str:
     if not isinstance(x, (int, float)) or (isinstance(x, float) and (math.isnan(x) or math.isinf(x))):
         return "N/D"
     s = f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     return f"{s} {currency}".strip()
 
 
-def _fmt_delta(net, pct) -> tuple[str | None, float | None]:
+def _fmt_delta(net: Any, pct: Any) -> Tuple[Optional[str], Optional[float]]:
     if isinstance(net, (int, float)) and isinstance(pct, (int, float)):
         return f"{net:+.2f} ({pct:+.2f}%)", float(pct)
     return None, None
 
 
-def _fmt_kpi(x, suffix: str = "", decimals: int = 2) -> str:
+def _fmt_kpi(x: Any, suffix: str = "", decimals: int = 2) -> str:
     if not isinstance(x, (int, float)) or (isinstance(x, float) and (math.isnan(x) or math.isinf(x))):
         return "N/D"
     return f"{x:.{decimals}f}{suffix}"
@@ -72,9 +74,9 @@ def _kpi_card(label: str, value: str) -> None:
 # Dividendos: carga y cálculos (cache)
 # =========================================================
 @st.cache_data(ttl=DIVIDENDS_CACHE_TTL_SECONDS, show_spinner=False)
-def _load_dividend_inputs(ticker: str, years: int) -> dict:
+def _load_dividend_inputs(ticker: str, years: int) -> Dict[str, Any]:
     """
-    Trae price_daily, dividends y cashflow desde yfinance (cacheado).
+    Devuelve dict con price_daily (DataFrame), dividends (Series) y cashflow (DataFrame).
     """
     t = yf.Ticker(ticker)
 
@@ -93,14 +95,14 @@ def _load_dividend_inputs(ticker: str, years: int) -> dict:
     else:
         price_daily = pd.DataFrame(columns=["Close"])
 
-    # Dividendos
+    # Dividendos (serie)
     dividends = t.dividends
     if dividends is None or not isinstance(dividends, pd.Series):
         dividends = pd.Series(dtype=float)
     else:
         dividends = dividends.dropna().astype(float)
 
-    # Cashflow
+    # Cashflow (DataFrame)
     cashflow = t.cashflow
     if cashflow is None or not isinstance(cashflow, pd.DataFrame):
         cashflow = pd.DataFrame()
@@ -109,7 +111,7 @@ def _load_dividend_inputs(ticker: str, years: int) -> dict:
 
 
 def _annual_dividends_last_years(dividends: pd.Series, years: int) -> pd.Series:
-    if dividends.empty:
+    if dividends is None or dividends.empty:
         return pd.Series(dtype=float)
 
     ann = dividends.resample("Y").sum().dropna().astype(float)
@@ -126,7 +128,10 @@ def _annual_dividends_last_years(dividends: pd.Series, years: int) -> pd.Series:
     return out.dropna()
 
 
-def _cagr_from_annual(annual: pd.Series) -> float | None:
+def _cagr_from_annual(annual: pd.Series) -> Optional[float]:
+    """
+    CAGR usando primer año vs último año del rango (ya filtrado a N años).
+    """
     if annual is None or len(annual) < 2:
         return None
     first = float(annual.iloc[0])
@@ -138,7 +143,7 @@ def _cagr_from_annual(annual: pd.Series) -> float | None:
 
 
 # =========================================================
-# Gráficos Dividendos
+# Gráficos Dividendos (últimos 5 años)
 # =========================================================
 def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: pd.Series) -> None:
     annual = _annual_dividends_last_years(dividends, YEARS)
@@ -179,13 +184,20 @@ def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: 
         )
 
 
-def _pick_cashflow_cols(df: pd.DataFrame) -> tuple[str | None, str | None]:
+def _pick_cashflow_cols(df: pd.DataFrame) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Intenta mapear columnas típicas de yfinance cashflow.
+    """
     if df is None or df.empty:
         return None, None
 
     cols = set(df.columns)
 
-    fcf_candidates = ["Free Cash Flow", "FreeCashFlow", "freeCashFlow"]
+    fcf_candidates = [
+        "Free Cash Flow",
+        "FreeCashFlow",
+        "freeCashFlow",
+    ]
     div_candidates = [
         "Cash Dividends Paid",
         "CashDividendsPaid",
@@ -197,6 +209,7 @@ def _pick_cashflow_cols(df: pd.DataFrame) -> tuple[str | None, str | None]:
     fcf_col = next((c for c in fcf_candidates if c in cols), None)
     div_col = next((c for c in div_candidates if c in cols), None)
 
+    # Si no existe FCF, intentar aproximar con OCF - CapEx
     if fcf_col is None:
         ocf_candidates = ["Total Cash From Operating Activities", "Operating Cash Flow", "OperatingCashFlow"]
         capex_candidates = ["Capital Expenditures", "CapitalExpenditures", "capex"]
@@ -215,7 +228,7 @@ def _plot_dividend_safety(ticker: str, cashflow: pd.DataFrame) -> None:
     # yfinance suele traer columnas por periodo (datetime) y filas por concepto.
     df = cashflow.transpose().copy()
     df.index = pd.to_datetime(df.index, errors="coerce")
-    # Evita crash: filtrar filas con índice NaT
+    # Evitar filas con índice NaT
     df = df.loc[df.index.notna()]
     df["Year"] = df.index.year
     df = df.set_index("Year")
@@ -292,6 +305,9 @@ def _plot_dividend_safety(ticker: str, cashflow: pd.DataFrame) -> None:
 
 
 def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.Series) -> None:
+    """
+    Bandas GW: usa rendimientos (yield) min/max observados en el rango (últimos 5 años).
+    """
     if price_daily is None or price_daily.empty:
         st.warning("No hay precio diario suficiente para Geraldine Weiss.")
         return
@@ -311,7 +327,7 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
     last_year = int(annual.index.max())
     last_div = float(annual.loc[last_year])
 
-    def _adj_div(year: int) -> float | None:
+    def _adj_div(year: int) -> Optional[float]:
         if year in annual.index:
             return float(annual.loc[year])
         # Proyección simple para año actual si no está cerrado
@@ -359,6 +375,7 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
     )
     st.plotly_chart(fig, use_container_width=True, key=f"gw_{ticker}")
 
+    # métricas rápidas
     cols = st.columns(6)
     cols[0].metric("Precio actual", f"${current_price:,.2f}")
     cols[1].metric("Div. anual (último)", f"${last_div:,.2f}")
@@ -393,6 +410,8 @@ def page_analysis() -> None:
             max-width: 100% !important;
         }
         .kpi-card { border-radius: 0 !important; border-bottom: none !important; box-shadow: none !important; }
+        .kpi-label { font-size: 0.78rem; color: rgba(0,0,0,0.55); margin-bottom: 6px; }
+        .kpi-value { font-size: 1.55rem; font-weight: 700; line-height: 1.1; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -472,7 +491,7 @@ def page_analysis() -> None:
         st.markdown(f"## {_fmt_price(last_price, currency)}")
         if delta_txt:
             color = "#16a34a" if (pct_val is not None and pct_val >= 0) else "#dc2626"
-            st.markdown(f\"<div style='margin-top:-6px; color:{color}; font-weight:600'>{delta_txt}</div>\", unsafe_allow_html=True)
+            st.markdown(f"<div style='margin-top:-6px; color:{color}; font-weight:600'>{delta_txt}</div>", unsafe_allow_html=True)
 
     with right:
         st.markdown("### KPIs clave")
