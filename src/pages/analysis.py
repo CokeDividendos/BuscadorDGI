@@ -70,8 +70,19 @@ def _kpi_card(label: str, value: str) -> None:
     )
 
 
+def _divk_get(divk: Dict[str, Any], *keys: str) -> Any:
+    """Try multiple candidate keys for dividend kpis (some variants exist)."""
+    for k in keys:
+        if not isinstance(divk, dict):
+            continue
+        v = divk.get(k)
+        if v is not None:
+            return v
+    return None
+
+
 # =========================================================
-# Dividendos: carga y cálculos (cache)
+# Datos dividendos (cache)
 # =========================================================
 @st.cache_data(ttl=DIVIDENDS_CACHE_TTL_SECONDS, show_spinner=False)
 def _load_dividend_inputs(ticker: str, years: int) -> Dict[str, Any]:
@@ -134,7 +145,7 @@ def _cagr_from_annual(annual: pd.Series) -> Optional[float]:
 
 
 # =========================================================
-# Gráficos Dividendos
+# Gráficos (mismos helpers de antes)
 # =========================================================
 def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: pd.Series) -> None:
     annual = _annual_dividends_last_years(dividends, YEARS)
@@ -148,6 +159,9 @@ def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: 
         title = f"Evolución del dividendo anual — {ticker} (últimos {YEARS} años)"
     else:
         title = f"Evolución del dividendo anual — {ticker} | CAGR: {cagr:.2f}% (últimos {YEARS} años)"
+
+    # modern card wrapper start
+    st.markdown('<div class="tab-card">', unsafe_allow_html=True)
 
     fig = go.Figure()
     fig.add_trace(
@@ -169,10 +183,10 @@ def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: 
     st.plotly_chart(fig, use_container_width=True, key=f"div_evo_{ticker}")
 
     with st.expander("Ver tabla (últimos 5 años)"):
-        st.dataframe(
-            pd.DataFrame({"Año": annual.index, "Dividendo anual": annual.values}).set_index("Año"),
-            use_container_width=True,
-        )
+        st.dataframe(pd.DataFrame({"Año": annual.index, "Dividendo anual": annual.values}).set_index("Año"), use_container_width=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
+    # modern card wrapper end
 
 
 def _pick_cashflow_cols(df: pd.DataFrame) -> Tuple[Optional[str], Optional[str]]:
@@ -180,7 +194,6 @@ def _pick_cashflow_cols(df: pd.DataFrame) -> Tuple[Optional[str], Optional[str]]
         return None, None
 
     cols = set(df.columns)
-
     fcf_candidates = ["Free Cash Flow", "FreeCashFlow", "freeCashFlow"]
     div_candidates = [
         "Cash Dividends Paid",
@@ -237,13 +250,14 @@ def _plot_dividend_safety(ticker: str, cashflow: pd.DataFrame) -> None:
         fcf = pd.to_numeric(df[fcf_col], errors="coerce")
 
     div_paid = pd.to_numeric(df[div_col], errors="coerce").abs()
-
     out = pd.DataFrame({"FCF": fcf, "Dividendos pagados": div_paid}).dropna()
     if out.empty:
         st.warning("No hay filas suficientes para graficar seguridad del dividendo.")
         return
 
     out["FCF Payout (%)"] = (out["Dividendos pagados"] / out["FCF"]) * 100
+
+    st.markdown('<div class="tab-card">', unsafe_allow_html=True)
 
     fig = go.Figure()
     fig.add_trace(go.Bar(x=out.index.astype(str), y=out["FCF"], name="FCF", text=out["FCF"].round(0), textposition="outside"))
@@ -280,6 +294,8 @@ def _plot_dividend_safety(ticker: str, cashflow: pd.DataFrame) -> None:
 
     with st.expander("Ver tabla (últimos 5 años)"):
         st.dataframe(out, use_container_width=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.Series) -> None:
@@ -321,6 +337,8 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
     monthly["Sobrevalorado"] = monthly["DivAnual"] / y_min if y_min > 0 else None
     monthly["Infravalorado"] = monthly["DivAnual"] / y_max if y_max > 0 else None
 
+    st.markdown('<div class="tab-card">', unsafe_allow_html=True)
+
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=price_daily.index, y=price_daily["Close"], mode="lines", name="Precio (diario)"))
     fig.add_trace(go.Scatter(x=monthly.index, y=monthly["Sobrevalorado"], mode="lines", name="Banda sobrevalorado", line=dict(dash="dot")))
@@ -360,6 +378,8 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
         show = monthly[["Close", "DivAnual", "Yield", "Sobrevalorado", "Infravalorado"]].copy()
         st.dataframe(show, use_container_width=True)
 
+    st.markdown('</div>', unsafe_allow_html=True)
+
 
 # =========================================================
 # Página principal
@@ -369,29 +389,34 @@ def page_analysis() -> None:
     user_email = _get_user_email()
     admin = is_admin()
 
-    # -----------------------------
-    # CSS global (tarjetas rectangulares)
-    # -----------------------------
+    # CSS: search / cards / login adjustments (applies site-wide)
     st.markdown(
         """
         <style>
-        div[data-testid="stAppViewContainer"] section.main div.block-container {
-            padding-top: 0.35rem !important;
-            padding-left: 2.0rem !important;
-            padding-right: 2.0rem !important;
-            max-width: 100% !important;
+        /* Search input: centered and limited to 50% width */
+        .search-middle > div[data-testid="stTextInput"] { max-width: 640px; margin: 0 auto; }
+        /* Remove inner border of the search input */
+        div[data-testid="stTextInput"] input { border: none !important; box-shadow:none !important; }
+        /* Modern card for tabs */
+        .tab-card {
+          background: #ffffff;
+          border-radius: 12px;
+          padding: 12px;
+          box-shadow: 0 6px 18px rgba(20,20,20,0.08);
+          margin-bottom: 12px;
         }
-        .kpi-card { border-radius: 0 !important; border-bottom: none !important; box-shadow: none !important; }
-        .kpi-label { font-size: 0.78rem; color: rgba(0,0,0,0.55); margin-bottom: 6px; }
-        .kpi-value { font-size: 1.55rem; font-weight: 700; line-height: 1.1; }
+        /* KPI card styling */
+        .kpi-card { background: transparent; border: none; padding: 10px 6px; }
+        .kpi-label { font-size: 0.78rem; color: rgba(0,0,0,0.55); margin-bottom:6px; }
+        .kpi-value { font-size: 1.4rem; font-weight:700; }
+        /* Narrow forms (affects login) */
+        div[data-testid="stForm"] { max-width: 520px !important; margin: 0 auto !important; border-radius: 10px; }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    # -----------------------------
-    # Sidebar controles
-    # -----------------------------
+    # Sidebar
     with st.sidebar:
         if admin:
             if st.button("🧹 Limpiar caché", key="clear_cache_btn", use_container_width=True):
@@ -409,19 +434,38 @@ def page_analysis() -> None:
             else:
                 limit_box.warning("No se detectó el correo del usuario.")
 
-    # -----------------------------
-    # Buscador (form)
-    # -----------------------------
+    # ---------- Buscador (sin botón, Enter activa) ----------
     st.markdown("## 🔎 Buscador")
-    with st.form("search_form", clear_on_submit=False):
-        ticker_in = st.text_input("Ticker (ej: AAPL, MSFT, KO)", value="AAPL", key="ticker_main")
-        submitted = st.form_submit_button("Buscar")
+    # columns to keep the input centered and not full width
+    c_left, c_mid, c_right = st.columns([1, 2, 1])
+    with c_mid:
+        # wrapper class to limit width via CSS above
+        st.markdown('<div class="search-middle">', unsafe_allow_html=True)
+        if "ticker_main" not in st.session_state:
+            st.session_state["ticker_main"] = "AAPL"
 
-    if not submitted:
-        st.info("Introduce un ticker y pulsa 'Buscar' para cargar datos.")
+        def _submit_search():
+            val = (st.session_state.get("ticker_main") or "").strip().upper()
+            if val:
+                st.session_state["ticker"] = val
+                # rerun happens automatically on_change
+
+        st.text_input(
+            "Ticker (ej: AAPL, MSFT, KO)",
+            key="ticker_main",
+            value=st.session_state.get("ticker_main", "AAPL"),
+            label_visibility="visible",
+            placeholder="Buscar ticker y presiona Enter (ej: AAPL, MSFT, KO)",
+            on_change=_submit_search,
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # If user has not triggered search yet, inform
+    if "ticker" not in st.session_state:
+        st.info("Escribe un ticker y presiona Enter para cargar datos.")
         return
 
-    ticker = (ticker_in or "").strip().upper()
+    ticker = (st.session_state.get("ticker") or "").strip().upper()
     if not ticker:
         st.error("Ticker vacío.")
         return
@@ -452,31 +496,56 @@ def page_analysis() -> None:
     logos = logo_candidates(website) if website else []
     logo_url = next((u for u in logos if isinstance(u, str) and u.startswith(("http://", "https://"))), "")
 
-    # -----------------------------
-    # Encabezado (logo + nombre + precio) y KPIs
-    # -----------------------------
-    left, right = st.columns([1.2, 0.8], gap="large")
+    # ---------- Header: logo to the LEFT of name/price ----------
+    left, right = st.columns([1.15, 0.85], gap="large")
     with left:
-        # logo original (restaurado)
-        if logo_url:
-            st.image(logo_url, width=56)
-        st.markdown(f"### {ticker} — {company_name}")
-        st.markdown(f"## {_fmt_price(last_price, currency)}")
-        if delta_txt:
-            color = "#16a34a" if (pct_val is not None and pct_val >= 0) else "#dc2626"
-            st.markdown(f"<div style='margin-top:-6px; color:{color}; font-weight:600'>{delta_txt}</div>", unsafe_allow_html=True)
+        c_logo, c_text = st.columns([0.12, 0.88], gap="small", vertical_alignment="center")
+        with c_logo:
+            if logo_url:
+                st.image(logo_url, width=72)  # larger logo
+        with c_text:
+            st.markdown(f"### {ticker} — {company_name}")
+            st.markdown(f"## {_fmt_price(last_price, currency)}")
+            if delta_txt:
+                color = "#16a34a" if (pct_val is not None and pct_val >= 0) else "#dc2626"
+                st.markdown(f\"<div style='margin-top:-6px; color:{color}; font-weight:600'>{delta_txt}</div>\", unsafe_allow_html=True)
 
+    # KPIs (incluye 4 dividendos dentro de KPIs)
     with right:
         st.markdown("### KPIs clave")
-        c1, c2, c3 = st.columns(3)
-        with c1:
+        r1c1, r1c2, r1c3 = st.columns(3, gap="large")
+        r2c1, r2c2, r2c3 = st.columns(3, gap="large")
+
+        with r1c1:
             _kpi_card("Beta", _fmt_kpi(stats.get("beta")))
-        with c2:
+        with r1c2:
             pe = stats.get("pe_ttm")
             pe_txt = (_fmt_kpi(pe) + "x") if isinstance(pe, (int, float)) else "N/D"
             _kpi_card("PER (TTM)", pe_txt)
-        with c3:
+        with r1c3:
             _kpi_card("EPS (TTM)", _fmt_kpi(stats.get("eps_ttm")))
+
+        # Dividend Kpis (otros KPIs migrados aquí)
+        div_yield = _divk_get(divk, "div_yield", "dividend_yield", "dividendYield", "dividend_yield_pct")
+        fwd_div_yield = _divk_get(divk, "fwd_div_yield", "forward_div_yield", "forward_dividend_yield")
+        annual_div = _divk_get(divk, "annual_dividend", "annual_div", "annualDividend")
+        payout = _divk_get(divk, "payout_ratio", "payout", "payoutRatio")
+
+        with r2c1:
+            _kpi_card("Dividend Yield", _fmt_kpi(div_yield, suffix="%", decimals=2) if isinstance(div_yield, (int, float)) else (_fmt_kpi(div_yield) if div_yield else "N/D"))
+        with r2c2:
+            _kpi_card("Forward Div. Yield", _fmt_kpi(fwd_div_yield, suffix="%", decimals=2) if isinstance(fwd_div_yield, (int, float)) else (_fmt_kpi(fwd_div_yield) if fwd_div_yield else "N/D"))
+        with r2c3:
+            _kpi_card("Div. anual ($)", _fmt_kpi(annual_div, decimals=2) if isinstance(annual_div, (int, float)) else (_fmt_kpi(annual_div) if annual_div else "N/D"))
+
+        # Un pequeño KPI adicional (payout)
+        with r1c1:
+            # reutilizamos r1c1 solo para mostrar payout en otra linea (visual)
+            pass
+        # display payout under the KPIs as plain text next to others:
+        with r2c1:
+            st.caption("PayOut Ratio")
+            st.markdown(f"**{_fmt_kpi(payout,suffix='%',decimals=0) if isinstance(payout,(int,float)) else (_fmt_kpi(payout) if payout else 'N/D')}**")
 
     st.divider()
 
@@ -494,7 +563,7 @@ def page_analysis() -> None:
         ]
     )
 
-    # TAB Dividendos con sub-tabs
+    # TAB Dividendos con sub-tabs (tarjetas modernizadas)
     with main_tabs[0]:
         inputs = _load_dividend_inputs(ticker, YEARS)
         price_daily = inputs["price_daily"]
@@ -509,7 +578,7 @@ def page_analysis() -> None:
         with sub_tabs[2]:
             _plot_dividend_safety(ticker, cashflow)
 
-    # Otros tabs: placeholders - conserva estructura para futuros gráficos
+    # Otros tabs: placeholders
     with main_tabs[1]:
         st.info("Aquí irán los gráficos de Múltiplos (pendiente).")
     with main_tabs[2]:
@@ -520,7 +589,3 @@ def page_analysis() -> None:
         st.info("Aquí irán los gráficos de Flujo de Efectivo (pendiente).")
     with main_tabs[5]:
         st.info("Sección 'Otro' (pendiente).")
-
-    # Debug / extras: muestra divk resumido
-    st.markdown("### 🔬 Otros KPIs")
-    st.write(divk)
