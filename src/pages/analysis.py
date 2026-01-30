@@ -541,13 +541,13 @@ def page_analysis() -> None:
         dividends = inputs["dividends"]
         cashflow = inputs["cashflow"]
 
-        sub_tabs = st.tabs(["📌 Geraldine Weiss", "📈 Evolución del dividendo", "🛡️ Seguridad del dividendo"])
+        sub_tabs = st.tabs(["📈 Evolución del dividendo", "🛡️ Seguridad del dividendo", "📌 Geraldine Weiss"])
         with sub_tabs[0]:
-            _plot_geraldine_weiss(ticker, price_daily, dividends)
-        with sub_tabs[1]:
             _plot_dividend_evolution(ticker, price_daily, dividends)
-        with sub_tabs[2]:
+        with sub_tabs[1]:
             _plot_dividend_safety(ticker, cashflow)
+        with sub_tabs[2]:
+            _plot_geraldine_weiss(ticker, price_daily, dividends)
 
     with main_tabs[1]:
         st.info("Aquí irán los gráficos de Múltiplos (pendiente).")
