@@ -5,14 +5,14 @@ import base64
 import json
 import os
 import sqlite3
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import pbkdf2_hmac
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-# Use working directory at runtime for data storage so deployed app can write files
+
+# Primary runtime data dir (escribible en la mayoría de entornos)
 DATA_DIR = Path.cwd() / "data"
 USERS_PATH = DATA_DIR / "users.json"
 DB_PATH = DATA_DIR / "app.sqlite3"
@@ -21,22 +21,35 @@ DB_PATH = DATA_DIR / "app.sqlite3"
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+
 def _norm_email(email: str) -> str:
     return (email or "").strip().lower()
 
+
 def ensure_users_file() -> None:
-    # create runtime data dir if missing and an empty users.json
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    if not USERS_PATH.exists():
-        try:
+    """
+    Intenta crear users.json en DATA_DIR (runtime). Si no es posible,
+    intenta crear en REPO_ROOT/data como fallback.
+    """
+    global USERS_PATH
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        if not USERS_PATH.exists():
             USERS_PATH.write_text("{}", encoding="utf-8")
-        except Exception:
-            # fallback: attempt to create in REPO_ROOT/data if cwd not writable
+    except Exception:
+        # Fallback a carpeta del repo (por si cwd no es escribible)
+        try:
             repo_data = REPO_ROOT / "data"
             repo_data.mkdir(parents=True, exist_ok=True)
             alt_path = repo_data / "users.json"
             if not alt_path.exists():
                 alt_path.write_text("{}", encoding="utf-8")
+            # Ajustar USERS_PATH a la ruta alterna para que las posteriores lecturas/escrituras la usen
+            USERS_PATH = alt_path
+        except Exception:
+            # Si falla el fallback, dejamos que las funciones que leen usuarios manejen la ausencia.
+            return
+
 
 def load_users() -> Dict[str, Dict[str, Any]]:
     ensure_users_file()
@@ -53,9 +66,11 @@ def load_users() -> Dict[str, Dict[str, Any]]:
     except Exception:
         return {}
 
+
 def save_users(users: Dict[str, Dict[str, Any]]) -> None:
     ensure_users_file()
     USERS_PATH.write_text(json.dumps(users, indent=2, ensure_ascii=False), encoding="utf-8")
+
 
 def hash_password(password: str, *, salt_b64: Optional[str] = None, iterations: int = 200_000) -> Dict[str, str]:
     if salt_b64:
@@ -71,6 +86,7 @@ def hash_password(password: str, *, salt_b64: Optional[str] = None, iterations: 
         "hash_b64": base64.b64encode(dk).decode("utf-8"),
     }
 
+
 def verify_password(password: str, meta: Dict[str, Any]) -> bool:
     try:
         if meta.get("algo") != "pbkdf2_sha256":
@@ -83,6 +99,7 @@ def verify_password(password: str, meta: Dict[str, Any]) -> bool:
     except Exception:
         return False
 
+
 def upsert_user(email: str, password: str, role: str = "user") -> Dict[str, Any]:
     email_n = _norm_email(email)
     users = load_users()
@@ -91,14 +108,38 @@ def upsert_user(email: str, password: str, role: str = "user") -> Dict[str, Any]
     save_users(users)
     return users[email_n]
 
+
 def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
     users = load_users()
     return users.get(_norm_email(email))
 
+
 def has_any_user() -> bool:
     return len(load_users()) > 0
+
 
 def get_conn() -> sqlite3.Connection:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    # Tabla usada por cache_store.py
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS kv_cache (
+            key TEXT PRIMARY KEY,
+            value_json TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            ttl_seconds INTEGER
+        )
+        """
+    )
+    conn.commit()
     return conn
+
+
+def init_db() -> None:
+    """
+    Inicializa lo mínimo necesario: archivo de usuarios y la BD sqlite (cache).
+    """
+    ensure_users_file()
+    _ = get_conn()
