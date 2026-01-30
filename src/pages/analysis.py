@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 import streamlit as st
 import yfinance as yf
 
-from src.auth import is_admin
+from src.auth import is_admin, _get_user_email  # ensure _get_user_email is available in auth (if not, keep the one in this file)
 from src.services.cache_store import cache_clear_all
 from src.services.finance_data import (
     get_key_stats,
@@ -160,7 +160,6 @@ def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: 
     else:
         title = f"Evolución del dividendo anual — {ticker} | CAGR: {cagr:.2f}% (últimos {YEARS} años)"
 
-    # modern card wrapper start
     st.markdown('<div class="tab-card">', unsafe_allow_html=True)
 
     fig = go.Figure()
@@ -186,7 +185,6 @@ def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: 
         st.dataframe(pd.DataFrame({"Año": annual.index, "Dividendo anual": annual.values}).set_index("Año"), use_container_width=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
-    # modern card wrapper end
 
 
 def _pick_cashflow_cols(df: pd.DataFrame) -> Tuple[Optional[str], Optional[str]]:
@@ -436,10 +434,8 @@ def page_analysis() -> None:
 
     # ---------- Buscador (sin botón, Enter activa) ----------
     st.markdown("## 🔎 Buscador")
-    # columns to keep the input centered and not full width
     c_left, c_mid, c_right = st.columns([1, 2, 1])
     with c_mid:
-        # wrapper class to limit width via CSS above
         st.markdown('<div class="search-middle">', unsafe_allow_html=True)
         if "ticker_main" not in st.session_state:
             st.session_state["ticker_main"] = "AAPL"
@@ -448,7 +444,6 @@ def page_analysis() -> None:
             val = (st.session_state.get("ticker_main") or "").strip().upper()
             if val:
                 st.session_state["ticker"] = val
-                # rerun happens automatically on_change
 
         st.text_input(
             "Ticker (ej: AAPL, MSFT, KO)",
@@ -460,7 +455,6 @@ def page_analysis() -> None:
         )
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # If user has not triggered search yet, inform
     if "ticker" not in st.session_state:
         st.info("Escribe un ticker y presiona Enter para cargar datos.")
         return
@@ -502,13 +496,13 @@ def page_analysis() -> None:
         c_logo, c_text = st.columns([0.12, 0.88], gap="small", vertical_alignment="center")
         with c_logo:
             if logo_url:
-                st.image(logo_url, width=72)  # larger logo
+                st.image(logo_url, width=72)
         with c_text:
             st.markdown(f"### {ticker} — {company_name}")
             st.markdown(f"## {_fmt_price(last_price, currency)}")
             if delta_txt:
                 color = "#16a34a" if (pct_val is not None and pct_val >= 0) else "#dc2626"
-                st.markdown(f\"<div style='margin-top:-6px; color:{color}; font-weight:600'>{delta_txt}</div>\", unsafe_allow_html=True)
+                st.markdown(f"<div style='margin-top:-6px; color:{color}; font-weight:600'>{delta_txt}</div>", unsafe_allow_html=True)
 
     # KPIs (incluye 4 dividendos dentro de KPIs)
     with right:
@@ -525,7 +519,6 @@ def page_analysis() -> None:
         with r1c3:
             _kpi_card("EPS (TTM)", _fmt_kpi(stats.get("eps_ttm")))
 
-        # Dividend Kpis (otros KPIs migrados aquí)
         div_yield = _divk_get(divk, "div_yield", "dividend_yield", "dividendYield", "dividend_yield_pct")
         fwd_div_yield = _divk_get(divk, "fwd_div_yield", "forward_div_yield", "forward_dividend_yield")
         annual_div = _divk_get(divk, "annual_dividend", "annual_div", "annualDividend")
@@ -538,11 +531,6 @@ def page_analysis() -> None:
         with r2c3:
             _kpi_card("Div. anual ($)", _fmt_kpi(annual_div, decimals=2) if isinstance(annual_div, (int, float)) else (_fmt_kpi(annual_div) if annual_div else "N/D"))
 
-        # Un pequeño KPI adicional (payout)
-        with r1c1:
-            # reutilizamos r1c1 solo para mostrar payout en otra linea (visual)
-            pass
-        # display payout under the KPIs as plain text next to others:
         with r2c1:
             st.caption("PayOut Ratio")
             st.markdown(f"**{_fmt_kpi(payout,suffix='%',decimals=0) if isinstance(payout,(int,float)) else (_fmt_kpi(payout) if payout else 'N/D')}**")
@@ -563,7 +551,6 @@ def page_analysis() -> None:
         ]
     )
 
-    # TAB Dividendos con sub-tabs (tarjetas modernizadas)
     with main_tabs[0]:
         inputs = _load_dividend_inputs(ticker, YEARS)
         price_daily = inputs["price_daily"]
@@ -578,7 +565,6 @@ def page_analysis() -> None:
         with sub_tabs[2]:
             _plot_dividend_safety(ticker, cashflow)
 
-    # Otros tabs: placeholders
     with main_tabs[1]:
         st.info("Aquí irán los gráficos de Múltiplos (pendiente).")
     with main_tabs[2]:
