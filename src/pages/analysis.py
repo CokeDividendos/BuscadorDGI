@@ -493,8 +493,8 @@ def page_analysis() -> None:
     # KPIs (incluye 4 dividendos)
     with right:
         st.markdown("### KPIs clave")
-        r1c1, r1c2, r1c3 = st.columns(3, gap="large")
-        r2c1, r2c2, r2c3 = st.columns(3, gap="large")
+        r1c1, r1c2, r1c3, r1c4 = st.columns(4, gap="large")
+        r2c1, r2c2, r2c3, r2c4 = st.columns(4, gap="large")
 
         with r1c1:
             _kpi_card("Beta", _fmt_kpi(stats.get("beta")))
@@ -505,21 +505,20 @@ def page_analysis() -> None:
         with r1c3:
             _kpi_card("EPS (TTM)", _fmt_kpi(stats.get("eps_ttm")))
 
+        with r1c4:
+            _kpi_card("Dividend Yield", _fmt_kpi(div_yield, suffix="%", decimals=2) if isinstance(div_yield, (int, float)) else (_fmt_kpi(div_yield) if div_yield else "N/D"))
+
         div_yield = _divk_get(divk, "div_yield", "dividend_yield", "dividendYield", "dividend_yield_pct")
         fwd_div_yield = _divk_get(divk, "fwd_div_yield", "forward_div_yield", "forward_dividend_yield")
         annual_div = _divk_get(divk, "annual_dividend", "annual_div", "annualDividend")
         payout = _divk_get(divk, "payout_ratio", "payout", "payoutRatio")
 
         with r2c1:
-            _kpi_card("Dividend Yield", _fmt_kpi(div_yield, suffix="%", decimals=2) if isinstance(div_yield, (int, float)) else (_fmt_kpi(div_yield) if div_yield else "N/D"))
-        with r2c2:
             _kpi_card("Forward Div. Yield", _fmt_kpi(fwd_div_yield, suffix="%", decimals=2) if isinstance(fwd_div_yield, (int, float)) else (_fmt_kpi(fwd_div_yield) if fwd_div_yield else "N/D"))
-        with r2c3:
+        with r2c2:
             _kpi_card("Div. anual ($)", _fmt_kpi(annual_div, decimals=2) if isinstance(annual_div, (int, float)) else (_fmt_kpi(annual_div) if annual_div else "N/D"))
-
-        with r2c1:
-            st.caption("PayOut Ratio")
-            st.markdown(f"**{_fmt_kpi(payout,suffix='%',decimals=0) if isinstance(payout,(int,float)) else (_fmt_kpi(payout) if payout else 'N/D')}**")
+        with r2c3:
+            _kpi_card("PayOut Ratio", _fmt_kpi(payout,suffix='%',decimals=0) if isinstance(payout,(int,float)) else (_fmt_kpi(payout) if payout else 'N/D')}**")
 
     st.divider()
 
