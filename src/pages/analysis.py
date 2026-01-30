@@ -227,7 +227,8 @@ def _plot_dividend_safety(ticker: str, cashflow: pd.DataFrame) -> None:
     # yfinance suele traer columnas por periodo (datetime) y filas por concepto.
     df = cashflow.transpose().copy()
     df.index = pd.to_datetime(df.index, errors="coerce")
-    df = df.dropna(subset=[df.index.name] if df.index.name else None, axis=0, errors="ignore")
+    # Evita crash: filtrar filas con índice NaT en lugar de usar dropna(subset=...)
+    df = df.loc[df.index.notna()]
     df["Year"] = df.index.year
     df = df.set_index("Year")
 
@@ -455,16 +456,20 @@ def page_analysis() -> None:
           h2, h3 { margin-bottom: 0.25rem !important; }
           [data-testid="stCaptionContainer"] { margin-top: -6px !important; }
 
-          /* ---- Tabs: look más moderno (pills) ---- */
+          /* ---- Tabs: simple tab style (no pills) ---- */
           div[data-testid="stTabs"] button[role="tab"] {
-            border-radius: 999px !important;
+            border-radius: 6px !important;
             padding: 8px 14px !important;
             margin-right: 6px !important;
-            border: 1px solid rgba(0,0,0,0.08) !important;
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            border-bottom: 2px solid transparent !important;
           }
           div[data-testid="stTabs"] button[role="tab"][aria-selected="true"]{
-            border: 1px solid rgba(0,0,0,0.18) !important;
+            border-bottom: 3px solid #ff7a18 !important;
             font-weight: 700 !important;
+            background: transparent !important;
           }
         </style>
         """,
