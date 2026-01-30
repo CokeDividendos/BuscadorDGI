@@ -477,8 +477,6 @@ def page_analysis() -> None:
         with c3:
             _kpi_card("EPS (TTM)", _fmt_kpi(stats.get("eps_ttm")))
 
-    st.divider()
-
     # -----------------------------
     # Main tabs (restauradas)
     # -----------------------------
