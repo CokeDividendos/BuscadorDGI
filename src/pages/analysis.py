@@ -530,7 +530,7 @@ def page_analysis() -> None:
                 val = _fmt_kpi(fwd_div_yield, suffix="%", decimals=2)
             elif fwd_div_yield:
                 val = _fmt_kpi(fwd_div_yield)
-            _kpi_card("Forward Div. Yield", val)
+            _kpi_card("For. Div. Yield", val)
 
         with bottom_cols[2]:
             val = "N/D"
