@@ -160,9 +160,7 @@ def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: 
     else:
         title = f"Evolución del dividendo anual — {ticker} | CAGR: {cagr:.2f}% (últimos {YEARS} años)"
 
-    # Tarjeta: envolvemos título + gráfico + expander
-    st.markdown('<div class="tab-card">', unsafe_allow_html=True)
-
+    # Título y chart — el estilo de tarjeta se aplica vía CSS a los contenedores de Plotly
     st.markdown(f"**{title}**")
     fig = go.Figure()
     fig.add_trace(
@@ -180,12 +178,13 @@ def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: 
         height=460,
         margin=dict(l=20, r=20, t=10, b=30),
     )
+    # Quitar líneas horizontales (gridlines)
+    fig.update_yaxes(showgrid=False)
+    fig.update_xaxes(showgrid=False)
     st.plotly_chart(fig, use_container_width=True, key=f"div_evo_{ticker}")
 
     with st.expander("Ver tabla (últimos 5 años)"):
         st.dataframe(pd.DataFrame({"Año": annual.index, "Dividendo anual": annual.values}).set_index("Año"), use_container_width=True)
-
-    st.markdown('</div>', unsafe_allow_html=True)
 
 
 def _pick_cashflow_cols(df: pd.DataFrame) -> Tuple[Optional[str], Optional[str]]:
@@ -256,9 +255,6 @@ def _plot_dividend_safety(ticker: str, cashflow: pd.DataFrame) -> None:
 
     out["FCF Payout (%)"] = (out["Dividendos pagados"] / out["FCF"]) * 100
 
-    # Tarjeta: envolvemos título + gráfico + expander
-    st.markdown('<div class="tab-card">', unsafe_allow_html=True)
-
     st.markdown(f"**Seguridad del dividendo — {ticker} (últimos {YEARS} años disponibles)**")
     fig = go.Figure()
     fig.add_trace(go.Bar(x=out.index.astype(str), y=out["FCF"], name="FCF", text=out["FCF"].round(0), textposition="outside"))
@@ -290,12 +286,13 @@ def _plot_dividend_safety(ticker: str, cashflow: pd.DataFrame) -> None:
         height=520,
         margin=dict(l=20, r=20, t=10, b=30),
     )
+    # quitar líneas horizontales
+    fig.update_yaxes(showgrid=False)
+    fig.update_xaxes(showgrid=False)
     st.plotly_chart(fig, use_container_width=True, key=f"div_safe_{ticker}")
 
     with st.expander("Ver tabla (últimos 5 años)"):
         st.dataframe(out, use_container_width=True)
-
-    st.markdown('</div>', unsafe_allow_html=True)
 
 
 def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.Series) -> None:
@@ -337,9 +334,6 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
     monthly["Sobrevalorado"] = monthly["DivAnual"] / y_min if y_min > 0 else None
     monthly["Infravalorado"] = monthly["DivAnual"] / y_max if y_max > 0 else None
 
-    # Tarjeta: envolvemos título + gráfico + expander
-    st.markdown('<div class="tab-card">', unsafe_allow_html=True)
-
     st.markdown(f"**Geraldine Weiss — {ticker} (últimos {YEARS} años)**")
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=price_daily.index, y=price_daily["Close"], mode="lines", name="Precio (diario)"))
@@ -364,6 +358,9 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
         height=520,
         margin=dict(l=20, r=20, t=10, b=40),
     )
+    # quitar líneas horizontales
+    fig.update_yaxes(showgrid=False)
+    fig.update_xaxes(showgrid=False)
     st.plotly_chart(fig, use_container_width=True, key=f"gw_{ticker}")
 
     cols = st.columns(6)
@@ -378,8 +375,6 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
         show = monthly[["Close", "DivAnual", "Yield", "Sobrevalorado", "Infravalorado"]].copy()
         st.dataframe(show, use_container_width=True)
 
-    st.markdown('</div>', unsafe_allow_html=True)
-
 
 # =========================================================
 # Página principal
@@ -389,17 +384,40 @@ def page_analysis() -> None:
     user_email = _get_user_email()
     admin = is_admin()
 
-    # CSS
+    # CSS — ahora aplicamos la sombra al contenedor de Plotly y a cada KPI individual (.kpi-card)
     st.markdown(
         """
         <style>
         .search-middle > div[data-testid="stTextInput"] { max-width: 640px; margin: 0 auto; }
         div[data-testid="stTextInput"] input { border: none !important; box-shadow:none !important; }
-        .tab-card { background: #ffffff; border-radius: 12px; padding: 12px; box-shadow: 0 6px 18px rgba(20,20,20,0.08); margin-bottom: 12px; }
-        .kpi-panel { padding: 14px; }
-        .kpi-card { background: transparent; border: none; padding: 10px 6px; }
+
+        /* tarjeta: aplicamos fondo y sombra a los contenedores de Plotly que Streamlit genera */
+        div[data-testid="stPlotlyChart"], .stPlotlyChart {
+            padding: 8px;
+        }
+        div[data-testid="stPlotlyChart"] > div:first-child,
+        .stPlotlyChart > div:first-child {
+            background: #ffffff;
+            border-radius: 12px;
+            padding: 12px;
+            box-shadow: 0 10px 28px rgba(20,20,20,0.08);
+        }
+
+        /* KPI cards individuales: fondo blanco + sombra */
+        .kpi-card {
+          background: #ffffff;
+          border-radius: 10px;
+          padding: 12px;
+          box-shadow: 0 6px 16px rgba(20,20,20,0.06);
+          display: block;
+          margin-bottom: 8px;
+        }
         .kpi-label { font-size: 0.78rem; color: rgba(0,0,0,0.55); margin-bottom:6px; }
         .kpi-value { font-size: 1.4rem; font-weight:700; }
+
+        /* pequeño ajuste para los metrics bajo los charts */
+        .stMetric { background: transparent; }
+
         div[data-testid="stForm"] { max-width: 520px !important; margin: 0 auto !important; border-radius: 10px; }
         </style>
         """,
@@ -493,13 +511,11 @@ def page_analysis() -> None:
                 color = "#16a34a" if (pct_val is not None and pct_val >= 0) else "#dc2626"
                 st.markdown(f"<div style='margin-top:-6px; color:{color}; font-weight:600'>{delta_txt}</div>", unsafe_allow_html=True)
 
-    # ---------- KPIs (reordenados: tarjeta con 4 arriba + 4 abajo) ----------
+    # ---------- KPIs (reordenados: 4 arriba + 4 abajo) ----------
     with right:
-        # Abrimos tarjeta que contiene TODOS los KPIs
-        st.markdown('<div class="tab-card kpi-panel">', unsafe_allow_html=True)
         st.markdown("### KPIs clave")
 
-        # Fila superior: 4 KPIs generales (Beta, PER, EPS, Target)
+        # Fila superior: 4 KPIs generales
         top_cols = st.columns(4, gap="large")
         with top_cols[0]:
             _kpi_card("Beta", _fmt_kpi(stats.get("beta")))
@@ -512,7 +528,7 @@ def page_analysis() -> None:
         with top_cols[3]:
             _kpi_card("Target 1Y", _fmt_kpi(stats.get("target_1y")))
 
-        # Fila inferior: 4 KPIs relacionados con dividendos (div_yield, fwd, annual, payout)
+        # Fila inferior: 4 KPIs relacionados con dividendos (incluye PayOut)
         bottom_cols = st.columns(4, gap="large")
 
         div_yield = _divk_get(divk, "div_yield", "dividend_yield", "dividendYield", "dividend_yield_pct")
@@ -551,9 +567,6 @@ def page_analysis() -> None:
             elif payout:
                 val = _fmt_kpi(payout)
             _kpi_card("PayOut Ratio", val)
-
-        # Cerramos tarjeta
-        st.markdown('</div>', unsafe_allow_html=True)
 
     st.divider()
 
