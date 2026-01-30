@@ -5,15 +5,14 @@ import base64
 import json
 import os
 import sqlite3
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import pbkdf2_hmac
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-
-# Primary runtime data dir (escribible en la mayoría de entornos)
-DATA_DIR = Path.cwd() / "data"
+DATA_DIR = REPO_ROOT / "data"
 USERS_PATH = DATA_DIR / "users.json"
 DB_PATH = DATA_DIR / "app.sqlite3"
 
@@ -27,28 +26,9 @@ def _norm_email(email: str) -> str:
 
 
 def ensure_users_file() -> None:
-    """
-    Intenta crear users.json en DATA_DIR (runtime). Si no es posible,
-    intenta crear en REPO_ROOT/data como fallback.
-    """
-    global USERS_PATH
-    try:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        if not USERS_PATH.exists():
-            USERS_PATH.write_text("{}", encoding="utf-8")
-    except Exception:
-        # Fallback a carpeta del repo (por si cwd no es escribible)
-        try:
-            repo_data = REPO_ROOT / "data"
-            repo_data.mkdir(parents=True, exist_ok=True)
-            alt_path = repo_data / "users.json"
-            if not alt_path.exists():
-                alt_path.write_text("{}", encoding="utf-8")
-            # Ajustar USERS_PATH a la ruta alterna para que las posteriores lecturas/escrituras la usen
-            USERS_PATH = alt_path
-        except Exception:
-            # Si falla el fallback, dejamos que las funciones que leen usuarios manejen la ausencia.
-            return
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    if not USERS_PATH.exists():
+        USERS_PATH.write_text("{}", encoding="utf-8")
 
 
 def load_users() -> Dict[str, Dict[str, Any]]:
@@ -138,8 +118,5 @@ def get_conn() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    """
-    Inicializa lo mínimo necesario: archivo de usuarios y la BD sqlite (cache).
-    """
     ensure_users_file()
     _ = get_conn()
