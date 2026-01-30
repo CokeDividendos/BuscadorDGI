@@ -10,7 +10,8 @@ import plotly.graph_objects as go
 import streamlit as st
 import yfinance as yf
 
-from src.auth import is_admin, _get_user_email  # ensure _get_user_email is available in auth (if not, keep the one in this file)
+# IMPORTAR sólo is_admin desde auth — _get_user_email se define localmente
+from src.auth import is_admin
 from src.services.cache_store import cache_clear_all
 from src.services.finance_data import (
     get_key_stats,
@@ -71,7 +72,6 @@ def _kpi_card(label: str, value: str) -> None:
 
 
 def _divk_get(divk: Dict[str, Any], *keys: str) -> Any:
-    """Try multiple candidate keys for dividend kpis (some variants exist)."""
     for k in keys:
         if not isinstance(divk, dict):
             continue
@@ -82,7 +82,7 @@ def _divk_get(divk: Dict[str, Any], *keys: str) -> Any:
 
 
 # =========================================================
-# Datos dividendos (cache)
+# Dividendos: carga y cálculos (cache)
 # =========================================================
 @st.cache_data(ttl=DIVIDENDS_CACHE_TTL_SECONDS, show_spinner=False)
 def _load_dividend_inputs(ticker: str, years: int) -> Dict[str, Any]:
@@ -145,7 +145,7 @@ def _cagr_from_annual(annual: pd.Series) -> Optional[float]:
 
 
 # =========================================================
-# Gráficos (mismos helpers de antes)
+# Gráficos Dividendos
 # =========================================================
 def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: pd.Series) -> None:
     annual = _annual_dividends_last_years(dividends, YEARS)
@@ -387,27 +387,16 @@ def page_analysis() -> None:
     user_email = _get_user_email()
     admin = is_admin()
 
-    # CSS: search / cards / login adjustments (applies site-wide)
+    # CSS
     st.markdown(
         """
         <style>
-        /* Search input: centered and limited to 50% width */
         .search-middle > div[data-testid="stTextInput"] { max-width: 640px; margin: 0 auto; }
-        /* Remove inner border of the search input */
         div[data-testid="stTextInput"] input { border: none !important; box-shadow:none !important; }
-        /* Modern card for tabs */
-        .tab-card {
-          background: #ffffff;
-          border-radius: 12px;
-          padding: 12px;
-          box-shadow: 0 6px 18px rgba(20,20,20,0.08);
-          margin-bottom: 12px;
-        }
-        /* KPI card styling */
+        .tab-card { background: #ffffff; border-radius: 12px; padding: 12px; box-shadow: 0 6px 18px rgba(20,20,20,0.08); margin-bottom: 12px; }
         .kpi-card { background: transparent; border: none; padding: 10px 6px; }
         .kpi-label { font-size: 0.78rem; color: rgba(0,0,0,0.55); margin-bottom:6px; }
         .kpi-value { font-size: 1.4rem; font-weight:700; }
-        /* Narrow forms (affects login) */
         div[data-testid="stForm"] { max-width: 520px !important; margin: 0 auto !important; border-radius: 10px; }
         </style>
         """,
@@ -432,7 +421,7 @@ def page_analysis() -> None:
             else:
                 limit_box.warning("No se detectó el correo del usuario.")
 
-    # ---------- Buscador (sin botón, Enter activa) ----------
+    # Buscador (Enter activa)
     st.markdown("## 🔎 Buscador")
     c_left, c_mid, c_right = st.columns([1, 2, 1])
     with c_mid:
@@ -472,9 +461,7 @@ def page_analysis() -> None:
             return
         st.sidebar.info(f"🔎 Búsquedas restantes hoy: {rem_after}/{DAILY_LIMIT}")
 
-    # -----------------------------
     # Carga datos
-    # -----------------------------
     price = get_price_data(ticker) or {}
     profile = get_profile_data(ticker) or {}
     raw = profile.get("raw") if isinstance(profile, dict) else {}
@@ -490,7 +477,7 @@ def page_analysis() -> None:
     logos = logo_candidates(website) if website else []
     logo_url = next((u for u in logos if isinstance(u, str) and u.startswith(("http://", "https://"))), "")
 
-    # ---------- Header: logo to the LEFT of name/price ----------
+    # Header: logo left
     left, right = st.columns([1.15, 0.85], gap="large")
     with left:
         c_logo, c_text = st.columns([0.12, 0.88], gap="small", vertical_alignment="center")
@@ -504,7 +491,7 @@ def page_analysis() -> None:
                 color = "#16a34a" if (pct_val is not None and pct_val >= 0) else "#dc2626"
                 st.markdown(f"<div style='margin-top:-6px; color:{color}; font-weight:600'>{delta_txt}</div>", unsafe_allow_html=True)
 
-    # KPIs (incluye 4 dividendos dentro de KPIs)
+    # KPIs (incluye 4 dividendos)
     with right:
         st.markdown("### KPIs clave")
         r1c1, r1c2, r1c3 = st.columns(3, gap="large")
@@ -537,9 +524,7 @@ def page_analysis() -> None:
 
     st.divider()
 
-    # -----------------------------
-    # Main tabs (restauradas)
-    # -----------------------------
+    # Main tabs
     main_tabs = st.tabs(
         [
             "Dividendos",
