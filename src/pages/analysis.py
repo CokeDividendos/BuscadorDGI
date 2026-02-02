@@ -170,14 +170,15 @@ def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: 
     if freq_label != "Anual":
         freq_code = "Q" if freq_label == "Trimestral" else "M"
         series = dividends.resample(freq_code).sum().dropna().astype(float)
+        # Convert PeriodIndex to timestamp before comparison
+        if isinstance(series.index, pd.PeriodIndex):
+            series.index = series.index.to_timestamp()
         start_date = pd.Timestamp.now() - pd.DateOffset(years=YEARS)
         start_date = pd.to_datetime(start_date)
         series = series[series.index >= start_date]
         if series.empty:
             st.warning("No hay dividendos suficientes para graficar la evolución en la temporalidad seleccionada.")
             return
-        if isinstance(series.index, pd.PeriodIndex):
-            series.index = series.index.to_timestamp()
         if freq_label == "Trimestral":
             x_labels = series.index.to_period("Q").astype(str)
             y_axis_title = "Dividendo trimestral ($)"
@@ -427,18 +428,18 @@ def page_analysis() -> None:
     user_email = _get_user_email()
     admin = is_admin()
 
-    # CSS — aplicamos sombra solo al contenedor de KPIs; sin sombras en tarjetas individuales ni gráficos
+    # CSS — sin sombras en KPIs, tarjetas individuales ni gráficos
     st.markdown(
         """
         <style>
         .search-middle > div[data-testid="stTextInput"] { max-width: 640px; margin: 0 auto; }
         div[data-testid="stTextInput"] input { border: none !important; box-shadow:none !important; }
 
-        /* Contenedor de KPIs: aplicamos sombra al contenedor general */
+        /* Contenedor de KPIs: sin sombra ni fondo */
         .kpis-container {
-            background: #ffffff;
-            border-radius: 12px;
-            padding: 16px;
+            background: transparent;
+            border-radius: 0;
+            padding: 0;
             box-shadow: none;
             margin-bottom: 16px;
         }
