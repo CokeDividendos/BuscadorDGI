@@ -171,4 +171,3 @@ def page_analysis() -> None:
                 <div class="kpi-value">17%</div>
             </div>
             """)
-Python
