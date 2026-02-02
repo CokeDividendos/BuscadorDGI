@@ -148,45 +148,67 @@ def _cagr_from_annual(annual: pd.Series) -> Optional[float]:
 # Gráficos Dividendos
 # =========================================================
 def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: pd.Series) -> None:
+    freq_label = st.selectbox("Temporalidad", ["Anual", "Trimestral", "Mensual"], index=0, key=f"div_freq_{ticker}")
     annual = _annual_dividends_last_years(dividends, YEARS)
+    series = annual
+    x_labels = annual.index.astype(str)
+    y_axis_title = "Dividendo ($)"
+    bar_name = "Dividendo"
 
-    if annual.empty:
-        st.warning("No hay dividendos suficientes para graficar la evolución (últimos 5 años).")
-        return
-
-    cagr = _cagr_from_annual(annual)
-    if cagr is None:
-        title = f"Evolución del dividendo anual — {ticker} (últimos {YEARS} años)"
+    if freq_label != "Anual":
+        freq_code = "Q" if freq_label == "Trimestral" else "M"
+        series = dividends.resample(freq_code).sum().dropna().astype(float) if isinstance(dividends, pd.Series) else pd.Series(dtype=float)
+        start_date = pd.Timestamp.now() - pd.DateOffset(years=YEARS)
+        series = series[series.index >= start_date]
+        if series.empty:
+            st.warning("No hay dividendos suficientes para graficar la evolución en la temporalidad seleccionada.")
+            return
+        if freq_label == "Trimestral":
+            x_labels = series.index.to_period("Q").astype(str)
+            y_axis_title = "Dividendo trimestral ($)"
+            bar_name = "Dividendo trimestral"
+        else:
+            x_labels = series.index.to_period("M").astype(str)
+            y_axis_title = "Dividendo mensual ($)"
+            bar_name = "Dividendo mensual"
     else:
-        title = f"Evolución del dividendo anual — {ticker} | CAGR: {cagr:.2f}% (últimos {YEARS} años)"
+        if series.empty:
+            st.warning("No hay dividendos suficientes para graficar la evolución (últimos 5 años).")
+            return
+        y_axis_title = "Dividendo anual ($)"
+        bar_name = "Dividendo anual"
 
-    # Título y chart — el estilo de tarjeta se aplica vía CSS a los contenedores de Plotly
+    cagr = _cagr_from_annual(series) if freq_label == "Anual" else None
+    if cagr is None:
+        title = f"Evolución del dividendo {freq_label.lower()} — {ticker} (últimos {YEARS} años)"
+    else:
+        title = f"Evolución del dividendo {freq_label.lower()} — {ticker} | CAGR: {cagr:.2f}% (últimos {YEARS} años)"
+
     st.markdown(f"**{title}**")
     fig = go.Figure()
     fig.add_trace(
         go.Bar(
-            x=annual.index.astype(str),
-            y=annual.values,
-            name="Dividendo anual",
-            text=[f"${v:.2f}" for v in annual.values],
+            x=x_labels,
+            y=series.values,
+            name=bar_name,
+            text=[f"${v:.2f}" for v in series.values],
             textposition="outside",
         )
     )
     fig.update_layout(
-        xaxis_title="Año",
-        yaxis_title="Dividendo ($)",
+        xaxis_title="Año" if freq_label == "Anual" else "Periodo",
+        yaxis_title=y_axis_title,
         height=460,
         margin=dict(l=20, r=20, t=10, b=30),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
     )
-    # Quitar líneas horizontales (gridlines)
     fig.update_yaxes(showgrid=False)
     fig.update_xaxes(showgrid=False)
     st.plotly_chart(fig, use_container_width=True, key=f"div_evo_{ticker}")
 
     with st.expander("Ver tabla (últimos 5 años)"):
-        st.dataframe(pd.DataFrame({"Año": annual.index, "Dividendo anual": annual.values}).set_index("Año"), use_container_width=True)
+        st.dataframe(pd.DataFrame({"Periodo": x_labels, "Dividendo": series.values}).set_index("Periodo"), use_container_width=True)
 
 
 def _pick_cashflow_cols(df: pd.DataFrame) -> Tuple[Optional[str], Optional[str]]:
@@ -390,7 +412,7 @@ def page_analysis() -> None:
     user_email = _get_user_email()
     admin = is_admin()
 
-    # CSS — aplicamos sombra al contenedor de KPIs, sin sombras en tarjetas individuales ni gráficos
+    # CSS — aplicamos sombra solo al contenedor de KPIs; sin sombras en tarjetas individuales ni gráficos
     st.markdown(
         """
         <style>
@@ -419,6 +441,11 @@ def page_analysis() -> None:
 
         /* pequeño ajuste para los metrics bajo los charts */
         .stMetric { background: transparent; }
+
+        /* Quitar sombras a contenedores de gráficos */
+        div[data-testid="stPlotlyChart"] {
+            box-shadow: none !important;
+        }
 
         div[data-testid="stForm"] { max-width: 520px !important; margin: 0 auto !important; border-radius: 10px; }
         </style>
