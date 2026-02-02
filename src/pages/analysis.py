@@ -176,6 +176,8 @@ def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: 
         if series.empty:
             st.warning("No hay dividendos suficientes para graficar la evolución en la temporalidad seleccionada.")
             return
+        if isinstance(series.index, pd.PeriodIndex):
+            series.index = series.index.to_timestamp()
         if freq_label == "Trimestral":
             x_labels = series.index.to_period("Q").astype(str)
             y_axis_title = "Dividendo trimestral ($)"
