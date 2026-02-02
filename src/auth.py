@@ -1,8 +1,12 @@
 # src/auth.py
 from __future__ import annotations
 
+import sys
 import streamlit as st
 from src.db import ensure_users_file, has_admin_user, upsert_user, get_user_by_email, verify_password
+
+# Password requirements
+MIN_PASSWORD_LENGTH = 6
 
 
 def is_logged_in() -> bool:
@@ -18,6 +22,36 @@ def logout_button(label: str = "🚪 Cerrar sesión") -> None:
         for k in ["auth_ok", "auth_email", "auth_role", "is_admin"]:
             st.session_state.pop(k, None)
         st.rerun()
+
+
+def _ensure_admin_from_secrets() -> None:
+    """
+    Check if there's an admin defined in Streamlit secrets.
+    If yes and no users exist yet, auto-create the admin user.
+    This provides a way to bootstrap the admin without relying on ephemeral file storage.
+    
+    In .streamlit/secrets.toml, add:
+    [admin]
+    email = "admin@example.com"
+    password = "your-secure-password"
+    """
+    try:
+        # Only auto-create if no users exist yet
+        if has_any_user():
+            return
+        
+        # Check if admin credentials are in secrets
+        if hasattr(st, "secrets") and "admin" in st.secrets:
+            admin_email = st.secrets["admin"].get("email", "").strip().lower()
+            admin_password = st.secrets["admin"].get("password", "")
+            
+            if admin_email and "@" in admin_email and admin_password and len(admin_password) >= MIN_PASSWORD_LENGTH:
+                # Auto-create admin from secrets
+                upsert_user(admin_email, admin_password, role="admin")
+                print(f"[INFO] Auto-created admin user from Streamlit secrets: {admin_email}", file=sys.stderr)
+    except Exception as e:
+        # Don't fail the app if secrets aren't configured
+        print(f"[DEBUG] Could not auto-create admin from secrets: {e}", file=sys.stderr)
 
 
 def _centered_card(width_ratio: float = 1.8):
@@ -66,17 +100,27 @@ def _setup_screen() -> None:
         if not email or "@" not in email:
             st.error("Email inválido.")
             return
-        if not pwd or pwd != pwd2 or len(pwd) < 6:
-            st.error("Contraseña inválida o no coincide (mínimo 6).")
+        if not pwd or pwd != pwd2 or len(pwd) < MIN_PASSWORD_LENGTH:
+            st.error(f"Contraseña inválida o no coincide (mínimo {MIN_PASSWORD_LENGTH}).")
             return
 
         upsert_user(email, pwd, role="admin")
-        st.success("Admin creado. Ahora inicia sesión.")
+        
+        # Verify the user was created successfully
+        if has_any_user():
+            st.success("Admin creado. Ahora inicia sesión.")
+        else:
+            st.error("Error: No se pudo verificar la creación del admin. Revisa los logs.")
+            return
+        
         st.rerun()
 
 
 def require_login() -> bool:
     ensure_users_file()
+    
+    # Check if admin credentials are in Streamlit secrets and auto-create if needed
+    _ensure_admin_from_secrets()
 
     if is_logged_in():
         return True
