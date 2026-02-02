@@ -26,9 +26,14 @@ def _norm_email(email: str) -> str:
 
 
 def ensure_users_file() -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    if not USERS_PATH.exists():
-        USERS_PATH.write_text("{}", encoding="utf-8")
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        if not USERS_PATH.exists():
+            USERS_PATH.write_text("{}", encoding="utf-8")
+    except Exception as e:
+        import sys
+        print(f"Error in ensure_users_file: {e}", file=sys.stderr)
+        raise
 
 
 def load_users() -> Dict[str, Dict[str, Any]]:
@@ -43,13 +48,22 @@ def load_users() -> Dict[str, Dict[str, Any]]:
             if isinstance(v, dict):
                 out[_norm_email(k)] = v
         return out
-    except Exception:
+    except Exception as e:
+        # Log the error for debugging, but return empty dict to allow app to continue
+        import sys
+        print(f"Error loading users from {USERS_PATH}: {e}", file=sys.stderr)
         return {}
 
 
 def save_users(users: Dict[str, Dict[str, Any]]) -> None:
     ensure_users_file()
-    USERS_PATH.write_text(json.dumps(users, indent=2, ensure_ascii=False), encoding="utf-8")
+    try:
+        content = json.dumps(users, indent=2, ensure_ascii=False)
+        USERS_PATH.write_text(content, encoding="utf-8")
+    except Exception as e:
+        import sys
+        print(f"Error saving users to {USERS_PATH}: {e}", file=sys.stderr)
+        raise
 
 
 def hash_password(password: str, *, salt_b64: Optional[str] = None, iterations: int = 200_000) -> Dict[str, str]:

@@ -71,7 +71,14 @@ def _setup_screen() -> None:
             return
 
         upsert_user(email, pwd, role="admin")
-        st.success("Admin creado. Ahora inicia sesión.")
+        
+        # Verify the user was created successfully
+        if has_any_user():
+            st.success("Admin creado. Ahora inicia sesión.")
+        else:
+            st.error("Error: No se pudo verificar la creación del admin. Revisa los logs.")
+            return
+        
         st.rerun()
 
 
