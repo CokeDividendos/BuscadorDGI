@@ -5,6 +5,7 @@ import base64
 import json
 import os
 import sqlite3
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import pbkdf2_hmac
@@ -26,9 +27,13 @@ def _norm_email(email: str) -> str:
 
 
 def ensure_users_file() -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    if not USERS_PATH.exists():
-        USERS_PATH.write_text("{}", encoding="utf-8")
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        if not USERS_PATH.exists():
+            USERS_PATH.write_text("{}", encoding="utf-8")
+    except Exception as e:
+        print(f"Error in ensure_users_file: {e}", file=sys.stderr)
+        raise
 
 
 def load_users() -> Dict[str, Dict[str, Any]]:
@@ -43,13 +48,20 @@ def load_users() -> Dict[str, Dict[str, Any]]:
             if isinstance(v, dict):
                 out[_norm_email(k)] = v
         return out
-    except Exception:
+    except Exception as e:
+        # Log the error for debugging, but return empty dict to allow app to continue
+        print(f"Error loading users from {USERS_PATH}: {e}", file=sys.stderr)
         return {}
 
 
 def save_users(users: Dict[str, Dict[str, Any]]) -> None:
     ensure_users_file()
-    USERS_PATH.write_text(json.dumps(users, indent=2, ensure_ascii=False), encoding="utf-8")
+    try:
+        content = json.dumps(users, indent=2, ensure_ascii=False)
+        USERS_PATH.write_text(content, encoding="utf-8")
+    except Exception as e:
+        print(f"Error saving users to {USERS_PATH}: {e}", file=sys.stderr)
+        raise
 
 
 def hash_password(password: str, *, salt_b64: Optional[str] = None, iterations: int = 200_000) -> Dict[str, str]:
@@ -118,5 +130,15 @@ def get_conn() -> sqlite3.Connection:
 
 
 def init_db() -> None:
+    # Debug: Print paths for troubleshooting on Streamlit Cloud
+    print(f"[DEBUG] REPO_ROOT: {REPO_ROOT}", file=sys.stderr)
+    print(f"[DEBUG] DATA_DIR: {DATA_DIR}", file=sys.stderr)
+    print(f"[DEBUG] USERS_PATH: {USERS_PATH}", file=sys.stderr)
+    print(f"[DEBUG] USERS_PATH exists: {USERS_PATH.exists()}", file=sys.stderr)
+    
     ensure_users_file()
     _ = get_conn()
+    
+    # Debug: Print user count after init
+    user_count = len(load_users())
+    print(f"[DEBUG] User count after init: {user_count}", file=sys.stderr)
