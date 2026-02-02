@@ -1,8 +1,10 @@
-# Python
+# Python cache
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+
+# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -32,9 +34,8 @@ env/
 *.swo
 *~
 
-# Environment
-.env
-.env.local
+# Data files
+data/
 
 # OS
 .DS_Store

@@ -110,6 +110,12 @@ def has_any_user() -> bool:
     return len(load_users()) > 0
 
 
+def has_admin_user() -> bool:
+    """Check if there is at least one user with 'admin' role."""
+    users = load_users()
+    return any(user.get("role") == "admin" for user in users.values())
+
+
 def get_conn() -> sqlite3.Connection:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
