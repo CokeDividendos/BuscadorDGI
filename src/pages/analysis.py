@@ -177,6 +177,8 @@ def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: 
         yaxis_title="Dividendo ($)",
         height=460,
         margin=dict(l=20, r=20, t=10, b=30),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
     )
     # Quitar líneas horizontales (gridlines)
     fig.update_yaxes(showgrid=False)
@@ -285,6 +287,8 @@ def _plot_dividend_safety(ticker: str, cashflow: pd.DataFrame) -> None:
         barmode="group",
         height=520,
         margin=dict(l=20, r=20, t=10, b=30),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
     )
     # quitar líneas horizontales
     fig.update_yaxes(showgrid=False)
@@ -357,6 +361,8 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
         yaxis_title="Precio ($)",
         height=520,
         margin=dict(l=20, r=20, t=10, b=40),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
     )
     # quitar líneas horizontales
     fig.update_yaxes(showgrid=False)
