@@ -5,6 +5,7 @@ import base64
 import json
 import os
 import sqlite3
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import pbkdf2_hmac
@@ -31,7 +32,6 @@ def ensure_users_file() -> None:
         if not USERS_PATH.exists():
             USERS_PATH.write_text("{}", encoding="utf-8")
     except Exception as e:
-        import sys
         print(f"Error in ensure_users_file: {e}", file=sys.stderr)
         raise
 
@@ -50,7 +50,6 @@ def load_users() -> Dict[str, Dict[str, Any]]:
         return out
     except Exception as e:
         # Log the error for debugging, but return empty dict to allow app to continue
-        import sys
         print(f"Error loading users from {USERS_PATH}: {e}", file=sys.stderr)
         return {}
 
@@ -61,7 +60,6 @@ def save_users(users: Dict[str, Dict[str, Any]]) -> None:
         content = json.dumps(users, indent=2, ensure_ascii=False)
         USERS_PATH.write_text(content, encoding="utf-8")
     except Exception as e:
-        import sys
         print(f"Error saving users to {USERS_PATH}: {e}", file=sys.stderr)
         raise
 
@@ -132,8 +130,7 @@ def get_conn() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    # Debug: Print paths for troubleshooting
-    import sys
+    # Debug: Print paths for troubleshooting on Streamlit Cloud
     print(f"[DEBUG] REPO_ROOT: {REPO_ROOT}", file=sys.stderr)
     print(f"[DEBUG] DATA_DIR: {DATA_DIR}", file=sys.stderr)
     print(f"[DEBUG] USERS_PATH: {USERS_PATH}", file=sys.stderr)

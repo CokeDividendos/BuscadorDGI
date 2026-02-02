@@ -1,8 +1,12 @@
 # src/auth.py
 from __future__ import annotations
 
+import sys
 import streamlit as st
 from src.db import ensure_users_file, has_any_user, upsert_user, get_user_by_email, verify_password
+
+# Password requirements
+MIN_PASSWORD_LENGTH = 6
 
 
 def is_logged_in() -> bool:
@@ -41,16 +45,13 @@ def _ensure_admin_from_secrets() -> None:
             admin_email = st.secrets["admin"].get("email", "").strip().lower()
             admin_password = st.secrets["admin"].get("password", "")
             
-            if admin_email and "@" in admin_email and admin_password and len(admin_password) >= 6:
+            if admin_email and "@" in admin_email and admin_password and len(admin_password) >= MIN_PASSWORD_LENGTH:
                 # Auto-create admin from secrets
                 upsert_user(admin_email, admin_password, role="admin")
-                import sys
                 print(f"[INFO] Auto-created admin user from Streamlit secrets: {admin_email}", file=sys.stderr)
     except Exception as e:
         # Don't fail the app if secrets aren't configured
-        import sys
         print(f"[DEBUG] Could not auto-create admin from secrets: {e}", file=sys.stderr)
-        pass
 
 
 def _centered_card(width_ratio: float = 1.8):
@@ -99,8 +100,8 @@ def _setup_screen() -> None:
         if not email or "@" not in email:
             st.error("Email inválido.")
             return
-        if not pwd or pwd != pwd2 or len(pwd) < 6:
-            st.error("Contraseña inválida o no coincide (mínimo 6).")
+        if not pwd or pwd != pwd2 or len(pwd) < MIN_PASSWORD_LENGTH:
+            st.error(f"Contraseña inválida o no coincide (mínimo {MIN_PASSWORD_LENGTH}).")
             return
 
         upsert_user(email, pwd, role="admin")
