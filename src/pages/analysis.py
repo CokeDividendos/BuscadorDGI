@@ -400,8 +400,8 @@ def page_analysis() -> None:
         /* Contenedor de KPIs: aplicamos sombra al contenedor general */
         .kpis-container {
             background: #ffffff;
-            border-radius: 16px;
-            padding: 12px;
+            border-radius: 12px;
+            padding: 16px;
             box-shadow: 0 10px 28px rgba(20,20,20,0.08);
             margin-bottom: 16px;
         }
@@ -516,7 +516,7 @@ def page_analysis() -> None:
     # ---------- KPIs (reordenados: 4 arriba + 4 abajo) ----------
     with right:
         st.markdown("### KPIs clave")
-
+        
         # Contenedor único con sombra para todos los KPIs
         st.markdown('<div class="kpis-container">', unsafe_allow_html=True)
         
