@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import streamlit as st
-from src.db import ensure_users_file, has_any_user, upsert_user, get_user_by_email, verify_password
+from src.db import ensure_users_file, has_admin_user, upsert_user, get_user_by_email, verify_password
 
 
 def is_logged_in() -> bool:
@@ -81,7 +81,7 @@ def require_login() -> bool:
     if is_logged_in():
         return True
 
-    if not has_any_user():
+    if not has_admin_user():
         _setup_screen()
         return False
 
