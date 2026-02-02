@@ -149,6 +149,10 @@ def _cagr_from_annual(annual: pd.Series) -> Optional[float]:
 # =========================================================
 def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: pd.Series) -> None:
     freq_label = st.selectbox("Temporalidad", ["Anual", "Trimestral", "Mensual"], index=0, key=f"div_freq_{ticker}")
+    if not isinstance(dividends, pd.Series):
+        st.warning("No hay dividendos suficientes para graficar la evolución.")
+        return
+
     annual = _annual_dividends_last_years(dividends, YEARS)
     series = annual
     x_labels = annual.index.astype(str)
@@ -178,7 +182,7 @@ def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: 
         y_axis_title = "Dividendo anual ($)"
         bar_name = "Dividendo anual"
 
-    cagr = _cagr_from_annual(series) if freq_label == "Anual" else None
+    cagr = _cagr_from_annual(annual) if freq_label == "Anual" else None
     if cagr is None:
         title = f"Evolución del dividendo {freq_label.lower()} — {ticker} (últimos {YEARS} años)"
     else:
