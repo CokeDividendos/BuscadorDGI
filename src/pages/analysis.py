@@ -150,18 +150,18 @@ def _cagr_from_annual(annual: pd.Series) -> Optional[float]:
 def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: pd.Series) -> None:
     freq_label = st.selectbox("Temporalidad", ["Anual", "Trimestral", "Mensual"], index=0, key=f"div_freq_{ticker}")
     if not isinstance(dividends, pd.Series):
-        st.warning("No hay dividendos suficientes para graficar la evolución.")
+        st.warning("No se pudieron cargar los datos de dividendos.")
         return
 
-    annual = _annual_dividends_last_years(dividends, YEARS)
-    series = annual
-    x_labels = annual.index.astype(str)
+    annual = _annual_dividends_last_years(dividends, YEARS) if freq_label == "Anual" else pd.Series(dtype=float)
+    series = annual if freq_label == "Anual" else dividends
+    x_labels = annual.index.astype(str) if freq_label == "Anual" else dividends.index.astype(str)
     y_axis_title = "Dividendo ($)"
     bar_name = "Dividendo"
 
     if freq_label != "Anual":
         freq_code = "Q" if freq_label == "Trimestral" else "M"
-        series = dividends.resample(freq_code).sum().dropna().astype(float) if isinstance(dividends, pd.Series) else pd.Series(dtype=float)
+        series = dividends.resample(freq_code).sum().dropna().astype(float)
         start_date = pd.Timestamp.now() - pd.DateOffset(years=YEARS)
         series = series[series.index >= start_date]
         if series.empty:
