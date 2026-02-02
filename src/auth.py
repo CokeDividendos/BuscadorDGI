@@ -20,6 +20,39 @@ def logout_button(label: str = "🚪 Cerrar sesión") -> None:
         st.rerun()
 
 
+def _ensure_admin_from_secrets() -> None:
+    """
+    Check if there's an admin defined in Streamlit secrets.
+    If yes and no users exist yet, auto-create the admin user.
+    This provides a way to bootstrap the admin without relying on ephemeral file storage.
+    
+    In .streamlit/secrets.toml, add:
+    [admin]
+    email = "admin@example.com"
+    password = "your-secure-password"
+    """
+    try:
+        # Only auto-create if no users exist yet
+        if has_any_user():
+            return
+        
+        # Check if admin credentials are in secrets
+        if hasattr(st, "secrets") and "admin" in st.secrets:
+            admin_email = st.secrets["admin"].get("email", "").strip().lower()
+            admin_password = st.secrets["admin"].get("password", "")
+            
+            if admin_email and "@" in admin_email and admin_password and len(admin_password) >= 6:
+                # Auto-create admin from secrets
+                upsert_user(admin_email, admin_password, role="admin")
+                import sys
+                print(f"[INFO] Auto-created admin user from Streamlit secrets: {admin_email}", file=sys.stderr)
+    except Exception as e:
+        # Don't fail the app if secrets aren't configured
+        import sys
+        print(f"[DEBUG] Could not auto-create admin from secrets: {e}", file=sys.stderr)
+        pass
+
+
 def _centered_card(width_ratio: float = 1.8):
     """
     Helper para centrar contenido en una 'card' (container con border).
@@ -84,6 +117,9 @@ def _setup_screen() -> None:
 
 def require_login() -> bool:
     ensure_users_file()
+    
+    # Check if admin credentials are in Streamlit secrets and auto-create if needed
+    _ensure_admin_from_secrets()
 
     if is_logged_in():
         return True

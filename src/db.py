@@ -132,5 +132,16 @@ def get_conn() -> sqlite3.Connection:
 
 
 def init_db() -> None:
+    # Debug: Print paths for troubleshooting
+    import sys
+    print(f"[DEBUG] REPO_ROOT: {REPO_ROOT}", file=sys.stderr)
+    print(f"[DEBUG] DATA_DIR: {DATA_DIR}", file=sys.stderr)
+    print(f"[DEBUG] USERS_PATH: {USERS_PATH}", file=sys.stderr)
+    print(f"[DEBUG] USERS_PATH exists: {USERS_PATH.exists()}", file=sys.stderr)
+    
     ensure_users_file()
     _ = get_conn()
+    
+    # Debug: Print user count after init
+    user_count = len(load_users())
+    print(f"[DEBUG] User count after init: {user_count}", file=sys.stderr)
