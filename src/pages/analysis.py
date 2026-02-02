@@ -515,6 +515,7 @@ def page_analysis() -> None:
         st.markdown('<div class="kpis-container">', unsafe_allow_html=True)
         
         try:
+            # Try-finally ensures HTML closing tag is always rendered, even if data processing fails
             # Fila superior: 4 KPIs generales
             top_cols = st.columns(4, gap="large")
             with top_cols[0]:
