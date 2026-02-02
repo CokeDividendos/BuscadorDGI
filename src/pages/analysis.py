@@ -513,62 +513,63 @@ def page_analysis() -> None:
         
         # Contenedor único con sombra para todos los KPIs
         st.markdown('<div class="kpis-container">', unsafe_allow_html=True)
-
-        # Fila superior: 4 KPIs generales
-        top_cols = st.columns(4, gap="large")
-        with top_cols[0]:
-            _kpi_card("Beta", _fmt_kpi(stats.get("beta")))
-        with top_cols[1]:
-            pe = stats.get("pe_ttm")
-            pe_txt = (_fmt_kpi(pe) + "x") if isinstance(pe, (int, float)) else "N/D"
-            _kpi_card("PER (TTM)", pe_txt)
-        with top_cols[2]:
-            _kpi_card("EPS (TTM)", _fmt_kpi(stats.get("eps_ttm")))
-        with top_cols[3]:
-            _kpi_card("Target 1Y", _fmt_kpi(stats.get("target_1y")))
-
-        # Fila inferior: 4 KPIs relacionados con dividendos (incluye PayOut)
-        bottom_cols = st.columns(4, gap="large")
-
-        div_yield = _divk_get(divk, "div_yield", "dividend_yield", "dividendYield", "dividend_yield_pct")
-        fwd_div_yield = _divk_get(divk, "fwd_div_yield", "forward_div_yield", "forward_dividend_yield")
-        annual_div = _divk_get(divk, "annual_dividend", "annual_div", "annualDividend")
-        payout = _divk_get(divk, "payout_ratio", "payout", "payoutRatio")
-
-        with bottom_cols[0]:
-            val = "N/D"
-            if isinstance(div_yield, (int, float)):
-                val = _fmt_kpi(div_yield, suffix="%", decimals=2)
-            elif div_yield:
-                val = _fmt_kpi(div_yield)
-            _kpi_card("Dividend Yield", val)
-
-        with bottom_cols[1]:
-            val = "N/D"
-            if isinstance(fwd_div_yield, (int, float)):
-                val = _fmt_kpi(fwd_div_yield, suffix="%", decimals=2)
-            elif fwd_div_yield:
-                val = _fmt_kpi(fwd_div_yield)
-            _kpi_card("Forward Div. Yield", val)
-
-        with bottom_cols[2]:
-            val = "N/D"
-            if isinstance(annual_div, (int, float)):
-                val = _fmt_kpi(annual_div, decimals=2)
-            elif annual_div:
-                val = _fmt_kpi(annual_div)
-            _kpi_card("Div. anual ($)", val)
-
-        with bottom_cols[3]:
-            val = "N/D"
-            if isinstance(payout, (int, float)):
-                val = _fmt_kpi(payout, suffix="%", decimals=0)
-            elif payout:
-                val = _fmt_kpi(payout)
-            _kpi_card("PayOut Ratio", val)
         
-        # Cerrar contenedor de KPIs
-        st.markdown('</div>', unsafe_allow_html=True)
+        try:
+            # Fila superior: 4 KPIs generales
+            top_cols = st.columns(4, gap="large")
+            with top_cols[0]:
+                _kpi_card("Beta", _fmt_kpi(stats.get("beta")))
+            with top_cols[1]:
+                pe = stats.get("pe_ttm")
+                pe_txt = (_fmt_kpi(pe) + "x") if isinstance(pe, (int, float)) else "N/D"
+                _kpi_card("PER (TTM)", pe_txt)
+            with top_cols[2]:
+                _kpi_card("EPS (TTM)", _fmt_kpi(stats.get("eps_ttm")))
+            with top_cols[3]:
+                _kpi_card("Target 1Y", _fmt_kpi(stats.get("target_1y")))
+
+            # Fila inferior: 4 KPIs relacionados con dividendos (incluye PayOut)
+            bottom_cols = st.columns(4, gap="large")
+
+            div_yield = _divk_get(divk, "div_yield", "dividend_yield", "dividendYield", "dividend_yield_pct")
+            fwd_div_yield = _divk_get(divk, "fwd_div_yield", "forward_div_yield", "forward_dividend_yield")
+            annual_div = _divk_get(divk, "annual_dividend", "annual_div", "annualDividend")
+            payout = _divk_get(divk, "payout_ratio", "payout", "payoutRatio")
+
+            with bottom_cols[0]:
+                val = "N/D"
+                if isinstance(div_yield, (int, float)):
+                    val = _fmt_kpi(div_yield, suffix="%", decimals=2)
+                elif div_yield:
+                    val = _fmt_kpi(div_yield)
+                _kpi_card("Dividend Yield", val)
+
+            with bottom_cols[1]:
+                val = "N/D"
+                if isinstance(fwd_div_yield, (int, float)):
+                    val = _fmt_kpi(fwd_div_yield, suffix="%", decimals=2)
+                elif fwd_div_yield:
+                    val = _fmt_kpi(fwd_div_yield)
+                _kpi_card("Forward Div. Yield", val)
+
+            with bottom_cols[2]:
+                val = "N/D"
+                if isinstance(annual_div, (int, float)):
+                    val = _fmt_kpi(annual_div, decimals=2)
+                elif annual_div:
+                    val = _fmt_kpi(annual_div)
+                _kpi_card("Div. anual ($)", val)
+
+            with bottom_cols[3]:
+                val = "N/D"
+                if isinstance(payout, (int, float)):
+                    val = _fmt_kpi(payout, suffix="%", decimals=0)
+                elif payout:
+                    val = _fmt_kpi(payout)
+                _kpi_card("PayOut Ratio", val)
+        finally:
+            # Cerrar contenedor de KPIs (siempre se ejecuta)
+            st.markdown('</div>', unsafe_allow_html=True)
 
     st.divider()
 
