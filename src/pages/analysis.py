@@ -384,31 +384,27 @@ def page_analysis() -> None:
     user_email = _get_user_email()
     admin = is_admin()
 
-    # CSS — ahora aplicamos la sombra al contenedor de Plotly y a cada KPI individual (.kpi-card)
+    # CSS — aplicamos sombra al contenedor de KPIs, sin sombras en tarjetas individuales ni gráficos
     st.markdown(
         """
         <style>
         .search-middle > div[data-testid="stTextInput"] { max-width: 640px; margin: 0 auto; }
         div[data-testid="stTextInput"] input { border: none !important; box-shadow:none !important; }
 
-        /* tarjeta: aplicamos fondo y sombra a los contenedores de Plotly que Streamlit genera */
-        div[data-testid="stPlotlyChart"], .stPlotlyChart {
-            padding: 8px;
-        }
-        div[data-testid="stPlotlyChart"] > div:first-child,
-        .stPlotlyChart > div:first-child {
+        /* Contenedor de KPIs: aplicamos sombra al contenedor general */
+        .kpis-container {
             background: #ffffff;
             border-radius: 12px;
-            padding: 12px;
+            padding: 16px;
             box-shadow: 0 10px 28px rgba(20,20,20,0.08);
+            margin-bottom: 16px;
         }
 
-        /* KPI cards individuales: fondo blanco + sombra */
+        /* KPI cards individuales: sin sombra, solo fondo y padding */
         .kpi-card {
-          background: #ffffff;
+          background: transparent;
           border-radius: 10px;
           padding: 12px;
-          box-shadow: 0 6px 16px rgba(20,20,20,0.06);
           display: block;
           margin-bottom: 8px;
         }
@@ -514,6 +510,9 @@ def page_analysis() -> None:
     # ---------- KPIs (reordenados: 4 arriba + 4 abajo) ----------
     with right:
         st.markdown("### KPIs clave")
+        
+        # Contenedor único con sombra para todos los KPIs
+        st.markdown('<div class="kpis-container">', unsafe_allow_html=True)
 
         # Fila superior: 4 KPIs generales
         top_cols = st.columns(4, gap="large")
@@ -567,6 +566,9 @@ def page_analysis() -> None:
             elif payout:
                 val = _fmt_kpi(payout)
             _kpi_card("PayOut Ratio", val)
+        
+        # Cerrar contenedor de KPIs
+        st.markdown('</div>', unsafe_allow_html=True)
 
     st.divider()
 
