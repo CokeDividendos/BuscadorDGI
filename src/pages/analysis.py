@@ -148,7 +148,15 @@ def _cagr_from_annual(annual: pd.Series) -> Optional[float]:
 # Gráficos Dividendos
 # =========================================================
 def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: pd.Series) -> None:
-    freq_label = st.selectbox("Temporalidad", ["Anual", "Trimestral", "Mensual"], index=0, key=f"div_freq_{ticker}")
+    st.markdown('<div class="div-evo-select">', unsafe_allow_html=True)
+    freq_label = st.selectbox(
+        "Temporalidad",
+        ["Anual", "Trimestral", "Mensual"],
+        index=0,
+        key=f"div_freq_{ticker}",
+        help="Vista anual, trimestral o mensual",
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
     if not isinstance(dividends, pd.Series):
         st.warning("No se pudieron cargar los datos de dividendos.")
         return
@@ -163,10 +171,13 @@ def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: 
         freq_code = "Q" if freq_label == "Trimestral" else "M"
         series = dividends.resample(freq_code).sum().dropna().astype(float)
         start_date = pd.Timestamp.now() - pd.DateOffset(years=YEARS)
+        start_date = pd.to_datetime(start_date)
         series = series[series.index >= start_date]
         if series.empty:
             st.warning("No hay dividendos suficientes para graficar la evolución en la temporalidad seleccionada.")
             return
+        if isinstance(series.index, pd.PeriodIndex):
+            series.index = series.index.to_timestamp()
         if freq_label == "Trimestral":
             x_labels = series.index.to_period("Q").astype(str)
             y_axis_title = "Dividendo trimestral ($)"
@@ -428,7 +439,7 @@ def page_analysis() -> None:
             background: #ffffff;
             border-radius: 12px;
             padding: 16px;
-            box-shadow: 0 10px 28px rgba(20,20,20,0.08);
+            box-shadow: none;
             margin-bottom: 16px;
         }
 
@@ -449,6 +460,15 @@ def page_analysis() -> None:
         /* Quitar sombras a contenedores de gráficos */
         div[data-testid="stPlotlyChart"] {
             box-shadow: none !important;
+        }
+
+        /* Selector corto para evolución de dividendo */
+        .div-evo-select {
+            max-width: 240px;
+        }
+        .div-evo-select div[data-testid="stSelectbox"] {
+            max-width: 240px;
+            margin-bottom: 6px;
         }
 
         div[data-testid="stForm"] { max-width: 520px !important; margin: 0 auto !important; border-radius: 10px; }
