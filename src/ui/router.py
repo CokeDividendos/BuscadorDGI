@@ -53,18 +53,13 @@ def run_app():
             fill: #ffffff !important;
         }
         
-        /* All text elements white */
-        p, span, div {
+        /* Specific text elements */
+        .stMarkdown, [data-testid="stMarkdownContainer"] {
             color: #ffffff !important;
         }
 
         [data-testid="stCaptionContainer"] { 
             margin-top: -6px !important;
-            color: #ffffff !important;
-        }
-        
-        /* Markdown text */
-        .stMarkdown {
             color: #ffffff !important;
         }
         </style>

@@ -71,7 +71,6 @@ def _setup_screen() -> None:
         <style>
         /* Narrow the forms (login) and make them centered and squared */
         div[data-testid="stForm"] {
-            max-width: 400px !important;
             width: 400px !important;
             margin: 0 auto !important;
             border-radius: 12px !important;

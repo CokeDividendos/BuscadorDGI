@@ -28,6 +28,13 @@ from src.services.usage_limits import consume_search, remaining_searches
 YEARS = 5
 DIVIDENDS_CACHE_TTL_SECONDS = 60 * 60 * 24 * 30  # 30 días
 
+# Color scheme constants
+COLOR_PRIMARY = "#ff6d01"     # Orange - Primary chart elements
+COLOR_SECONDARY = "#ff00ff"   # Magenta - Secondary chart elements
+COLOR_TERTIARY = "#01c2ef"    # Cyan - Tertiary chart elements
+COLOR_BACKGROUND = "#141f41"  # Dark blue - Chart background
+COLOR_TEXT = "#ffffff"        # White - All text
+
 
 # =========================================================
 # Helpers UI / formato
