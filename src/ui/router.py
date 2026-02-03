@@ -17,23 +17,15 @@ def run_app():
         st.stop()
 
     # =========================================================
-    # CSS GLOBAL (incluye: sidebar SIEMPRE visible)
+    # CSS GLOBAL
     # =========================================================
     st.markdown(
         """
         <style>
-        /* --- Forzar sidebar visible siempre --- */
+        /* --- Sidebar collapsible --- */
         section[data-testid="stSidebar"] {
-            transform: none !important;
-            margin-left: 0 !important;
-            visibility: visible !important;
             min-width: 290px !important;
             max-width: 290px !important;
-        }
-
-        /* Oculta el control para colapsar/expandir (evita que lo cierren) */
-        button[data-testid="collapsedControl"] {
-            display: none !important;
         }
 
         /* Ajusta padding superior general */
@@ -81,6 +73,7 @@ def run_app():
                 "Balance",
                 "EERR",
                 "EFE",
+                "Valoración por múltiplos",
                 "Análisis Razonado",
             ]
             
