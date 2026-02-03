@@ -1179,9 +1179,9 @@ def _plot_debt_fcf_evolution(ticker: str, balance_df: pd.DataFrame, cashflow_df:
             return
         
         # Colors
-        primary_orange = "#ff6d01"
-        primary_blue = "#ff00ff"
-        primary_pink = "#01c2ef"
+        color_primary = "#ff6d01"    # Orange
+        color_secondary = "#ff00ff"  # Magenta
+        color_tertiary = "#01c2ef"   # Cyan
         
         fig_deuda = go.Figure()
         if "FCF" in df_deuda.columns:
@@ -1190,7 +1190,7 @@ def _plot_debt_fcf_evolution(ticker: str, balance_df: pd.DataFrame, cashflow_df:
                     x=df_deuda.index.astype(str),
                     y=df_deuda["FCF"],
                     name="FCF",
-                    marker_color=primary_orange,
+                    marker_color=color_primary,
                     text=df_deuda["FCF"].apply(lambda x: f"{x/1e6:.0f}M" if abs(x) >= 1e6 else f"{x:.0f}"),
                     textposition="outside",
                 )
@@ -1201,7 +1201,7 @@ def _plot_debt_fcf_evolution(ticker: str, balance_df: pd.DataFrame, cashflow_df:
                     x=df_deuda.index.astype(str),
                     y=df_deuda["Deuda Neta"],
                     name="Deuda Neta",
-                    marker_color=primary_blue,
+                    marker_color=color_secondary,
                     text=df_deuda["Deuda Neta"].apply(lambda x: f"{x/1e6:.0f}M" if abs(x) >= 1e6 else f"{x:.0f}"),
                     textposition="outside",
                 )
@@ -1214,7 +1214,7 @@ def _plot_debt_fcf_evolution(ticker: str, balance_df: pd.DataFrame, cashflow_df:
                     name="Deuda Neta/FCF",
                     mode="lines+markers+text",
                     yaxis="y2",
-                    line=dict(color=primary_pink),
+                    line=dict(color=color_tertiary),
                     text=[f"{v:.2f}" for v in df_deuda["Deuda Neta/FCF"]],
                     textposition="top right",
                 )
@@ -1288,9 +1288,9 @@ def _plot_per_evolution(ticker: str, income_df: pd.DataFrame, info: Dict[str, An
             return
         
         # Colors
-        primary_orange = "#ff6d01"
-        primary_blue = "#ff00ff"
-        primary_pink = "#01c2ef"
+        color_primary = "#ff6d01"    # Orange
+        color_secondary = "#ff00ff"  # Magenta
+        color_tertiary = "#01c2ef"   # Cyan
         
         fig_combined = go.Figure()
         fig_combined.add_trace(
@@ -1298,7 +1298,7 @@ def _plot_per_evolution(ticker: str, income_df: pd.DataFrame, info: Dict[str, An
                 x=df_per.index.astype(str),
                 y=df_per["EPS"],
                 name="EPS",
-                marker_color=primary_orange,
+                marker_color=color_primary,
                 text=df_per["EPS"].round(2),
                 textposition="outside",
             )
@@ -1308,7 +1308,7 @@ def _plot_per_evolution(ticker: str, income_df: pd.DataFrame, info: Dict[str, An
                 x=df_per.index.astype(str),
                 y=df_per["Precio"],
                 name="Precio",
-                marker_color=primary_blue,
+                marker_color=color_secondary,
                 text=df_per["Precio"].round(2),
                 textposition="outside",
             )
@@ -1320,7 +1320,7 @@ def _plot_per_evolution(ticker: str, income_df: pd.DataFrame, info: Dict[str, An
                 name="PER",
                 mode="lines+markers+text",
                 yaxis="y2",
-                line=dict(color=primary_pink),
+                line=dict(color=color_tertiary),
                 text=[f"{v:.2f}" for v in df_per["PER"]],
                 textposition="top right",
             )
@@ -1477,9 +1477,9 @@ def _plot_ev_ebitda_evolution(ticker: str, income_df: pd.DataFrame, balance_df: 
             st.info("ℹ️ Usando capitalización de mercado actual para todos los años (EV histórico aproximado)")
         
         # Colors
-        primary_orange = "#ff6d01"
-        primary_blue = "#ff00ff"
-        primary_pink = "#01c2ef"
+        color_primary = "#ff6d01"    # Orange
+        color_secondary = "#ff00ff"  # Magenta
+        color_tertiary = "#01c2ef"   # Cyan
         
         fig_ev = go.Figure()
         if "EBITDA" in df_ev.columns:
@@ -1488,7 +1488,7 @@ def _plot_ev_ebitda_evolution(ticker: str, income_df: pd.DataFrame, balance_df: 
                     x=df_ev.index.astype(str),
                     y=df_ev["EBITDA"],
                     name="EBITDA",
-                    marker_color=primary_orange,
+                    marker_color=color_primary,
                     text=df_ev["EBITDA"].apply(lambda x: f"{x/1e6:.0f}M" if abs(x) >= 1e6 else f"{x:.0f}"),
                     textposition="outside",
                 )
@@ -1499,7 +1499,7 @@ def _plot_ev_ebitda_evolution(ticker: str, income_df: pd.DataFrame, balance_df: 
                     x=df_ev.index.astype(str),
                     y=df_ev["EV"],
                     name="EV",
-                    marker_color=primary_blue,
+                    marker_color=color_secondary,
                     text=df_ev["EV"].apply(lambda x: f"{x/1e9:.1f}B" if abs(x) >= 1e9 else f"{x/1e6:.0f}M"),
                     textposition="outside",
                 )
@@ -1512,7 +1512,7 @@ def _plot_ev_ebitda_evolution(ticker: str, income_df: pd.DataFrame, balance_df: 
                     name="EV/EBITDA",
                     mode="lines+markers+text",
                     yaxis="y2",
-                    line=dict(color=primary_pink),
+                    line=dict(color=color_tertiary),
                     text=[f"{v:.2f}" for v in df_ev["EV/EBITDA"]],
                     textposition="top right",
                 )
