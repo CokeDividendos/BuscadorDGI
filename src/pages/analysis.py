@@ -1359,10 +1359,51 @@ def _plot_ev_ebitda_evolution(ticker: str, income_df: pd.DataFrame, balance_df: 
         market_cap = info.get("marketCap")
         
         # Calculate EV and EV/EBITDA
+        # Note: We need historical market cap for accurate EV calculation
+        # Try to get historical market cap by using shares outstanding and historical prices
         ev = None
         ev_ebitda = None
-        if market_cap is not None and net_debt is not None:
-            # EV is constant for all years (using current market cap)
+        
+        # Get shares outstanding from balance sheet or income statement
+        shares_col = None
+        for col in balance_df.columns:
+            if "ordinary shares" in str(col).lower() or "shares outstanding" in str(col).lower():
+                shares_col = col
+                break
+        
+        if shares_col is None and not income_df.empty:
+            for col in income_df.columns:
+                if "ordinary shares" in str(col).lower() or "shares outstanding" in str(col).lower():
+                    shares_col = col
+                    break
+        
+        # Try to calculate historical market cap
+        historical_market_cap = None
+        if shares_col is not None:
+            shares_data = pd.to_numeric(balance_df[shares_col] if shares_col in balance_df.columns 
+                                       else income_df[shares_col], errors="coerce")
+            
+            # Get historical year-end prices
+            t = yf.Ticker(ticker)
+            price_data = t.history(period="max")
+            if not price_data.empty:
+                price_yearly = price_data.resample("Y").last()["Close"]
+                price_yearly.index = price_yearly.index.year
+                
+                # Calculate historical market cap = shares * price
+                # Align indices
+                common_years = shares_data.index.intersection(price_yearly.index)
+                if len(common_years) > 0:
+                    historical_market_cap = shares_data[common_years] * price_yearly[common_years]
+        
+        if historical_market_cap is not None and net_debt is not None:
+            # Use historical market cap where available
+            ev = historical_market_cap + net_debt
+            ev_ebitda = ev / ebitda
+        elif market_cap is not None and net_debt is not None:
+            # Fallback: Use current market cap for all years (limitation noted)
+            # Note: This is a simplification - ideally we'd use historical market cap
+            st.info("ℹ️ Usando capitalización de mercado actual para todos los años (EV histórico aproximado)")
             ev = pd.Series([market_cap + net_debt.iloc[i] if i < len(net_debt) else None 
                           for i in range(len(ebitda))], 
                           index=ebitda.index)
@@ -1558,7 +1599,7 @@ def _calculate_financial_ratios(balance_df: pd.DataFrame, income_df: pd.DataFram
     # NOPAT = EBIT * (1 - Tax Rate)
     # Invested Capital = Total Assets - Current Liabilities
     if ebit is not None and total_assets is not None and current_liab is not None:
-        # Calculate tax rate from net income if available
+        # Calculate tax rate from financial data if available
         if net_income is not None and tax is not None:
             # EBIT - Tax = Net Income (approximately)
             # Tax rate = Tax / (EBIT)
@@ -1569,8 +1610,10 @@ def _calculate_financial_ratios(balance_df: pd.DataFrame, income_df: pd.DataFram
             tax_rate = 1 - (net_income / ebit)
             tax_rate = tax_rate.clip(0, 1)
         else:
-            # Default tax rate
-            tax_rate = 0.21  # Use 21% as default corporate tax rate
+            # Default tax rate: 21% (U.S. federal corporate tax rate)
+            # Note: For international stocks, actual tax rates may vary by jurisdiction
+            # and may range from 0% to 35%+ depending on the country
+            tax_rate = 0.21
         
         nopat = ebit * (1 - tax_rate)
         invested_capital = total_assets - current_liab
