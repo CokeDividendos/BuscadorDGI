@@ -1518,8 +1518,12 @@ def page_analysis() -> None:
                     display_df = ratios_transposed.copy()
                     
                     # Format values to 2 decimal places
-                    for col in display_df.columns:
-                        display_df[col] = display_df[col].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "N/D")
+                    try:
+                        # Use map() for pandas >= 2.1, applymap() for older versions
+                        display_df = display_df.map(lambda x: f"{x:.2f}" if pd.notna(x) else "N/D")
+                    except AttributeError:
+                        # Fallback to applymap for older pandas versions
+                        display_df = display_df.applymap(lambda x: f"{x:.2f}" if pd.notna(x) else "N/D")
                     
                     # Display the dataframe
                     st.dataframe(
@@ -1530,10 +1534,16 @@ def page_analysis() -> None:
                     
                     # Add radio buttons for metric selection
                     st.markdown("**Seleccione una métrica para visualizar:**")
+                    
+                    # Calculate default index for radio button
+                    default_index = 0
+                    if st.session_state[session_key] in ratio_cols:
+                        default_index = ratio_cols.index(st.session_state[session_key])
+                    
                     selected_metric = st.radio(
                         "Métrica",
                         ratio_cols,
-                        index=ratio_cols.index(st.session_state[session_key]) if st.session_state[session_key] in ratio_cols else 0,
+                        index=default_index,
                         key=f"ratio_selector_{ticker}",
                         label_visibility="collapsed"
                     )
