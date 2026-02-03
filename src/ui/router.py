@@ -2,7 +2,7 @@
 import streamlit as st
 
 from src.db import init_db
-from src.auth import require_login, is_admin, logout_button, is_logged_in
+from src.auth import require_login, is_admin, logout_button
 from src.pages.analysis import page_analysis
 from src.pages.admin_users import page_admin_users
 from src.services.cache_store import cache_clear_all

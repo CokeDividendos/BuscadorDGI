@@ -1310,29 +1310,21 @@ def page_analysis() -> None:
     
     # Consumo límite - ONLY on new ticker entry, not on section changes
     if (not admin) and user_email and is_new_ticker:
-        # Check if ticker was just submitted (user action) vs rerun from section change
-        ticker_just_submitted = st.session_state.get("ticker_just_submitted", False)
-        
-        if ticker_just_submitted:
-            ok, rem_after = consume_search(user_email, DAILY_LIMIT, cost=1)
-            if not ok:
-                st.error("🚫 Búsquedas diarias alcanzadas. Vuelve mañana.")
-                return
-            # Update last searched ticker
-            st.session_state["last_searched_ticker"] = ticker
-            # Clear the submission flag
-            st.session_state["ticker_just_submitted"] = False
-        elif last_ticker is None:
-            # First time loading, also consume a search
-            ok, rem_after = consume_search(user_email, DAILY_LIMIT, cost=1)
-            if not ok:
-                st.error("🚫 Búsquedas diarias alcanzadas. Vuelve mañana.")
-                return
-            # Update last searched ticker
-            st.session_state["last_searched_ticker"] = ticker
+        ok, rem_after = consume_search(user_email, DAILY_LIMIT, cost=1)
+        if not ok:
+            st.error("🚫 Búsquedas diarias alcanzadas. Vuelve mañana.")
+            return
+        # Update last searched ticker after successful consumption
+        st.session_state["last_searched_ticker"] = ticker
+        # Clear the submission flag if it exists
+        st.session_state.pop("ticker_just_submitted", None)
     elif is_new_ticker and admin:
         # For admin, just track the ticker without consuming
         st.session_state["last_searched_ticker"] = ticker
+        st.session_state.pop("ticker_just_submitted", None)
+    else:
+        # Same ticker, just clear the flag
+        st.session_state.pop("ticker_just_submitted", None)
     
     # Carga datos - This uses cache, so repeated calls are efficient
     price = get_price_data(ticker) or {}
