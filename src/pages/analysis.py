@@ -1268,49 +1268,8 @@ def page_analysis() -> None:
         unsafe_allow_html=True,
     )
 
-    # Sidebar - Section selector
-    with st.sidebar:
-        if admin:
-            if st.button("🧹 Limpiar caché", key="clear_cache_btn", use_container_width=True):
-                cache_clear_all()
-                st.success("Caché limpiado.")
-                st.rerun()
-
-        limit_box = st.empty()
-        if admin:
-            limit_box.success("👑 Admin: sin límite diario (alimenta el caché global).")
-        else:
-            if user_email:
-                rem = remaining_searches(user_email, DAILY_LIMIT)
-                limit_box.info(f"🔎 Búsquedas restantes hoy: {rem}/{DAILY_LIMIT}")
-            else:
-                limit_box.warning("No se detectó el correo del usuario.")
-
-        # Section selection buttons
-        st.divider()
-        st.markdown("### Secciones")
-        
-        # Initialize section state if not exists
-        if "analysis_section" not in st.session_state:
-            st.session_state["analysis_section"] = "Dividendos"
-        
-        sections = [
-            "Dividendos",
-            "Balance",
-            "EERR",
-            "EFE",
-            "Análisis Razonado",
-        ]
-        
-        selected_section = st.radio(
-            "Seleccione una sección:",
-            sections,
-            index=sections.index(st.session_state.get("analysis_section", "Dividendos")),
-            key="section_selector",
-            label_visibility="collapsed"
-        )
-        
-        st.session_state["analysis_section"] = selected_section
+    # Note: Sidebar sections are now handled in router.py
+    # No sidebar logic needed here anymore
 
     # Buscador (Enter activa)
     c_left, c_mid, c_right = st.columns([1, 2, 1])
@@ -1343,15 +1302,23 @@ def page_analysis() -> None:
         st.error("Ticker vacío.")
         return
 
-    # Consumo límite
-    if (not admin) and user_email:
+    # Track last searched ticker to only consume counter on NEW ticker searches
+    last_ticker = st.session_state.get("last_searched_ticker", None)
+    is_new_ticker = (ticker != last_ticker)
+    
+    # Consumo límite - ONLY on new ticker entry, not on section changes
+    if (not admin) and user_email and is_new_ticker:
         ok, rem_after = consume_search(user_email, DAILY_LIMIT, cost=1)
         if not ok:
-            st.sidebar.error("🚫 Búsquedas diarias alcanzadas. Vuelve mañana.")
+            st.error("🚫 Búsquedas diarias alcanzadas. Vuelve mañana.")
             return
-        st.sidebar.info(f"🔎 Búsquedas restantes hoy: {rem_after}/{DAILY_LIMIT}")
-
-    # Carga datos
+        # Update last searched ticker after successful consumption
+        st.session_state["last_searched_ticker"] = ticker
+    elif is_new_ticker:
+        # For admin or other cases, just track the ticker without consuming
+        st.session_state["last_searched_ticker"] = ticker
+    
+    # Carga datos - This uses cache, so repeated calls are efficient
     price = get_price_data(ticker) or {}
     profile = get_profile_data(ticker) or {}
     raw = profile.get("raw") if isinstance(profile, dict) else {}
