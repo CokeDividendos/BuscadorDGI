@@ -148,57 +148,26 @@ def _cagr_from_annual(annual: pd.Series) -> Optional[float]:
 # Gráficos Dividendos
 # =========================================================
 def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: pd.Series) -> None:
-    st.markdown('<div class="div-evo-select">', unsafe_allow_html=True)
-    freq_label = st.selectbox(
-        "Temporalidad",
-        ["Anual", "Trimestral", "Mensual"],
-        index=0,
-        key=f"div_freq_{ticker}",
-        help="Vista anual, trimestral o mensual",
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
     if not isinstance(dividends, pd.Series):
         st.warning("No se pudieron cargar los datos de dividendos.")
         return
 
-    annual = _annual_dividends_last_years(dividends, YEARS) if freq_label == "Anual" else pd.Series(dtype=float)
-    series = annual if freq_label == "Anual" else dividends
-    x_labels = annual.index.astype(str) if freq_label == "Anual" else dividends.index.astype(str)
-    y_axis_title = "Dividendo ($)"
-    bar_name = "Dividendo"
+    # Always use annual view
+    annual = _annual_dividends_last_years(dividends, YEARS)
+    series = annual
+    x_labels = annual.index.astype(str)
+    y_axis_title = "Dividendo anual ($)"
+    bar_name = "Dividendo anual"
 
-    if freq_label != "Anual":
-        freq_code = "Q" if freq_label == "Trimestral" else "M"
-        series = dividends.resample(freq_code).sum().dropna().astype(float)
-        # Convert PeriodIndex to timestamp before comparison
-        if isinstance(series.index, pd.PeriodIndex):
-            series.index = series.index.to_timestamp()
-        start_date = pd.Timestamp.now() - pd.DateOffset(years=YEARS)
-        start_date = pd.to_datetime(start_date)
-        series = series[series.index >= start_date]
-        if series.empty:
-            st.warning("No hay dividendos suficientes para graficar la evolución en la temporalidad seleccionada.")
-            return
-        if freq_label == "Trimestral":
-            x_labels = series.index.to_period("Q").astype(str)
-            y_axis_title = "Dividendo trimestral ($)"
-            bar_name = "Dividendo trimestral"
-        else:
-            x_labels = series.index.to_period("M").astype(str)
-            y_axis_title = "Dividendo mensual ($)"
-            bar_name = "Dividendo mensual"
-    else:
-        if series.empty:
-            st.warning("No hay dividendos suficientes para graficar la evolución (últimos 5 años).")
-            return
-        y_axis_title = "Dividendo anual ($)"
-        bar_name = "Dividendo anual"
+    if series.empty:
+        st.warning("No hay dividendos suficientes para graficar la evolución (últimos 5 años).")
+        return
 
-    cagr = _cagr_from_annual(annual) if freq_label == "Anual" else None
+    cagr = _cagr_from_annual(annual)
     if cagr is None:
-        title = f"Evolución del dividendo {freq_label.lower()} — {ticker} (últimos {YEARS} años)"
+        title = f"Evolución del dividendo anual — {ticker} (últimos {YEARS} años)"
     else:
-        title = f"Evolución del dividendo {freq_label.lower()} — {ticker} | CAGR: {cagr:.2f}% (últimos {YEARS} años)"
+        title = f"Evolución del dividendo anual — {ticker} | CAGR: {cagr:.2f}% (últimos {YEARS} años)"
 
     st.markdown(f"**{title}**")
     fig = go.Figure()
@@ -212,7 +181,7 @@ def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: 
         )
     )
     fig.update_layout(
-        xaxis_title="Año" if freq_label == "Anual" else "Periodo",
+        xaxis_title="Año",
         yaxis_title=y_axis_title,
         height=460,
         margin=dict(l=20, r=20, t=10, b=30),
@@ -463,22 +432,13 @@ def page_analysis() -> None:
             box-shadow: none !important;
         }
 
-        /* Selector corto para evolución de dividendo */
-        .div-evo-select {
-            max-width: 240px;
-        }
-        .div-evo-select div[data-testid="stSelectbox"] {
-            max-width: 240px;
-            margin-bottom: 6px;
-        }
-
         div[data-testid="stForm"] { max-width: 520px !important; margin: 0 auto !important; border-radius: 10px; }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    # Sidebar
+    # Sidebar - Section selector
     with st.sidebar:
         if admin:
             if st.button("🧹 Limpiar caché", key="clear_cache_btn", use_container_width=True):
@@ -495,6 +455,32 @@ def page_analysis() -> None:
                 limit_box.info(f"🔎 Búsquedas restantes hoy: {rem}/{DAILY_LIMIT}")
             else:
                 limit_box.warning("No se detectó el correo del usuario.")
+
+        # Section selection buttons
+        st.divider()
+        st.markdown("### Secciones")
+        
+        # Initialize section state if not exists
+        if "analysis_section" not in st.session_state:
+            st.session_state["analysis_section"] = "Dividendos"
+        
+        sections = [
+            "Dividendos",
+            "Balance",
+            "EERR",
+            "EFE",
+            "Análisis Razonado",
+        ]
+        
+        selected_section = st.radio(
+            "Seleccione una sección:",
+            sections,
+            index=sections.index(st.session_state.get("analysis_section", "Dividendos")),
+            key="section_selector",
+            label_visibility="collapsed"
+        )
+        
+        st.session_state["analysis_section"] = selected_section
 
     # Buscador (Enter activa)
     c_left, c_mid, c_right = st.columns([1, 2, 1])
@@ -632,19 +618,10 @@ def page_analysis() -> None:
 
     st.divider()
 
-    # Main tabs
-    main_tabs = st.tabs(
-        [
-            "Dividendos",
-            "Múltiplos",
-            "Balance",
-            "Estado de Resultados",
-            "Estado de Flujo de Efectivo",
-            "Otro",
-        ]
-    )
-
-    with main_tabs[0]:
+    # Display content based on selected section
+    selected_section = st.session_state.get("analysis_section", "Dividendos")
+    
+    if selected_section == "Dividendos":
         inputs = _load_dividend_inputs(ticker, YEARS)
         price_daily = inputs["price_daily"]
         dividends = inputs["dividends"]
@@ -657,14 +634,15 @@ def page_analysis() -> None:
             _plot_dividend_safety(ticker, cashflow)
         with sub_tabs[2]:
             _plot_geraldine_weiss(ticker, price_daily, dividends)
-
-    with main_tabs[1]:
-        st.info("Aquí irán los gráficos de Múltiplos (pendiente).")
-    with main_tabs[2]:
+    
+    elif selected_section == "Balance":
         st.info("Aquí irán los gráficos de Balance (pendiente).")
-    with main_tabs[3]:
+    
+    elif selected_section == "EERR":
         st.info("Aquí irán los gráficos de Estado de Resultados (pendiente).")
-    with main_tabs[4]:
-        st.info("Aquí irán los gráficos de Flujo de Efectivo (pendiente).")
-    with main_tabs[5]:
-        st.info("Sección 'Otro' (pendiente).")
+    
+    elif selected_section == "EFE":
+        st.info("Aquí irán los gráficos de Estado de Flujo de Efectivo (pendiente).")
+    
+    elif selected_section == "Análisis Razonado":
+        st.info("Aquí irán los gráficos de Análisis Razonado (pendiente).")
