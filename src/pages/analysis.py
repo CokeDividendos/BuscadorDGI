@@ -59,6 +59,16 @@ def _fmt_kpi(x: Any, suffix: str = "", decimals: int = 2) -> str:
     return f"{x:.{decimals}f}{suffix}"
 
 
+def _fmt_large_number(value: float) -> str:
+    """Format large numbers with B/M suffix"""
+    if abs(value) >= 1e9:
+        return f"${value/1e9:.2f}B"
+    elif abs(value) >= 1e6:
+        return f"${value/1e6:.2f}M"
+    else:
+        return f"${value:.2f}"
+
+
 def _kpi_card(label: str, value: str) -> None:
     st.markdown(
         f"""
@@ -154,12 +164,8 @@ def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: 
 
     # Always use annual view
     annual = _annual_dividends_last_years(dividends, YEARS)
-    series = annual
-    x_labels = annual.index.astype(str)
-    y_axis_title = "Dividendo anual ($)"
-    bar_name = "Dividendo anual"
 
-    if series.empty:
+    if annual.empty:
         st.warning("No hay dividendos suficientes para graficar la evolución (últimos 5 años).")
         return
 
@@ -173,16 +179,16 @@ def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: 
     fig = go.Figure()
     fig.add_trace(
         go.Bar(
-            x=x_labels,
-            y=series.values,
-            name=bar_name,
-            text=[f"${v:.2f}" for v in series.values],
+            x=annual.index.astype(str),
+            y=annual.values,
+            name="Dividendo anual",
+            text=[f"${v:.2f}" for v in annual.values],
             textposition="outside",
         )
     )
     fig.update_layout(
         xaxis_title="Año",
-        yaxis_title=y_axis_title,
+        yaxis_title="Dividendo anual ($)",
         height=460,
         margin=dict(l=20, r=20, t=10, b=30),
         paper_bgcolor="rgba(0,0,0,0)",
@@ -193,7 +199,7 @@ def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: 
     st.plotly_chart(fig, use_container_width=True, key=f"div_evo_{ticker}")
 
     with st.expander("Ver tabla (últimos 5 años)"):
-        st.dataframe(pd.DataFrame({"Periodo": x_labels, "Dividendo": series.values}).set_index("Periodo"), use_container_width=True)
+        st.dataframe(pd.DataFrame({"Periodo": annual.index.astype(str), "Dividendo": annual.values}).set_index("Periodo"), use_container_width=True)
 
 
 def _pick_cashflow_cols(df: pd.DataFrame) -> Tuple[Optional[str], Optional[str]]:
@@ -395,24 +401,24 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
 @st.cache_data(ttl=DIVIDENDS_CACHE_TTL_SECONDS, show_spinner=False)
 def _load_financial_statements(ticker: str) -> Dict[str, Any]:
     """Load balance sheet, income statement, and cash flow data"""
-    t = yf.Ticker(ticker)
+    ticker_obj = yf.Ticker(ticker)
     
     try:
-        balance_sheet = t.balance_sheet
+        balance_sheet = ticker_obj.balance_sheet
         if balance_sheet is None or not isinstance(balance_sheet, pd.DataFrame):
             balance_sheet = pd.DataFrame()
     except Exception:
         balance_sheet = pd.DataFrame()
     
     try:
-        income_stmt = t.income_stmt
+        income_stmt = ticker_obj.income_stmt
         if income_stmt is None or not isinstance(income_stmt, pd.DataFrame):
             income_stmt = pd.DataFrame()
     except Exception:
         income_stmt = pd.DataFrame()
     
     try:
-        cashflow = t.cashflow
+        cashflow = ticker_obj.cashflow
         if cashflow is None or not isinstance(cashflow, pd.DataFrame):
             cashflow = pd.DataFrame()
     except Exception:
@@ -633,7 +639,7 @@ def _plot_equity_evolution(ticker: str, balance_df: pd.DataFrame) -> None:
         x=equity.index.astype(str), 
         y=equity.values, 
         name="Patrimonio",
-        text=[f"${v/1e9:.2f}B" if abs(v) >= 1e9 else f"${v/1e6:.2f}M" for v in equity.values],
+        text=[_fmt_large_number(v) for v in equity.values],
         textposition="outside"
     ))
     
@@ -683,7 +689,7 @@ def _plot_revenue_evolution(ticker: str, income_df: pd.DataFrame) -> None:
         x=revenue.index.astype(str), 
         y=revenue.values, 
         name="Ingresos",
-        text=[f"${v/1e9:.2f}B" if abs(v) >= 1e9 else f"${v/1e6:.2f}M" for v in revenue.values],
+        text=[_fmt_large_number(v) for v in revenue.values],
         textposition="outside"
     ))
     
@@ -1082,8 +1088,17 @@ def _calculate_financial_ratios(balance_df: pd.DataFrame, income_df: pd.DataFram
     if balance_df.empty:
         return ratios
     
-    # Get column names
-    def find_col(df, keywords):
+    def _find_column(df: pd.DataFrame, keywords: list) -> Optional[str]:
+        """
+        Find a column in a dataframe by matching keywords (case-insensitive).
+        
+        Args:
+            df: DataFrame to search
+            keywords: List of keyword strings to match in column names
+            
+        Returns:
+            Column name if found, None otherwise
+        """
         for col in df.columns:
             col_lower = str(col).lower()
             if any(kw in col_lower for kw in keywords):
@@ -1091,20 +1106,42 @@ def _calculate_financial_ratios(balance_df: pd.DataFrame, income_df: pd.DataFram
         return None
     
     # Balance sheet columns
-    current_assets = pd.to_numeric(balance_df[find_col(balance_df, ["current assets"])], errors="coerce") if find_col(balance_df, ["current assets"]) else None
-    current_liab = pd.to_numeric(balance_df[find_col(balance_df, ["current liabilities"])], errors="coerce") if find_col(balance_df, ["current liabilities"]) else None
-    total_assets = pd.to_numeric(balance_df[find_col(balance_df, ["total assets"])], errors="coerce") if find_col(balance_df, ["total assets"]) else None
-    total_liab = pd.to_numeric(balance_df[find_col(balance_df, ["total liabilities"])], errors="coerce") if find_col(balance_df, ["total liabilities"]) else None
-    equity = pd.to_numeric(balance_df[find_col(balance_df, ["stockholders equity", "shareholders equity", "total equity"])], errors="coerce") if find_col(balance_df, ["stockholders equity", "shareholders equity", "total equity"]) else None
-    total_debt = pd.to_numeric(balance_df[find_col(balance_df, ["total debt"])], errors="coerce") if find_col(balance_df, ["total debt"]) else None
-    inventory = pd.to_numeric(balance_df[find_col(balance_df, ["inventory"])], errors="coerce") if find_col(balance_df, ["inventory"]) else None
-    receivables = pd.to_numeric(balance_df[find_col(balance_df, ["accounts receivable", "receivables"])], errors="coerce") if find_col(balance_df, ["accounts receivable", "receivables"]) else None
-    payables = pd.to_numeric(balance_df[find_col(balance_df, ["accounts payable", "payables"])], errors="coerce") if find_col(balance_df, ["accounts payable", "payables"]) else None
+    current_assets_col = _find_column(balance_df, ["current assets"])
+    current_assets = pd.to_numeric(balance_df[current_assets_col], errors="coerce") if current_assets_col else None
+    
+    current_liab_col = _find_column(balance_df, ["current liabilities"])
+    current_liab = pd.to_numeric(balance_df[current_liab_col], errors="coerce") if current_liab_col else None
+    
+    total_assets_col = _find_column(balance_df, ["total assets"])
+    total_assets = pd.to_numeric(balance_df[total_assets_col], errors="coerce") if total_assets_col else None
+    
+    total_liab_col = _find_column(balance_df, ["total liabilities"])
+    total_liab = pd.to_numeric(balance_df[total_liab_col], errors="coerce") if total_liab_col else None
+    
+    equity_col = _find_column(balance_df, ["stockholders equity", "shareholders equity", "total equity"])
+    equity = pd.to_numeric(balance_df[equity_col], errors="coerce") if equity_col else None
+    
+    total_debt_col = _find_column(balance_df, ["total debt"])
+    total_debt = pd.to_numeric(balance_df[total_debt_col], errors="coerce") if total_debt_col else None
+    
+    inventory_col = _find_column(balance_df, ["inventory"])
+    inventory = pd.to_numeric(balance_df[inventory_col], errors="coerce") if inventory_col else None
+    
+    receivables_col = _find_column(balance_df, ["accounts receivable", "receivables"])
+    receivables = pd.to_numeric(balance_df[receivables_col], errors="coerce") if receivables_col else None
+    
+    payables_col = _find_column(balance_df, ["accounts payable", "payables"])
+    payables = pd.to_numeric(balance_df[payables_col], errors="coerce") if payables_col else None
     
     # Income statement columns
-    revenue = pd.to_numeric(income_df[find_col(income_df, ["total revenue"])], errors="coerce") if not income_df.empty and find_col(income_df, ["total revenue"]) else None
-    net_income = pd.to_numeric(income_df[find_col(income_df, ["net income"])], errors="coerce") if not income_df.empty and find_col(income_df, ["net income"]) else None
-    cogs = pd.to_numeric(income_df[find_col(income_df, ["cost of revenue", "cogs"])], errors="coerce") if not income_df.empty and find_col(income_df, ["cost of revenue", "cogs"]) else None
+    revenue_col = _find_column(income_df, ["total revenue"]) if not income_df.empty else None
+    revenue = pd.to_numeric(income_df[revenue_col], errors="coerce") if revenue_col else None
+    
+    net_income_col = _find_column(income_df, ["net income"]) if not income_df.empty else None
+    net_income = pd.to_numeric(income_df[net_income_col], errors="coerce") if net_income_col else None
+    
+    cogs_col = _find_column(income_df, ["cost of revenue", "cogs"]) if not income_df.empty else None
+    cogs = pd.to_numeric(income_df[cogs_col], errors="coerce") if cogs_col else None
     
     # Calculate ratios
     if current_assets is not None and current_liab is not None:
