@@ -1363,6 +1363,7 @@ def _plot_ev_ebitda_evolution(ticker: str, income_df: pd.DataFrame, balance_df: 
         # Try to get historical market cap by using shares outstanding and historical prices
         ev = None
         ev_ebitda = None
+        used_historical_mcap = False  # Track if we use historical or current market cap
         
         # Get shares outstanding from balance sheet or income statement
         shares_col = None
@@ -1400,14 +1401,15 @@ def _plot_ev_ebitda_evolution(ticker: str, income_df: pd.DataFrame, balance_df: 
             # Use historical market cap where available
             ev = historical_market_cap + net_debt
             ev_ebitda = ev / ebitda
+            used_historical_mcap = True
         elif market_cap is not None and net_debt is not None:
             # Fallback: Use current market cap for all years (limitation noted)
             # Note: This is a simplification - ideally we'd use historical market cap
-            st.info("ℹ️ Usando capitalización de mercado actual para todos los años (EV histórico aproximado)")
             ev = pd.Series([market_cap + net_debt.iloc[i] if i < len(net_debt) else None 
                           for i in range(len(ebitda))], 
                           index=ebitda.index)
             ev_ebitda = ev / ebitda
+            used_historical_mcap = False
         
         df_ev = pd.DataFrame({"EBITDA": ebitda, "EV": ev, "EV/EBITDA": ev_ebitda}).dropna(how="all")
         
@@ -1425,6 +1427,10 @@ def _plot_ev_ebitda_evolution(ticker: str, income_df: pd.DataFrame, balance_df: 
             st.markdown(f"**📌 EV/EBITDA actual: {current_ev_ebitda:.2f}**")
         else:
             st.markdown("**📌 EV/EBITDA actual no disponible**")
+        
+        # Show info message if using current market cap fallback
+        if not used_historical_mcap:
+            st.info("ℹ️ Usando capitalización de mercado actual para todos los años (EV histórico aproximado)")
         
         # Colors
         primary_orange = "#ff6b35"
@@ -1610,9 +1616,11 @@ def _calculate_financial_ratios(balance_df: pd.DataFrame, income_df: pd.DataFram
             tax_rate = 1 - (net_income / ebit)
             tax_rate = tax_rate.clip(0, 1)
         else:
-            # Default tax rate: 21% (U.S. federal corporate tax rate)
-            # Note: For international stocks, actual tax rates may vary by jurisdiction
-            # and may range from 0% to 35%+ depending on the country
+            # Default tax rate: 21% (U.S. federal corporate statutory tax rate)
+            # Note: This is the statutory rate. Actual effective tax rates may vary
+            # significantly due to deductions, credits, tax havens, and other factors.
+            # For international stocks, statutory rates vary by jurisdiction (0% to 35%+).
+            # When possible, the actual tax is calculated from financial statements above.
             tax_rate = 0.21
         
         nopat = ebit * (1 - tax_rate)
