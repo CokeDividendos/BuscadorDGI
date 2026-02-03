@@ -1282,8 +1282,6 @@ def page_analysis() -> None:
             val = (st.session_state.get("ticker_main") or "").strip().upper()
             if val:
                 st.session_state["ticker"] = val
-                # Mark that a new ticker was just submitted
-                st.session_state["ticker_just_submitted"] = True
 
         st.text_input(
             "Ticker (ej: AAPL, MSFT, KO)",
@@ -1316,15 +1314,9 @@ def page_analysis() -> None:
             return
         # Update last searched ticker after successful consumption
         st.session_state["last_searched_ticker"] = ticker
-        # Clear the submission flag if it exists
-        st.session_state.pop("ticker_just_submitted", None)
-    elif is_new_ticker and admin:
-        # For admin, just track the ticker without consuming
+    elif is_new_ticker:
+        # For admin or other cases, just track the ticker without consuming
         st.session_state["last_searched_ticker"] = ticker
-        st.session_state.pop("ticker_just_submitted", None)
-    else:
-        # Same ticker, just clear the flag
-        st.session_state.pop("ticker_just_submitted", None)
     
     # Carga datos - This uses cache, so repeated calls are efficient
     price = get_price_data(ticker) or {}

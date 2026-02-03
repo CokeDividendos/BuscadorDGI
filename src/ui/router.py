@@ -84,10 +84,15 @@ def run_app():
                 "Análisis Razonado",
             ]
             
+            # Get the current analysis section, validate it's in the list
+            current_analysis_section = st.session_state.get("analysis_section", "Dividendos")
+            if current_analysis_section not in data_sections:
+                current_analysis_section = "Dividendos"
+            
             selected_data_section = st.radio(
                 "Seleccione una sección de datos:",
                 data_sections,
-                index=data_sections.index(st.session_state.get("analysis_section", "Dividendos")),
+                index=data_sections.index(current_analysis_section),
                 key="data_section_selector",
                 label_visibility="collapsed"
             )
