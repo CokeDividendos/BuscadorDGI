@@ -390,6 +390,799 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
 
 
 # =========================================================
+# Financial Statements Data Loaders
+# =========================================================
+@st.cache_data(ttl=DIVIDENDS_CACHE_TTL_SECONDS, show_spinner=False)
+def _load_financial_statements(ticker: str) -> Dict[str, Any]:
+    """Load balance sheet, income statement, and cash flow data"""
+    t = yf.Ticker(ticker)
+    
+    try:
+        balance_sheet = t.balance_sheet
+        if balance_sheet is None or not isinstance(balance_sheet, pd.DataFrame):
+            balance_sheet = pd.DataFrame()
+    except Exception:
+        balance_sheet = pd.DataFrame()
+    
+    try:
+        income_stmt = t.income_stmt
+        if income_stmt is None or not isinstance(income_stmt, pd.DataFrame):
+            income_stmt = pd.DataFrame()
+    except Exception:
+        income_stmt = pd.DataFrame()
+    
+    try:
+        cashflow = t.cashflow
+        if cashflow is None or not isinstance(cashflow, pd.DataFrame):
+            cashflow = pd.DataFrame()
+    except Exception:
+        cashflow = pd.DataFrame()
+    
+    return {
+        "balance_sheet": balance_sheet,
+        "income_stmt": income_stmt,
+        "cashflow": cashflow,
+    }
+
+
+def _prepare_financial_df(df: pd.DataFrame, years: int = YEARS) -> pd.DataFrame:
+    """Transpose and prepare financial statement dataframe"""
+    if df is None or df.empty:
+        return pd.DataFrame()
+    
+    result = df.transpose().copy()
+    result.index = pd.to_datetime(result.index, errors="coerce")
+    result = result.loc[result.index.notna()]
+    result["Year"] = result.index.year
+    result = result.set_index("Year")
+    result = result.sort_index().tail(years)
+    
+    return result
+
+
+# =========================================================
+# Balance Section Charts
+# =========================================================
+def _plot_assets_evolution(ticker: str, balance_df: pd.DataFrame) -> None:
+    """Chart: Total Assets vs Current Assets Evolution"""
+    if balance_df.empty:
+        st.warning("No hay datos de balance suficientes.")
+        return
+    
+    # Find column names
+    total_assets_col = None
+    current_assets_col = None
+    
+    for col in balance_df.columns:
+        col_lower = str(col).lower()
+        if "total assets" in col_lower or "totalassets" in col_lower:
+            total_assets_col = col
+        if "current assets" in col_lower or "currentassets" in col_lower:
+            current_assets_col = col
+    
+    if not total_assets_col or not current_assets_col:
+        st.warning("No se encontraron las columnas de activos totales o corrientes.")
+        return
+    
+    data = pd.DataFrame({
+        "Activos Totales": pd.to_numeric(balance_df[total_assets_col], errors="coerce"),
+        "Activos Corrientes": pd.to_numeric(balance_df[current_assets_col], errors="coerce")
+    }).dropna()
+    
+    if data.empty:
+        st.warning("No hay datos suficientes para graficar activos.")
+        return
+    
+    st.markdown(f"**Evolución Activos Totales vs Activos Corrientes — {ticker}**")
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=data.index.astype(str), y=data["Activos Totales"], name="Activos Totales"))
+    fig.add_trace(go.Bar(x=data.index.astype(str), y=data["Activos Corrientes"], name="Activos Corrientes"))
+    
+    fig.update_layout(
+        xaxis_title="Año",
+        yaxis_title="USD",
+        barmode="group",
+        height=460,
+        margin=dict(l=20, r=20, t=10, b=30),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    fig.update_yaxes(showgrid=False)
+    fig.update_xaxes(showgrid=False)
+    st.plotly_chart(fig, use_container_width=True, key=f"assets_{ticker}")
+
+
+def _plot_liabilities_evolution(ticker: str, balance_df: pd.DataFrame) -> None:
+    """Chart: Total Liabilities vs Current Liabilities Evolution"""
+    if balance_df.empty:
+        st.warning("No hay datos de balance suficientes.")
+        return
+    
+    total_liab_col = None
+    current_liab_col = None
+    
+    for col in balance_df.columns:
+        col_lower = str(col).lower()
+        if "total liabilities" in col_lower or "totalliabilities" in col_lower:
+            total_liab_col = col
+        if "current liabilities" in col_lower or "currentliabilities" in col_lower:
+            current_liab_col = col
+    
+    if not total_liab_col or not current_liab_col:
+        st.warning("No se encontraron las columnas de pasivos totales o corrientes.")
+        return
+    
+    data = pd.DataFrame({
+        "Pasivos Totales": pd.to_numeric(balance_df[total_liab_col], errors="coerce"),
+        "Pasivos Corrientes": pd.to_numeric(balance_df[current_liab_col], errors="coerce")
+    }).dropna()
+    
+    if data.empty:
+        st.warning("No hay datos suficientes para graficar pasivos.")
+        return
+    
+    st.markdown(f"**Evolución Pasivos Totales vs Pasivos Corrientes — {ticker}**")
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=data.index.astype(str), y=data["Pasivos Totales"], name="Pasivos Totales"))
+    fig.add_trace(go.Bar(x=data.index.astype(str), y=data["Pasivos Corrientes"], name="Pasivos Corrientes"))
+    
+    fig.update_layout(
+        xaxis_title="Año",
+        yaxis_title="USD",
+        barmode="group",
+        height=460,
+        margin=dict(l=20, r=20, t=10, b=30),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    fig.update_yaxes(showgrid=False)
+    fig.update_xaxes(showgrid=False)
+    st.plotly_chart(fig, use_container_width=True, key=f"liabilities_{ticker}")
+
+
+def _plot_debt_evolution(ticker: str, balance_df: pd.DataFrame) -> None:
+    """Chart: Total Debt vs Net Debt Evolution"""
+    if balance_df.empty:
+        st.warning("No hay datos de balance suficientes.")
+        return
+    
+    total_debt_col = None
+    net_debt_col = None
+    cash_col = None
+    
+    for col in balance_df.columns:
+        col_lower = str(col).lower()
+        if "total debt" in col_lower or "totaldebt" in col_lower:
+            total_debt_col = col
+        if "net debt" in col_lower or "netdebt" in col_lower:
+            net_debt_col = col
+        if "cash" in col_lower and "equivalents" in col_lower:
+            cash_col = col
+    
+    if not total_debt_col:
+        st.warning("No se encontró la columna de deuda total.")
+        return
+    
+    total_debt = pd.to_numeric(balance_df[total_debt_col], errors="coerce")
+    
+    # Calculate net debt if not available
+    if net_debt_col:
+        net_debt = pd.to_numeric(balance_df[net_debt_col], errors="coerce")
+    elif cash_col:
+        cash = pd.to_numeric(balance_df[cash_col], errors="coerce")
+        net_debt = total_debt - cash
+    else:
+        net_debt = total_debt
+    
+    data = pd.DataFrame({
+        "Deuda Total": total_debt,
+        "Deuda Neta": net_debt
+    }).dropna()
+    
+    if data.empty:
+        st.warning("No hay datos suficientes para graficar deuda.")
+        return
+    
+    st.markdown(f"**Evolución Deuda Total vs Deuda Neta — {ticker}**")
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=data.index.astype(str), y=data["Deuda Total"], name="Deuda Total"))
+    fig.add_trace(go.Bar(x=data.index.astype(str), y=data["Deuda Neta"], name="Deuda Neta"))
+    
+    fig.update_layout(
+        xaxis_title="Año",
+        yaxis_title="USD",
+        barmode="group",
+        height=460,
+        margin=dict(l=20, r=20, t=10, b=30),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    fig.update_yaxes(showgrid=False)
+    fig.update_xaxes(showgrid=False)
+    st.plotly_chart(fig, use_container_width=True, key=f"debt_{ticker}")
+
+
+def _plot_equity_evolution(ticker: str, balance_df: pd.DataFrame) -> None:
+    """Chart: Equity Evolution"""
+    if balance_df.empty:
+        st.warning("No hay datos de balance suficientes.")
+        return
+    
+    equity_col = None
+    
+    for col in balance_df.columns:
+        col_lower = str(col).lower()
+        if ("stockholders equity" in col_lower or "shareholders equity" in col_lower or 
+            "total equity" in col_lower or "totalequity" in col_lower):
+            equity_col = col
+            break
+    
+    if not equity_col:
+        st.warning("No se encontró la columna de patrimonio.")
+        return
+    
+    equity = pd.to_numeric(balance_df[equity_col], errors="coerce").dropna()
+    
+    if equity.empty:
+        st.warning("No hay datos suficientes para graficar patrimonio.")
+        return
+    
+    st.markdown(f"**Evolución del Patrimonio — {ticker}**")
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=equity.index.astype(str), 
+        y=equity.values, 
+        name="Patrimonio",
+        text=[f"${v/1e9:.2f}B" if abs(v) >= 1e9 else f"${v/1e6:.2f}M" for v in equity.values],
+        textposition="outside"
+    ))
+    
+    fig.update_layout(
+        xaxis_title="Año",
+        yaxis_title="USD",
+        height=460,
+        margin=dict(l=20, r=20, t=10, b=30),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    fig.update_yaxes(showgrid=False)
+    fig.update_xaxes(showgrid=False)
+    st.plotly_chart(fig, use_container_width=True, key=f"equity_{ticker}")
+
+
+# =========================================================
+# Income Statement Section Charts
+# =========================================================
+def _plot_revenue_evolution(ticker: str, income_df: pd.DataFrame) -> None:
+    """Chart: Revenue Evolution"""
+    if income_df.empty:
+        st.warning("No hay datos de estado de resultados suficientes.")
+        return
+    
+    revenue_col = None
+    
+    for col in income_df.columns:
+        col_lower = str(col).lower()
+        if "total revenue" in col_lower or "totalrevenue" in col_lower:
+            revenue_col = col
+            break
+    
+    if not revenue_col:
+        st.warning("No se encontró la columna de ingresos.")
+        return
+    
+    revenue = pd.to_numeric(income_df[revenue_col], errors="coerce").dropna()
+    
+    if revenue.empty:
+        st.warning("No hay datos suficientes para graficar ingresos.")
+        return
+    
+    st.markdown(f"**Evolución de los Ingresos — {ticker}**")
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=revenue.index.astype(str), 
+        y=revenue.values, 
+        name="Ingresos",
+        text=[f"${v/1e9:.2f}B" if abs(v) >= 1e9 else f"${v/1e6:.2f}M" for v in revenue.values],
+        textposition="outside"
+    ))
+    
+    fig.update_layout(
+        xaxis_title="Año",
+        yaxis_title="USD",
+        height=460,
+        margin=dict(l=20, r=20, t=10, b=30),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    fig.update_yaxes(showgrid=False)
+    fig.update_xaxes(showgrid=False)
+    st.plotly_chart(fig, use_container_width=True, key=f"revenue_{ticker}")
+
+
+def _plot_margins_evolution(ticker: str, income_df: pd.DataFrame) -> None:
+    """Chart: Margins Evolution (Gross, Operating, Net)"""
+    if income_df.empty:
+        st.warning("No hay datos de estado de resultados suficientes.")
+        return
+    
+    revenue_col = None
+    gross_profit_col = None
+    operating_income_col = None
+    net_income_col = None
+    
+    for col in income_df.columns:
+        col_lower = str(col).lower()
+        if "total revenue" in col_lower or "totalrevenue" in col_lower:
+            revenue_col = col
+        if "gross profit" in col_lower or "grossprofit" in col_lower:
+            gross_profit_col = col
+        if "operating income" in col_lower or "operatingincome" in col_lower:
+            operating_income_col = col
+        if "net income" in col_lower or "netincome" in col_lower:
+            net_income_col = col
+    
+    if not revenue_col:
+        st.warning("No se encontró la columna de ingresos para calcular márgenes.")
+        return
+    
+    revenue = pd.to_numeric(income_df[revenue_col], errors="coerce")
+    
+    margins = pd.DataFrame()
+    
+    if gross_profit_col:
+        gross_profit = pd.to_numeric(income_df[gross_profit_col], errors="coerce")
+        margins["Margen Bruto (%)"] = (gross_profit / revenue * 100)
+    
+    if operating_income_col:
+        operating_income = pd.to_numeric(income_df[operating_income_col], errors="coerce")
+        margins["Margen Operativo (%)"] = (operating_income / revenue * 100)
+    
+    if net_income_col:
+        net_income = pd.to_numeric(income_df[net_income_col], errors="coerce")
+        margins["Margen Neto (%)"] = (net_income / revenue * 100)
+    
+    margins = margins.dropna(how="all")
+    
+    if margins.empty:
+        st.warning("No hay datos suficientes para calcular márgenes.")
+        return
+    
+    st.markdown(f"**Evolución de Márgenes — {ticker}**")
+    fig = go.Figure()
+    
+    for col in margins.columns:
+        fig.add_trace(go.Scatter(
+            x=margins.index.astype(str), 
+            y=margins[col].values, 
+            mode="lines+markers",
+            name=col
+        ))
+    
+    fig.update_layout(
+        xaxis_title="Año",
+        yaxis_title="Porcentaje (%)",
+        height=460,
+        margin=dict(l=20, r=20, t=10, b=30),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    fig.update_yaxes(showgrid=False)
+    fig.update_xaxes(showgrid=False)
+    st.plotly_chart(fig, use_container_width=True, key=f"margins_{ticker}")
+
+
+def _plot_eps_evolution(ticker: str, income_df: pd.DataFrame) -> None:
+    """Chart: EPS Evolution"""
+    if income_df.empty:
+        st.warning("No hay datos de estado de resultados suficientes.")
+        return
+    
+    eps_col = None
+    
+    for col in income_df.columns:
+        col_lower = str(col).lower()
+        if ("basic eps" in col_lower or "diluted eps" in col_lower or 
+            "earnings per share" in col_lower):
+            eps_col = col
+            break
+    
+    if not eps_col:
+        # Try to calculate EPS from net income and shares outstanding
+        net_income_col = None
+        shares_col = None
+        
+        for col in income_df.columns:
+            col_lower = str(col).lower()
+            if "net income" in col_lower or "netincome" in col_lower:
+                net_income_col = col
+            if "shares outstanding" in col_lower or "sharesoutstanding" in col_lower:
+                shares_col = col
+        
+        if net_income_col and shares_col:
+            net_income = pd.to_numeric(income_df[net_income_col], errors="coerce")
+            shares = pd.to_numeric(income_df[shares_col], errors="coerce")
+            eps = (net_income / shares).dropna()
+        else:
+            st.warning("No se encontró la columna de EPS ni se pudo calcular.")
+            return
+    else:
+        eps = pd.to_numeric(income_df[eps_col], errors="coerce").dropna()
+    
+    if eps.empty:
+        st.warning("No hay datos suficientes para graficar EPS.")
+        return
+    
+    st.markdown(f"**Evolución del EPS — {ticker}**")
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=eps.index.astype(str), 
+        y=eps.values, 
+        name="EPS",
+        text=[f"${v:.2f}" for v in eps.values],
+        textposition="outside"
+    ))
+    
+    fig.update_layout(
+        xaxis_title="Año",
+        yaxis_title="USD",
+        height=460,
+        margin=dict(l=20, r=20, t=10, b=30),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    fig.update_yaxes(showgrid=False)
+    fig.update_xaxes(showgrid=False)
+    st.plotly_chart(fig, use_container_width=True, key=f"eps_{ticker}")
+
+
+def _plot_shares_outstanding(ticker: str, income_df: pd.DataFrame) -> None:
+    """Chart: Shares Outstanding Evolution"""
+    if income_df.empty:
+        st.warning("No hay datos de estado de resultados suficientes.")
+        return
+    
+    shares_col = None
+    
+    for col in income_df.columns:
+        col_lower = str(col).lower()
+        if "shares outstanding" in col_lower or "sharesoutstanding" in col_lower or "diluted average shares" in col_lower:
+            shares_col = col
+            break
+    
+    if not shares_col:
+        st.warning("No se encontró la columna de acciones en circulación.")
+        return
+    
+    shares = pd.to_numeric(income_df[shares_col], errors="coerce").dropna()
+    
+    if shares.empty:
+        st.warning("No hay datos suficientes para graficar acciones en circulación.")
+        return
+    
+    st.markdown(f"**Evolución de Acciones en Circulación — {ticker}**")
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=shares.index.astype(str), 
+        y=shares.values, 
+        name="Acciones",
+        text=[f"{v/1e9:.2f}B" if abs(v) >= 1e9 else f"{v/1e6:.2f}M" for v in shares.values],
+        textposition="outside"
+    ))
+    
+    fig.update_layout(
+        xaxis_title="Año",
+        yaxis_title="Número de Acciones",
+        height=460,
+        margin=dict(l=20, r=20, t=10, b=30),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    fig.update_yaxes(showgrid=False)
+    fig.update_xaxes(showgrid=False)
+    st.plotly_chart(fig, use_container_width=True, key=f"shares_{ticker}")
+
+
+# =========================================================
+# Cash Flow Section Charts  
+# =========================================================
+def _plot_cashflow_vs_capex(ticker: str, cashflow_df: pd.DataFrame) -> None:
+    """Chart: Operating Cash Flow vs CapEx"""
+    if cashflow_df.empty:
+        st.warning("No hay datos de flujo de efectivo suficientes.")
+        return
+    
+    ocf_col = None
+    capex_col = None
+    
+    for col in cashflow_df.columns:
+        col_lower = str(col).lower()
+        if "operating cash flow" in col_lower or "total cash from operating" in col_lower:
+            ocf_col = col
+        if "capital expenditure" in col_lower or "capitalexpenditure" in col_lower:
+            capex_col = col
+    
+    if not ocf_col or not capex_col:
+        st.warning("No se encontraron las columnas de flujo de caja operativo o CapEx.")
+        return
+    
+    data = pd.DataFrame({
+        "Flujo de Caja Operativo": pd.to_numeric(cashflow_df[ocf_col], errors="coerce"),
+        "CapEx": pd.to_numeric(cashflow_df[capex_col], errors="coerce").abs()
+    }).dropna()
+    
+    if data.empty:
+        st.warning("No hay datos suficientes para graficar flujo de caja vs CapEx.")
+        return
+    
+    st.markdown(f"**Flujo de Caja Operativo vs CapEx — {ticker}**")
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=data.index.astype(str), y=data["Flujo de Caja Operativo"], name="Flujo de Caja Operativo"))
+    fig.add_trace(go.Bar(x=data.index.astype(str), y=data["CapEx"], name="CapEx"))
+    
+    fig.update_layout(
+        xaxis_title="Año",
+        yaxis_title="USD",
+        barmode="group",
+        height=460,
+        margin=dict(l=20, r=20, t=10, b=30),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    fig.update_yaxes(showgrid=False)
+    fig.update_xaxes(showgrid=False)
+    st.plotly_chart(fig, use_container_width=True, key=f"cf_capex_{ticker}")
+
+
+def _plot_debt_issuance(ticker: str, cashflow_df: pd.DataFrame) -> None:
+    """Chart: Debt Issuance"""
+    if cashflow_df.empty:
+        st.warning("No hay datos de flujo de efectivo suficientes.")
+        return
+    
+    debt_issued_col = None
+    
+    for col in cashflow_df.columns:
+        col_lower = str(col).lower()
+        if "issuance of debt" in col_lower or "long term debt issued" in col_lower:
+            debt_issued_col = col
+            break
+    
+    if not debt_issued_col:
+        st.warning("No se encontró la columna de emisión de deuda.")
+        return
+    
+    debt_issued = pd.to_numeric(cashflow_df[debt_issued_col], errors="coerce").dropna()
+    
+    if debt_issued.empty:
+        st.warning("No hay datos suficientes para graficar emisión de deuda.")
+        return
+    
+    st.markdown(f"**Emisión de Deuda — {ticker}**")
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=debt_issued.index.astype(str), 
+        y=debt_issued.values, 
+        name="Emisión de Deuda",
+        marker_color=["green" if v > 0 else "red" for v in debt_issued.values]
+    ))
+    
+    fig.update_layout(
+        xaxis_title="Año",
+        yaxis_title="USD",
+        height=460,
+        margin=dict(l=20, r=20, t=10, b=30),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    fig.update_yaxes(showgrid=False)
+    fig.update_xaxes(showgrid=False)
+    st.plotly_chart(fig, use_container_width=True, key=f"debt_issuance_{ticker}")
+
+
+def _plot_debt_repayment(ticker: str, cashflow_df: pd.DataFrame) -> None:
+    """Chart: Debt Repayment"""
+    if cashflow_df.empty:
+        st.warning("No hay datos de flujo de efectivo suficientes.")
+        return
+    
+    debt_repay_col = None
+    
+    for col in cashflow_df.columns:
+        col_lower = str(col).lower()
+        if "repayment of debt" in col_lower or "long term debt repayment" in col_lower or "debt repayment" in col_lower:
+            debt_repay_col = col
+            break
+    
+    if not debt_repay_col:
+        st.warning("No se encontró la columna de pago de deuda.")
+        return
+    
+    debt_repay = pd.to_numeric(cashflow_df[debt_repay_col], errors="coerce").abs().dropna()
+    
+    if debt_repay.empty:
+        st.warning("No hay datos suficientes para graficar pago de deuda.")
+        return
+    
+    st.markdown(f"**Pago de Deuda — {ticker}**")
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=debt_repay.index.astype(str), 
+        y=debt_repay.values, 
+        name="Pago de Deuda"
+    ))
+    
+    fig.update_layout(
+        xaxis_title="Año",
+        yaxis_title="USD",
+        height=460,
+        margin=dict(l=20, r=20, t=10, b=30),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    fig.update_yaxes(showgrid=False)
+    fig.update_xaxes(showgrid=False)
+    st.plotly_chart(fig, use_container_width=True, key=f"debt_repay_{ticker}")
+
+
+def _plot_share_buybacks(ticker: str, cashflow_df: pd.DataFrame) -> None:
+    """Chart: Share Buybacks"""
+    if cashflow_df.empty:
+        st.warning("No hay datos de flujo de efectivo suficientes.")
+        return
+    
+    buyback_col = None
+    
+    for col in cashflow_df.columns:
+        col_lower = str(col).lower()
+        if ("repurchase" in col_lower and "stock" in col_lower) or "buyback" in col_lower or "treasury stock" in col_lower:
+            buyback_col = col
+            break
+    
+    if not buyback_col:
+        st.warning("No se encontró la columna de recompra de acciones.")
+        return
+    
+    buybacks = pd.to_numeric(cashflow_df[buyback_col], errors="coerce").abs().dropna()
+    
+    if buybacks.empty:
+        st.warning("No hay datos suficientes para graficar recompra de acciones.")
+        return
+    
+    st.markdown(f"**Recompra de Acciones — {ticker}**")
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=buybacks.index.astype(str), 
+        y=buybacks.values, 
+        name="Recompra de Acciones"
+    ))
+    
+    fig.update_layout(
+        xaxis_title="Año",
+        yaxis_title="USD",
+        height=460,
+        margin=dict(l=20, r=20, t=10, b=30),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    fig.update_yaxes(showgrid=False)
+    fig.update_xaxes(showgrid=False)
+    st.plotly_chart(fig, use_container_width=True, key=f"buybacks_{ticker}")
+
+
+# =========================================================
+# Financial Ratios Section (Análisis Razonado)
+# =========================================================
+def _calculate_financial_ratios(balance_df: pd.DataFrame, income_df: pd.DataFrame, 
+                                 cashflow_df: pd.DataFrame, ticker: str) -> pd.DataFrame:
+    """Calculate comprehensive financial ratios"""
+    
+    ratios = pd.DataFrame()
+    
+    if balance_df.empty:
+        return ratios
+    
+    # Get column names
+    def find_col(df, keywords):
+        for col in df.columns:
+            col_lower = str(col).lower()
+            if any(kw in col_lower for kw in keywords):
+                return col
+        return None
+    
+    # Balance sheet columns
+    current_assets = pd.to_numeric(balance_df[find_col(balance_df, ["current assets"])], errors="coerce") if find_col(balance_df, ["current assets"]) else None
+    current_liab = pd.to_numeric(balance_df[find_col(balance_df, ["current liabilities"])], errors="coerce") if find_col(balance_df, ["current liabilities"]) else None
+    total_assets = pd.to_numeric(balance_df[find_col(balance_df, ["total assets"])], errors="coerce") if find_col(balance_df, ["total assets"]) else None
+    total_liab = pd.to_numeric(balance_df[find_col(balance_df, ["total liabilities"])], errors="coerce") if find_col(balance_df, ["total liabilities"]) else None
+    equity = pd.to_numeric(balance_df[find_col(balance_df, ["stockholders equity", "shareholders equity", "total equity"])], errors="coerce") if find_col(balance_df, ["stockholders equity", "shareholders equity", "total equity"]) else None
+    total_debt = pd.to_numeric(balance_df[find_col(balance_df, ["total debt"])], errors="coerce") if find_col(balance_df, ["total debt"]) else None
+    inventory = pd.to_numeric(balance_df[find_col(balance_df, ["inventory"])], errors="coerce") if find_col(balance_df, ["inventory"]) else None
+    receivables = pd.to_numeric(balance_df[find_col(balance_df, ["accounts receivable", "receivables"])], errors="coerce") if find_col(balance_df, ["accounts receivable", "receivables"]) else None
+    payables = pd.to_numeric(balance_df[find_col(balance_df, ["accounts payable", "payables"])], errors="coerce") if find_col(balance_df, ["accounts payable", "payables"]) else None
+    
+    # Income statement columns
+    revenue = pd.to_numeric(income_df[find_col(income_df, ["total revenue"])], errors="coerce") if not income_df.empty and find_col(income_df, ["total revenue"]) else None
+    net_income = pd.to_numeric(income_df[find_col(income_df, ["net income"])], errors="coerce") if not income_df.empty and find_col(income_df, ["net income"]) else None
+    cogs = pd.to_numeric(income_df[find_col(income_df, ["cost of revenue", "cogs"])], errors="coerce") if not income_df.empty and find_col(income_df, ["cost of revenue", "cogs"]) else None
+    
+    # Calculate ratios
+    if current_assets is not None and current_liab is not None:
+        ratios["Razón Corriente"] = current_assets / current_liab
+    
+    if current_assets is not None and inventory is not None and current_liab is not None:
+        ratios["Razón Ácida"] = (current_assets - inventory) / current_liab
+    
+    if current_assets is not None and current_liab is not None:
+        ratios["Capital de Trabajo"] = current_assets - current_liab
+    
+    if total_debt is not None and equity is not None:
+        ratios["Deuda/Patrimonio"] = total_debt / equity
+    
+    if total_debt is not None and total_assets is not None:
+        ratios["Deuda/Activos"] = total_debt / total_assets
+    
+    if revenue is not None and inventory is not None:
+        ratios["Rotación de Inventarios"] = revenue / inventory
+    
+    if revenue is not None and total_assets is not None:
+        ratios["Rotación de Activos"] = revenue / total_assets
+    
+    if receivables is not None and revenue is not None:
+        ratios["Días de Cobro"] = (receivables / revenue) * 365
+    
+    if payables is not None and cogs is not None:
+        ratios["Días de Pago"] = (payables / cogs) * 365
+    
+    if net_income is not None and total_assets is not None:
+        ratios["ROA (%)"] = (net_income / total_assets) * 100
+    
+    if net_income is not None and equity is not None:
+        ratios["ROE (%)"] = (net_income / equity) * 100
+    
+    if net_income is not None and revenue is not None:
+        ratios["Margen de Utilidad (%)"] = (net_income / revenue) * 100
+    
+    if total_assets is not None and equity is not None:
+        ratios["Apalancamiento"] = total_assets / equity
+    
+    return ratios
+
+
+def _plot_ratio_evolution(ticker: str, ratio_name: str, ratio_data: pd.Series) -> None:
+    """Generic function to plot a single ratio evolution"""
+    if ratio_data is None or ratio_data.empty:
+        return
+    
+    ratio_data = ratio_data.dropna()
+    if ratio_data.empty:
+        return
+    
+    st.markdown(f"**{ratio_name} — {ticker}**")
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=ratio_data.index.astype(str), 
+        y=ratio_data.values, 
+        mode="lines+markers",
+        name=ratio_name,
+        text=[f"{v:.2f}" for v in ratio_data.values],
+        textposition="top center"
+    ))
+    
+    fig.update_layout(
+        xaxis_title="Año",
+        yaxis_title=ratio_name,
+        height=400,
+        margin=dict(l=20, r=20, t=10, b=30),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    fig.update_yaxes(showgrid=False)
+    fig.update_xaxes(showgrid=False)
+    st.plotly_chart(fig, use_container_width=True, key=f"ratio_{ratio_name}_{ticker}")
+
+
+# =========================================================
 # Página principal
 # =========================================================
 def page_analysis() -> None:
@@ -636,13 +1429,79 @@ def page_analysis() -> None:
             _plot_geraldine_weiss(ticker, price_daily, dividends)
     
     elif selected_section == "Balance":
-        st.info("Aquí irán los gráficos de Balance (pendiente).")
+        st.markdown("## Balance")
+        financial_data = _load_financial_statements(ticker)
+        balance_df = _prepare_financial_df(financial_data["balance_sheet"], YEARS)
+        
+        if balance_df.empty:
+            st.warning("No hay datos de balance disponibles para este ticker.")
+        else:
+            col1, col2 = st.columns(2)
+            with col1:
+                _plot_assets_evolution(ticker, balance_df)
+                _plot_debt_evolution(ticker, balance_df)
+            with col2:
+                _plot_liabilities_evolution(ticker, balance_df)
+                _plot_equity_evolution(ticker, balance_df)
     
     elif selected_section == "EERR":
-        st.info("Aquí irán los gráficos de Estado de Resultados (pendiente).")
+        st.markdown("## Estado de Resultados")
+        financial_data = _load_financial_statements(ticker)
+        income_df = _prepare_financial_df(financial_data["income_stmt"], YEARS)
+        
+        if income_df.empty:
+            st.warning("No hay datos de estado de resultados disponibles para este ticker.")
+        else:
+            col1, col2 = st.columns(2)
+            with col1:
+                _plot_revenue_evolution(ticker, income_df)
+                _plot_eps_evolution(ticker, income_df)
+            with col2:
+                _plot_margins_evolution(ticker, income_df)
+                _plot_shares_outstanding(ticker, income_df)
     
     elif selected_section == "EFE":
-        st.info("Aquí irán los gráficos de Estado de Flujo de Efectivo (pendiente).")
+        st.markdown("## Estado de Flujo de Efectivo")
+        financial_data = _load_financial_statements(ticker)
+        cashflow_df = _prepare_financial_df(financial_data["cashflow"], YEARS)
+        
+        if cashflow_df.empty:
+            st.warning("No hay datos de flujo de efectivo disponibles para este ticker.")
+        else:
+            col1, col2 = st.columns(2)
+            with col1:
+                _plot_cashflow_vs_capex(ticker, cashflow_df)
+                _plot_debt_repayment(ticker, cashflow_df)
+            with col2:
+                _plot_debt_issuance(ticker, cashflow_df)
+                _plot_share_buybacks(ticker, cashflow_df)
     
     elif selected_section == "Análisis Razonado":
-        st.info("Aquí irán los gráficos de Análisis Razonado (pendiente).")
+        st.markdown("## Análisis Razonado")
+        financial_data = _load_financial_statements(ticker)
+        balance_df = _prepare_financial_df(financial_data["balance_sheet"], YEARS)
+        income_df = _prepare_financial_df(financial_data["income_stmt"], YEARS)
+        cashflow_df = _prepare_financial_df(financial_data["cashflow"], YEARS)
+        
+        if balance_df.empty and income_df.empty:
+            st.warning("No hay datos financieros suficientes para el análisis razonado.")
+        else:
+            ratios = _calculate_financial_ratios(balance_df, income_df, cashflow_df, ticker)
+            
+            if ratios.empty:
+                st.info("No se pudieron calcular ratios financieros con los datos disponibles.")
+            else:
+                # Display ratios in a grid layout (2 columns)
+                ratio_cols = list(ratios.columns)
+                num_ratios = len(ratio_cols)
+                
+                for i in range(0, num_ratios, 2):
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        if i < num_ratios:
+                            _plot_ratio_evolution(ticker, ratio_cols[i], ratios[ratio_cols[i]])
+                    
+                    with col2:
+                        if i + 1 < num_ratios:
+                            _plot_ratio_evolution(ticker, ratio_cols[i + 1], ratios[ratio_cols[i + 1]])
