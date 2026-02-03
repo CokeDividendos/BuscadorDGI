@@ -1077,6 +1077,417 @@ def _plot_share_buybacks(ticker: str, cashflow_df: pd.DataFrame) -> None:
 
 
 # =========================================================
+# Valoración por múltiplos Section
+# =========================================================
+def _plot_debt_fcf_evolution(ticker: str, balance_df: pd.DataFrame, cashflow_df: pd.DataFrame) -> None:
+    """Plot debt evolution with FCF and Net Debt/FCF ratio"""
+    import numpy as np
+    
+    st.markdown("### Evolución de la Deuda")
+    
+    try:
+        # Get total debt
+        total_debt_col = None
+        for col in balance_df.columns:
+            if "total debt" in str(col).lower():
+                total_debt_col = col
+                break
+        
+        if total_debt_col is None:
+            # Try Long Term Debt as alternative
+            for col in balance_df.columns:
+                if "long term debt" in str(col).lower():
+                    total_debt_col = col
+                    break
+        
+        total_debt = pd.to_numeric(balance_df[total_debt_col], errors="coerce") if total_debt_col else None
+        
+        # Get cash
+        cash_col = None
+        for col in balance_df.columns:
+            if "cash and cash equivalents" in str(col).lower():
+                cash_col = col
+                break
+        
+        if cash_col is None:
+            # Try just Cash as alternative
+            for col in balance_df.columns:
+                if str(col).lower() == "cash":
+                    cash_col = col
+                    break
+        
+        cash = pd.to_numeric(balance_df[cash_col], errors="coerce") if cash_col else None
+        
+        # Get FCF from cashflow
+        fcf_col = None
+        for col in cashflow_df.columns:
+            if "free cash flow" in str(col).lower():
+                fcf_col = col
+                break
+        
+        fcf = pd.to_numeric(cashflow_df[fcf_col], errors="coerce") if fcf_col else None
+        
+        # Create dataframe
+        df_deuda = pd.DataFrame()
+        if fcf is not None:
+            df_deuda["FCF"] = fcf
+        if total_debt is not None and cash is not None:
+            df_deuda["Deuda Neta"] = total_debt - cash
+        
+        df_deuda = df_deuda.dropna(how="all")
+        
+        if not df_deuda.empty and "FCF" in df_deuda.columns and "Deuda Neta" in df_deuda.columns:
+            df_deuda["Deuda Neta/FCF"] = df_deuda["Deuda Neta"] / df_deuda["FCF"]
+            df_deuda = df_deuda.replace([np.inf, -np.inf], np.nan).dropna()
+        
+        if df_deuda.empty:
+            st.warning("No hay datos suficientes para generar el gráfico de deuda.")
+            return
+        
+        # Colors
+        primary_orange = "#ff6b35"
+        primary_blue = "#004e89"
+        primary_pink = "#f72585"
+        
+        fig_deuda = go.Figure()
+        if "FCF" in df_deuda.columns:
+            fig_deuda.add_trace(
+                go.Bar(
+                    x=df_deuda.index.astype(str),
+                    y=df_deuda["FCF"],
+                    name="FCF",
+                    marker_color=primary_orange,
+                    text=df_deuda["FCF"].apply(lambda x: f"{x/1e6:.0f}M" if abs(x) >= 1e6 else f"{x:.0f}"),
+                    textposition="outside",
+                )
+            )
+        if "Deuda Neta" in df_deuda.columns:
+            fig_deuda.add_trace(
+                go.Bar(
+                    x=df_deuda.index.astype(str),
+                    y=df_deuda["Deuda Neta"],
+                    name="Deuda Neta",
+                    marker_color=primary_blue,
+                    text=df_deuda["Deuda Neta"].apply(lambda x: f"{x/1e6:.0f}M" if abs(x) >= 1e6 else f"{x:.0f}"),
+                    textposition="outside",
+                )
+            )
+        if "Deuda Neta/FCF" in df_deuda.columns:
+            fig_deuda.add_trace(
+                go.Scatter(
+                    x=df_deuda.index.astype(str),
+                    y=df_deuda["Deuda Neta/FCF"],
+                    name="Deuda Neta/FCF",
+                    mode="lines+markers+text",
+                    yaxis="y2",
+                    line=dict(color=primary_pink),
+                    text=[f"{v:.2f}" for v in df_deuda["Deuda Neta/FCF"]],
+                    textposition="top right",
+                )
+            )
+        
+        fig_deuda.update_layout(
+            title="Evolución de Deuda, FCF y Deuda Neta/FCF",
+            xaxis_title="Año",
+            yaxis_title="Millones USD",
+            yaxis2=dict(title="Deuda Neta/FCF", overlaying="y", side="right"),
+            barmode="group",
+            height=500,
+            margin=dict(l=30, r=30, t=60, b=30),
+        )
+        st.plotly_chart(fig_deuda, use_container_width=True, key=f"plotly_chart_deuda_{ticker}")
+    except Exception as e:
+        st.warning(f"No se pudo generar el gráfico de deuda: {e}")
+
+
+def _plot_per_evolution(ticker: str, income_df: pd.DataFrame, info: Dict[str, Any]) -> None:
+    """Plot P/E ratio evolution with EPS and Price"""
+    import numpy as np
+    
+    st.markdown("### Histórico del PER, EPS y Precio")
+    
+    try:
+        # Get current P/E ratio
+        pe_ratio = info.get("trailingPE")
+        if pe_ratio and isinstance(pe_ratio, (int, float)):
+            st.markdown(f"**📌 El PER actual es de {pe_ratio:.2f}x**")
+        
+        # Get EPS
+        eps_col = None
+        for col in income_df.columns:
+            if "basic eps" in str(col).lower():
+                eps_col = col
+                break
+        
+        if not eps_col:
+            st.warning("No se encontró 'Basic EPS'.")
+            return
+        
+        eps_series = pd.to_numeric(income_df[eps_col], errors="coerce")
+        
+        # Get price data
+        t = yf.Ticker(ticker)
+        price_data = t.history(period="max")
+        if price_data.empty:
+            st.warning("No hay datos de precio disponibles.")
+            return
+        
+        price_yearly = price_data.resample("Y").last()["Close"]
+        price_yearly.index = price_yearly.index.year
+        
+        # Create dataframe
+        df_per = pd.DataFrame({"EPS": eps_series, "Precio": price_yearly}).dropna()
+        if df_per.empty:
+            st.warning("No hay datos suficientes para calcular el PER histórico.")
+            return
+        
+        df_per["PER"] = df_per["Precio"] / df_per["EPS"]
+        df_per = df_per.replace([np.inf, -np.inf], np.nan).dropna()
+        
+        if df_per.empty:
+            st.warning("No hay datos suficientes para graficar el PER.")
+            return
+        
+        # Colors
+        primary_orange = "#ff6b35"
+        primary_blue = "#004e89"
+        primary_pink = "#f72585"
+        
+        fig_combined = go.Figure()
+        fig_combined.add_trace(
+            go.Bar(
+                x=df_per.index.astype(str),
+                y=df_per["EPS"],
+                name="EPS",
+                marker_color=primary_orange,
+                text=df_per["EPS"].round(2),
+                textposition="outside",
+            )
+        )
+        fig_combined.add_trace(
+            go.Bar(
+                x=df_per.index.astype(str),
+                y=df_per["Precio"],
+                name="Precio",
+                marker_color=primary_blue,
+                text=df_per["Precio"].round(2),
+                textposition="outside",
+            )
+        )
+        fig_combined.add_trace(
+            go.Scatter(
+                x=df_per.index.astype(str),
+                y=df_per["PER"],
+                name="PER",
+                mode="lines+markers+text",
+                yaxis="y2",
+                line=dict(color=primary_pink),
+                text=[f"{v:.2f}" for v in df_per["PER"]],
+                textposition="top right",
+            )
+        )
+        fig_combined.update_layout(
+            title="Histórico del EPS, Precio y PER",
+            xaxis_title="Año",
+            yaxis=dict(title="EPS / Precio"),
+            yaxis2=dict(title="PER", overlaying="y", side="right"),
+            barmode="group",
+            height=450,
+            margin=dict(l=30, r=30, t=60, b=30),
+        )
+        st.plotly_chart(fig_combined, use_container_width=True, key=f"plotly_chart_per_{ticker}")
+    except Exception as e:
+        st.warning(f"No se pudo generar el gráfico PER: {e}")
+
+
+def _plot_ev_ebitda_evolution(ticker: str, income_df: pd.DataFrame, balance_df: pd.DataFrame, info: Dict[str, Any]) -> None:
+    """Plot EV/EBITDA evolution"""
+    import numpy as np
+    
+    st.markdown("### Evolución de EV, EBITDA y EV/EBITDA")
+    
+    try:
+        # Get EBITDA
+        ebitda_col = None
+        for col in income_df.columns:
+            if "ebitda" in str(col).lower():
+                ebitda_col = col
+                break
+        
+        ebitda = pd.to_numeric(income_df[ebitda_col], errors="coerce") if ebitda_col else None
+        
+        if ebitda is None:
+            st.warning("No se encontró EBITDA en los datos financieros.")
+            return
+        
+        # Get total debt
+        total_debt_col = None
+        for col in balance_df.columns:
+            if "total debt" in str(col).lower():
+                total_debt_col = col
+                break
+        
+        if total_debt_col is None:
+            for col in balance_df.columns:
+                if "long term debt" in str(col).lower():
+                    total_debt_col = col
+                    break
+        
+        total_debt = pd.to_numeric(balance_df[total_debt_col], errors="coerce") if total_debt_col else None
+        
+        # Get cash
+        cash_col = None
+        for col in balance_df.columns:
+            if "cash and cash equivalents" in str(col).lower():
+                cash_col = col
+                break
+        
+        if cash_col is None:
+            for col in balance_df.columns:
+                if str(col).lower() == "cash":
+                    cash_col = col
+                    break
+        
+        cash = pd.to_numeric(balance_df[cash_col], errors="coerce") if cash_col else None
+        
+        # Calculate net debt
+        net_debt = None
+        if total_debt is not None and cash is not None:
+            net_debt = total_debt - cash
+        
+        # Get market cap
+        market_cap = info.get("marketCap")
+        
+        # Calculate EV and EV/EBITDA
+        # Note: We need historical market cap for accurate EV calculation
+        # Try to get historical market cap by using shares outstanding and historical prices
+        ev = None
+        ev_ebitda = None
+        used_historical_mcap = False  # Track if we use historical or current market cap
+        
+        # Get shares outstanding from balance sheet or income statement
+        shares_col = None
+        for col in balance_df.columns:
+            if "ordinary shares" in str(col).lower() or "shares outstanding" in str(col).lower():
+                shares_col = col
+                break
+        
+        if shares_col is None and not income_df.empty:
+            for col in income_df.columns:
+                if "ordinary shares" in str(col).lower() or "shares outstanding" in str(col).lower():
+                    shares_col = col
+                    break
+        
+        # Try to calculate historical market cap
+        historical_market_cap = None
+        if shares_col is not None:
+            shares_data = pd.to_numeric(balance_df[shares_col] if shares_col in balance_df.columns 
+                                       else income_df[shares_col], errors="coerce")
+            
+            # Get historical year-end prices
+            t = yf.Ticker(ticker)
+            price_data = t.history(period="max")
+            if not price_data.empty:
+                price_yearly = price_data.resample("Y").last()["Close"]
+                price_yearly.index = price_yearly.index.year
+                
+                # Calculate historical market cap = shares * price
+                # Align indices
+                common_years = shares_data.index.intersection(price_yearly.index)
+                if len(common_years) > 0:
+                    historical_market_cap = shares_data[common_years] * price_yearly[common_years]
+        
+        if historical_market_cap is not None and net_debt is not None:
+            # Use historical market cap where available
+            ev = historical_market_cap + net_debt
+            ev_ebitda = ev / ebitda
+            used_historical_mcap = True
+        elif market_cap is not None and net_debt is not None:
+            # Fallback: Use current market cap for all years (limitation noted)
+            # Note: This is a simplification - ideally we'd use historical market cap
+            ev = pd.Series([market_cap + net_debt.iloc[i] if i < len(net_debt) else None 
+                          for i in range(len(ebitda))], 
+                          index=ebitda.index)
+            ev_ebitda = ev / ebitda
+            used_historical_mcap = False
+        
+        df_ev = pd.DataFrame({"EBITDA": ebitda, "EV": ev, "EV/EBITDA": ev_ebitda}).dropna(how="all")
+        
+        if df_ev.empty:
+            st.warning("No hay datos suficientes para generar el gráfico EV/EBITDA.")
+            return
+        
+        # Show current EV/EBITDA
+        current_ev_ebitda = (
+            df_ev["EV/EBITDA"].dropna().iloc[-1]
+            if "EV/EBITDA" in df_ev.columns and not df_ev["EV/EBITDA"].dropna().empty
+            else None
+        )
+        if current_ev_ebitda is not None:
+            st.markdown(f"**📌 EV/EBITDA actual: {current_ev_ebitda:.2f}**")
+        else:
+            st.markdown("**📌 EV/EBITDA actual no disponible**")
+        
+        # Show info message if using current market cap fallback
+        if not used_historical_mcap:
+            st.info("ℹ️ Usando capitalización de mercado actual para todos los años (EV histórico aproximado)")
+        
+        # Colors
+        primary_orange = "#ff6b35"
+        primary_blue = "#004e89"
+        primary_pink = "#f72585"
+        
+        fig_ev = go.Figure()
+        if "EBITDA" in df_ev.columns:
+            fig_ev.add_trace(
+                go.Bar(
+                    x=df_ev.index.astype(str),
+                    y=df_ev["EBITDA"],
+                    name="EBITDA",
+                    marker_color=primary_orange,
+                    text=df_ev["EBITDA"].apply(lambda x: f"{x/1e6:.0f}M" if abs(x) >= 1e6 else f"{x:.0f}"),
+                    textposition="outside",
+                )
+            )
+        if "EV" in df_ev.columns:
+            fig_ev.add_trace(
+                go.Bar(
+                    x=df_ev.index.astype(str),
+                    y=df_ev["EV"],
+                    name="EV",
+                    marker_color=primary_blue,
+                    text=df_ev["EV"].apply(lambda x: f"{x/1e9:.1f}B" if abs(x) >= 1e9 else f"{x/1e6:.0f}M"),
+                    textposition="outside",
+                )
+            )
+        if "EV/EBITDA" in df_ev.columns:
+            fig_ev.add_trace(
+                go.Scatter(
+                    x=df_ev.index.astype(str),
+                    y=df_ev["EV/EBITDA"],
+                    name="EV/EBITDA",
+                    mode="lines+markers+text",
+                    yaxis="y2",
+                    line=dict(color=primary_pink),
+                    text=[f"{v:.2f}" for v in df_ev["EV/EBITDA"]],
+                    textposition="top right",
+                )
+            )
+        fig_ev.update_layout(
+            title="Evolución de EV, EBITDA y EV/EBITDA",
+            xaxis_title="Año",
+            yaxis_title="Valor (USD)",
+            yaxis2=dict(title="EV/EBITDA", overlaying="y", side="right"),
+            barmode="group",
+            height=500,
+            margin=dict(l=30, r=30, t=60, b=30),
+        )
+        st.plotly_chart(fig_ev, use_container_width=True, key=f"plotly_chart_ev_{ticker}")
+    except Exception as e:
+        st.warning(f"No se pudo generar el gráfico EV/EBITDA: {e}")
+
+
+# =========================================================
 # Financial Ratios Section (Análisis Razonado)
 # =========================================================
 def _calculate_financial_ratios(balance_df: pd.DataFrame, income_df: pd.DataFrame, 
@@ -1143,6 +1554,13 @@ def _calculate_financial_ratios(balance_df: pd.DataFrame, income_df: pd.DataFram
     cogs_col = _find_column(income_df, ["cost of revenue", "cogs"]) if not income_df.empty else None
     cogs = pd.to_numeric(income_df[cogs_col], errors="coerce") if cogs_col else None
     
+    # For ROIC calculation
+    ebit_col = _find_column(income_df, ["ebit"]) if not income_df.empty else None
+    ebit = pd.to_numeric(income_df[ebit_col], errors="coerce") if ebit_col else None
+    
+    tax_col = _find_column(income_df, ["tax provision", "income tax"]) if not income_df.empty else None
+    tax = pd.to_numeric(income_df[tax_col], errors="coerce") if tax_col else None
+    
     # Calculate ratios
     if current_assets is not None and current_liab is not None:
         ratios["Razón Corriente"] = current_assets / current_liab
@@ -1182,6 +1600,32 @@ def _calculate_financial_ratios(balance_df: pd.DataFrame, income_df: pd.DataFram
     
     if total_assets is not None and equity is not None:
         ratios["Apalancamiento"] = total_assets / equity
+    
+    # ROIC = NOPAT / Invested Capital
+    # NOPAT = EBIT * (1 - Tax Rate)
+    # Invested Capital = Total Assets - Current Liabilities
+    if ebit is not None and total_assets is not None and current_liab is not None:
+        # Calculate tax rate from financial data if available
+        if net_income is not None and tax is not None:
+            # EBIT - Tax = Net Income (approximately)
+            # Tax rate = Tax / (EBIT)
+            tax_rate = tax / ebit
+            tax_rate = tax_rate.clip(0, 1)  # Keep tax rate between 0 and 1
+        elif net_income is not None:
+            # Approximate tax rate from net income and EBIT
+            tax_rate = 1 - (net_income / ebit)
+            tax_rate = tax_rate.clip(0, 1)
+        else:
+            # Default tax rate: 21% (U.S. federal corporate statutory tax rate)
+            # Note: This is the statutory rate. Actual effective tax rates may vary
+            # significantly due to deductions, credits, tax havens, and other factors.
+            # For international stocks, statutory rates vary by jurisdiction (0% to 35%+).
+            # When possible, the actual tax is calculated from financial statements above.
+            tax_rate = 0.21
+        
+        nopat = ebit * (1 - tax_rate)
+        invested_capital = total_assets - current_liab
+        ratios["ROIC (%)"] = (nopat / invested_capital) * 100
     
     return ratios
 
@@ -1480,6 +1924,38 @@ def page_analysis() -> None:
                 _plot_debt_issuance(ticker, cashflow_df)
                 _plot_share_buybacks(ticker, cashflow_df)
     
+    elif selected_section == "Valoración por múltiplos":
+        st.markdown("## Valoración por múltiplos")
+        financial_data = _load_financial_statements(ticker)
+        balance_df = _prepare_financial_df(financial_data["balance_sheet"], YEARS)
+        income_df = _prepare_financial_df(financial_data["income_stmt"], YEARS)
+        cashflow_df = _prepare_financial_df(financial_data["cashflow"], YEARS)
+        
+        # Get ticker info for market cap and PE ratio
+        t = yf.Ticker(ticker)
+        info = t.info
+        
+        if balance_df.empty and income_df.empty and cashflow_df.empty:
+            st.warning("No hay datos financieros suficientes para la valoración por múltiplos.")
+        else:
+            # Create tabs for each chart
+            sub_tabs = st.tabs(["💰 Evolución de la Deuda", "📊 Evolución del PER", "📈 Evolución EV/EBITDA"])
+            with sub_tabs[0]:
+                if not balance_df.empty and not cashflow_df.empty:
+                    _plot_debt_fcf_evolution(ticker, balance_df, cashflow_df)
+                else:
+                    st.warning("No hay datos suficientes de balance y flujo de efectivo para este análisis.")
+            with sub_tabs[1]:
+                if not income_df.empty:
+                    _plot_per_evolution(ticker, income_df, info)
+                else:
+                    st.warning("No hay datos suficientes de estado de resultados para este análisis.")
+            with sub_tabs[2]:
+                if not income_df.empty and not balance_df.empty:
+                    _plot_ev_ebitda_evolution(ticker, income_df, balance_df, info)
+                else:
+                    st.warning("No hay datos suficientes para este análisis.")
+    
     elif selected_section == "Análisis Razonado":
         st.markdown("## Análisis Razonado")
         financial_data = _load_financial_statements(ticker)
@@ -1536,13 +2012,13 @@ def page_analysis() -> None:
                             height=400
                         )
                         
-                        # Add radio buttons for metric selection
+                        # Add dropdown (selectbox) for metric selection
                         st.markdown("**Seleccione una métrica para visualizar:**")
                         
-                        # Calculate default index for radio button
+                        # Calculate default index for selectbox
                         default_index = ratio_cols.index(st.session_state[session_key])
                         
-                        selected_metric = st.radio(
+                        selected_metric = st.selectbox(
                             "Métrica",
                             ratio_cols,
                             index=default_index,
