@@ -1495,17 +1495,68 @@ def page_analysis() -> None:
             if ratios.empty:
                 st.info("No se pudieron calcular ratios financieros con los datos disponibles.")
             else:
-                # Display ratios in a grid layout (2 columns)
+                # Display ratios in a two-column layout: table on left, chart on right
                 ratio_cols = list(ratios.columns)
-                num_ratios = len(ratio_cols)
                 
-                for i in range(0, num_ratios, 2):
-                    col1, col2 = st.columns(2)
+                # Check if we have any ratios to display
+                if not ratio_cols:
+                    st.info("No se pudieron calcular ratios financieros con los datos disponibles.")
+                else:
+                    # Transpose ratios DataFrame for better table display
+                    # Rows will be metrics, columns will be years
+                    ratios_transposed = ratios.T
                     
-                    with col1:
-                        if i < num_ratios:
-                            _plot_ratio_evolution(ticker, ratio_cols[i], ratios[ratio_cols[i]])
+                    # Initialize selected metric in session state if not exists
+                    session_key = f"selected_ratio_{ticker}"
+                    if session_key not in st.session_state or st.session_state[session_key] not in ratio_cols:
+                        st.session_state[session_key] = ratio_cols[0]
                     
-                    with col2:
-                        if i + 1 < num_ratios:
-                            _plot_ratio_evolution(ticker, ratio_cols[i + 1], ratios[ratio_cols[i + 1]])
+                    # Create two columns: left for table, right for chart
+                    col_table, col_chart = st.columns([1, 1])
+                    
+                    with col_table:
+                        st.markdown("### Métricas Financieras")
+                        
+                        # Display the table with clickable rows
+                        # Create a formatted DataFrame for display
+                        display_df = ratios_transposed.copy()
+                        
+                        # Format values to 2 decimal places
+                        try:
+                            # Use map() for pandas >= 2.1, applymap() for older versions
+                            display_df = display_df.map(lambda x: f"{x:.2f}" if pd.notna(x) else "N/D")
+                        except AttributeError:
+                            # Fallback to applymap for older pandas versions
+                            display_df = display_df.applymap(lambda x: f"{x:.2f}" if pd.notna(x) else "N/D")
+                        
+                        # Display the dataframe
+                        st.dataframe(
+                            display_df,
+                            use_container_width=True,
+                            height=400
+                        )
+                        
+                        # Add radio buttons for metric selection
+                        st.markdown("**Seleccione una métrica para visualizar:**")
+                        
+                        # Calculate default index for radio button
+                        default_index = ratio_cols.index(st.session_state[session_key])
+                        
+                        selected_metric = st.radio(
+                            "Métrica",
+                            ratio_cols,
+                            index=default_index,
+                            key=f"ratio_selector_{ticker}",
+                            label_visibility="collapsed"
+                        )
+                        
+                        # Update session state
+                        st.session_state[session_key] = selected_metric
+                    
+                    with col_chart:
+                        st.markdown("### Gráfico de Evolución")
+                        
+                        # Plot the selected ratio
+                        selected_ratio_name = st.session_state[session_key]
+                        selected_ratio_data = ratios[selected_ratio_name]
+                        _plot_ratio_evolution(ticker, selected_ratio_name, selected_ratio_data)
