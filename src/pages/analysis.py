@@ -182,6 +182,7 @@ def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: 
             x=annual.index.astype(str),
             y=annual.values,
             name="Dividendo anual",
+            marker_color="#ff6d01",
             text=[f"${v:.2f}" for v in annual.values],
             textposition="outside",
         )
@@ -191,11 +192,12 @@ def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: 
         yaxis_title="Dividendo anual ($)",
         height=460,
         margin=dict(l=20, r=20, t=10, b=30),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="#141f41",
+        plot_bgcolor="#141f41",
+        font=dict(color="#ffffff"),
     )
-    fig.update_yaxes(showgrid=False)
-    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=False, zeroline=False)
+    fig.update_xaxes(showgrid=False, zeroline=False)
     st.plotly_chart(fig, use_container_width=True, key=f"div_evo_{ticker}")
 
     with st.expander("Ver tabla (últimos 5 años)"):
@@ -272,12 +274,13 @@ def _plot_dividend_safety(ticker: str, cashflow: pd.DataFrame) -> None:
 
     st.markdown(f"**Seguridad del dividendo — {ticker} (últimos {YEARS} años disponibles)**")
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=out.index.astype(str), y=out["FCF"], name="FCF", text=out["FCF"].round(0), textposition="outside"))
+    fig.add_trace(go.Bar(x=out.index.astype(str), y=out["FCF"], name="FCF", marker_color="#ff6d01", text=out["FCF"].round(0), textposition="outside"))
     fig.add_trace(
         go.Bar(
             x=out.index.astype(str),
             y=out["Dividendos pagados"],
             name="Dividendos pagados",
+            marker_color="#ff00ff",
             text=out["Dividendos pagados"].round(0),
             textposition="outside",
         )
@@ -289,6 +292,7 @@ def _plot_dividend_safety(ticker: str, cashflow: pd.DataFrame) -> None:
             name="FCF Payout (%)",
             mode="lines+markers+text",
             yaxis="y2",
+            line=dict(color="#01c2ef"),
             text=[f"{v:.0f}%" if pd.notna(v) else "" for v in out["FCF Payout (%)"]],
             textposition="top center",
         )
@@ -300,12 +304,13 @@ def _plot_dividend_safety(ticker: str, cashflow: pd.DataFrame) -> None:
         barmode="group",
         height=520,
         margin=dict(l=20, r=20, t=10, b=30),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="#141f41",
+        plot_bgcolor="#141f41",
+        font=dict(color="#ffffff"),
     )
     # quitar líneas horizontales
-    fig.update_yaxes(showgrid=False)
-    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=False, zeroline=False)
+    fig.update_xaxes(showgrid=False, zeroline=False)
     st.plotly_chart(fig, use_container_width=True, key=f"div_safe_{ticker}")
 
     with st.expander("Ver tabla (últimos 5 años)"):
@@ -353,9 +358,9 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
 
     st.markdown(f"**Geraldine Weiss — {ticker} (últimos {YEARS} años)**")
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=price_daily.index, y=price_daily["Close"], mode="lines", name="Precio (diario)"))
-    fig.add_trace(go.Scatter(x=monthly.index, y=monthly["Sobrevalorado"], mode="lines", name="Banda sobrevalorado", line=dict(dash="dot")))
-    fig.add_trace(go.Scatter(x=monthly.index, y=monthly["Infravalorado"], mode="lines", name="Banda infravalorado", line=dict(dash="dot")))
+    fig.add_trace(go.Scatter(x=price_daily.index, y=price_daily["Close"], mode="lines", name="Precio (diario)", line=dict(color="#ff6d01")))
+    fig.add_trace(go.Scatter(x=monthly.index, y=monthly["Sobrevalorado"], mode="lines", name="Banda sobrevalorado", line=dict(dash="dot", color="#ff00ff")))
+    fig.add_trace(go.Scatter(x=monthly.index, y=monthly["Infravalorado"], mode="lines", name="Banda infravalorado", line=dict(dash="dot", color="#01c2ef")))
 
     current_price = float(price_daily["Close"].iloc[-1])
     fig.add_trace(
@@ -364,6 +369,7 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
             y=[current_price],
             mode="markers+text",
             name="Precio actual",
+            marker=dict(color="#ffffff", size=10),
             text=[f"${current_price:.2f}"],
             textposition="top center",
         )
@@ -374,12 +380,13 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
         yaxis_title="Precio ($)",
         height=520,
         margin=dict(l=20, r=20, t=10, b=40),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="#141f41",
+        plot_bgcolor="#141f41",
+        font=dict(color="#ffffff"),
     )
     # quitar líneas horizontales
-    fig.update_yaxes(showgrid=False)
-    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=False, zeroline=False)
+    fig.update_xaxes(showgrid=False, zeroline=False)
     st.plotly_chart(fig, use_container_width=True, key=f"gw_{ticker}")
 
     cols = st.columns(6)
@@ -481,8 +488,8 @@ def _plot_assets_evolution(ticker: str, balance_df: pd.DataFrame) -> None:
     
     st.markdown(f"**Evolución Activos Totales vs Activos Corrientes — {ticker}**")
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=data.index.astype(str), y=data["Activos Totales"], name="Activos Totales"))
-    fig.add_trace(go.Bar(x=data.index.astype(str), y=data["Activos Corrientes"], name="Activos Corrientes"))
+    fig.add_trace(go.Bar(x=data.index.astype(str), y=data["Activos Totales"], name="Activos Totales", marker_color="#ff6d01"))
+    fig.add_trace(go.Bar(x=data.index.astype(str), y=data["Activos Corrientes"], name="Activos Corrientes", marker_color="#ff00ff"))
     
     fig.update_layout(
         xaxis_title="Año",
@@ -490,11 +497,12 @@ def _plot_assets_evolution(ticker: str, balance_df: pd.DataFrame) -> None:
         barmode="group",
         height=460,
         margin=dict(l=20, r=20, t=10, b=30),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="#141f41",
+        plot_bgcolor="#141f41",
+        font=dict(color="#ffffff"),
     )
-    fig.update_yaxes(showgrid=False)
-    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=False, zeroline=False)
+    fig.update_xaxes(showgrid=False, zeroline=False)
     st.plotly_chart(fig, use_container_width=True, key=f"assets_{ticker}")
 
 
@@ -529,8 +537,8 @@ def _plot_liabilities_evolution(ticker: str, balance_df: pd.DataFrame) -> None:
     
     st.markdown(f"**Evolución Pasivos Totales vs Pasivos Corrientes — {ticker}**")
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=data.index.astype(str), y=data["Pasivos Totales"], name="Pasivos Totales"))
-    fig.add_trace(go.Bar(x=data.index.astype(str), y=data["Pasivos Corrientes"], name="Pasivos Corrientes"))
+    fig.add_trace(go.Bar(x=data.index.astype(str), y=data["Pasivos Totales"], name="Pasivos Totales", marker_color="#ff6d01"))
+    fig.add_trace(go.Bar(x=data.index.astype(str), y=data["Pasivos Corrientes"], name="Pasivos Corrientes", marker_color="#ff00ff"))
     
     fig.update_layout(
         xaxis_title="Año",
@@ -538,11 +546,12 @@ def _plot_liabilities_evolution(ticker: str, balance_df: pd.DataFrame) -> None:
         barmode="group",
         height=460,
         margin=dict(l=20, r=20, t=10, b=30),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="#141f41",
+        plot_bgcolor="#141f41",
+        font=dict(color="#ffffff"),
     )
-    fig.update_yaxes(showgrid=False)
-    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=False, zeroline=False)
+    fig.update_xaxes(showgrid=False, zeroline=False)
     st.plotly_chart(fig, use_container_width=True, key=f"liabilities_{ticker}")
 
 
@@ -591,8 +600,8 @@ def _plot_debt_evolution(ticker: str, balance_df: pd.DataFrame) -> None:
     
     st.markdown(f"**Evolución Deuda Total vs Deuda Neta — {ticker}**")
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=data.index.astype(str), y=data["Deuda Total"], name="Deuda Total"))
-    fig.add_trace(go.Bar(x=data.index.astype(str), y=data["Deuda Neta"], name="Deuda Neta"))
+    fig.add_trace(go.Bar(x=data.index.astype(str), y=data["Deuda Total"], name="Deuda Total", marker_color="#ff6d01"))
+    fig.add_trace(go.Bar(x=data.index.astype(str), y=data["Deuda Neta"], name="Deuda Neta", marker_color="#ff00ff"))
     
     fig.update_layout(
         xaxis_title="Año",
@@ -600,11 +609,12 @@ def _plot_debt_evolution(ticker: str, balance_df: pd.DataFrame) -> None:
         barmode="group",
         height=460,
         margin=dict(l=20, r=20, t=10, b=30),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="#141f41",
+        plot_bgcolor="#141f41",
+        font=dict(color="#ffffff"),
     )
-    fig.update_yaxes(showgrid=False)
-    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=False, zeroline=False)
+    fig.update_xaxes(showgrid=False, zeroline=False)
     st.plotly_chart(fig, use_container_width=True, key=f"debt_{ticker}")
 
 
@@ -639,6 +649,7 @@ def _plot_equity_evolution(ticker: str, balance_df: pd.DataFrame) -> None:
         x=equity.index.astype(str), 
         y=equity.values, 
         name="Patrimonio",
+        marker_color="#ff6d01",
         text=[_fmt_large_number(v) for v in equity.values],
         textposition="outside"
     ))
@@ -648,11 +659,12 @@ def _plot_equity_evolution(ticker: str, balance_df: pd.DataFrame) -> None:
         yaxis_title="USD",
         height=460,
         margin=dict(l=20, r=20, t=10, b=30),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="#141f41",
+        plot_bgcolor="#141f41",
+        font=dict(color="#ffffff"),
     )
-    fig.update_yaxes(showgrid=False)
-    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=False, zeroline=False)
+    fig.update_xaxes(showgrid=False, zeroline=False)
     st.plotly_chart(fig, use_container_width=True, key=f"equity_{ticker}")
 
 
@@ -689,6 +701,7 @@ def _plot_revenue_evolution(ticker: str, income_df: pd.DataFrame) -> None:
         x=revenue.index.astype(str), 
         y=revenue.values, 
         name="Ingresos",
+        marker_color="#ff6d01",
         text=[_fmt_large_number(v) for v in revenue.values],
         textposition="outside"
     ))
@@ -698,11 +711,12 @@ def _plot_revenue_evolution(ticker: str, income_df: pd.DataFrame) -> None:
         yaxis_title="USD",
         height=460,
         margin=dict(l=20, r=20, t=10, b=30),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="#141f41",
+        plot_bgcolor="#141f41",
+        font=dict(color="#ffffff"),
     )
-    fig.update_yaxes(showgrid=False)
-    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=False, zeroline=False)
+    fig.update_xaxes(showgrid=False, zeroline=False)
     st.plotly_chart(fig, use_container_width=True, key=f"revenue_{ticker}")
 
 
@@ -757,12 +771,14 @@ def _plot_margins_evolution(ticker: str, income_df: pd.DataFrame) -> None:
     st.markdown(f"**Evolución de Márgenes — {ticker}**")
     fig = go.Figure()
     
-    for col in margins.columns:
+    colors = ["#ff6d01", "#ff00ff", "#01c2ef"]
+    for i, col in enumerate(margins.columns):
         fig.add_trace(go.Scatter(
             x=margins.index.astype(str), 
             y=margins[col].values, 
             mode="lines+markers",
-            name=col
+            name=col,
+            line=dict(color=colors[i % len(colors)])
         ))
     
     fig.update_layout(
@@ -770,11 +786,12 @@ def _plot_margins_evolution(ticker: str, income_df: pd.DataFrame) -> None:
         yaxis_title="Porcentaje (%)",
         height=460,
         margin=dict(l=20, r=20, t=10, b=30),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="#141f41",
+        plot_bgcolor="#141f41",
+        font=dict(color="#ffffff"),
     )
-    fig.update_yaxes(showgrid=False)
-    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=False, zeroline=False)
+    fig.update_xaxes(showgrid=False, zeroline=False)
     st.plotly_chart(fig, use_container_width=True, key=f"margins_{ticker}")
 
 
@@ -825,6 +842,7 @@ def _plot_eps_evolution(ticker: str, income_df: pd.DataFrame) -> None:
         x=eps.index.astype(str), 
         y=eps.values, 
         name="EPS",
+        marker_color="#ff6d01",
         text=[f"${v:.2f}" for v in eps.values],
         textposition="outside"
     ))
@@ -834,11 +852,12 @@ def _plot_eps_evolution(ticker: str, income_df: pd.DataFrame) -> None:
         yaxis_title="USD",
         height=460,
         margin=dict(l=20, r=20, t=10, b=30),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="#141f41",
+        plot_bgcolor="#141f41",
+        font=dict(color="#ffffff"),
     )
-    fig.update_yaxes(showgrid=False)
-    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=False, zeroline=False)
+    fig.update_xaxes(showgrid=False, zeroline=False)
     st.plotly_chart(fig, use_container_width=True, key=f"eps_{ticker}")
 
 
@@ -872,6 +891,7 @@ def _plot_shares_outstanding(ticker: str, income_df: pd.DataFrame) -> None:
         x=shares.index.astype(str), 
         y=shares.values, 
         name="Acciones",
+        marker_color="#ff6d01",
         text=[f"{v/1e9:.2f}B" if abs(v) >= 1e9 else f"{v/1e6:.2f}M" for v in shares.values],
         textposition="outside"
     ))
@@ -881,11 +901,12 @@ def _plot_shares_outstanding(ticker: str, income_df: pd.DataFrame) -> None:
         yaxis_title="Número de Acciones",
         height=460,
         margin=dict(l=20, r=20, t=10, b=30),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="#141f41",
+        plot_bgcolor="#141f41",
+        font=dict(color="#ffffff"),
     )
-    fig.update_yaxes(showgrid=False)
-    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=False, zeroline=False)
+    fig.update_xaxes(showgrid=False, zeroline=False)
     st.plotly_chart(fig, use_container_width=True, key=f"shares_{ticker}")
 
 
@@ -923,8 +944,8 @@ def _plot_cashflow_vs_capex(ticker: str, cashflow_df: pd.DataFrame) -> None:
     
     st.markdown(f"**Flujo de Caja Operativo vs CapEx — {ticker}**")
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=data.index.astype(str), y=data["Flujo de Caja Operativo"], name="Flujo de Caja Operativo"))
-    fig.add_trace(go.Bar(x=data.index.astype(str), y=data["CapEx"], name="CapEx"))
+    fig.add_trace(go.Bar(x=data.index.astype(str), y=data["Flujo de Caja Operativo"], name="Flujo de Caja Operativo", marker_color="#ff6d01"))
+    fig.add_trace(go.Bar(x=data.index.astype(str), y=data["CapEx"], name="CapEx", marker_color="#ff00ff"))
     
     fig.update_layout(
         xaxis_title="Año",
@@ -932,11 +953,12 @@ def _plot_cashflow_vs_capex(ticker: str, cashflow_df: pd.DataFrame) -> None:
         barmode="group",
         height=460,
         margin=dict(l=20, r=20, t=10, b=30),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="#141f41",
+        plot_bgcolor="#141f41",
+        font=dict(color="#ffffff"),
     )
-    fig.update_yaxes(showgrid=False)
-    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=False, zeroline=False)
+    fig.update_xaxes(showgrid=False, zeroline=False)
     st.plotly_chart(fig, use_container_width=True, key=f"cf_capex_{ticker}")
 
 
@@ -970,7 +992,7 @@ def _plot_debt_issuance(ticker: str, cashflow_df: pd.DataFrame) -> None:
         x=debt_issued.index.astype(str), 
         y=debt_issued.values, 
         name="Emisión de Deuda",
-        marker_color=["green" if v > 0 else "red" for v in debt_issued.values]
+        marker_color=["#01c2ef" if v > 0 else "#ff00ff" for v in debt_issued.values]
     ))
     
     fig.update_layout(
@@ -978,11 +1000,12 @@ def _plot_debt_issuance(ticker: str, cashflow_df: pd.DataFrame) -> None:
         yaxis_title="USD",
         height=460,
         margin=dict(l=20, r=20, t=10, b=30),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="#141f41",
+        plot_bgcolor="#141f41",
+        font=dict(color="#ffffff"),
     )
-    fig.update_yaxes(showgrid=False)
-    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=False, zeroline=False)
+    fig.update_xaxes(showgrid=False, zeroline=False)
     st.plotly_chart(fig, use_container_width=True, key=f"debt_issuance_{ticker}")
 
 
@@ -1015,7 +1038,8 @@ def _plot_debt_repayment(ticker: str, cashflow_df: pd.DataFrame) -> None:
     fig.add_trace(go.Bar(
         x=debt_repay.index.astype(str), 
         y=debt_repay.values, 
-        name="Pago de Deuda"
+        name="Pago de Deuda",
+        marker_color="#ff6d01"
     ))
     
     fig.update_layout(
@@ -1023,11 +1047,12 @@ def _plot_debt_repayment(ticker: str, cashflow_df: pd.DataFrame) -> None:
         yaxis_title="USD",
         height=460,
         margin=dict(l=20, r=20, t=10, b=30),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="#141f41",
+        plot_bgcolor="#141f41",
+        font=dict(color="#ffffff"),
     )
-    fig.update_yaxes(showgrid=False)
-    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=False, zeroline=False)
+    fig.update_xaxes(showgrid=False, zeroline=False)
     st.plotly_chart(fig, use_container_width=True, key=f"debt_repay_{ticker}")
 
 
@@ -1060,7 +1085,8 @@ def _plot_share_buybacks(ticker: str, cashflow_df: pd.DataFrame) -> None:
     fig.add_trace(go.Bar(
         x=buybacks.index.astype(str), 
         y=buybacks.values, 
-        name="Recompra de Acciones"
+        name="Recompra de Acciones",
+        marker_color="#ff6d01"
     ))
     
     fig.update_layout(
@@ -1068,11 +1094,12 @@ def _plot_share_buybacks(ticker: str, cashflow_df: pd.DataFrame) -> None:
         yaxis_title="USD",
         height=460,
         margin=dict(l=20, r=20, t=10, b=30),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="#141f41",
+        plot_bgcolor="#141f41",
+        font=dict(color="#ffffff"),
     )
-    fig.update_yaxes(showgrid=False)
-    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=False, zeroline=False)
+    fig.update_xaxes(showgrid=False, zeroline=False)
     st.plotly_chart(fig, use_container_width=True, key=f"buybacks_{ticker}")
 
 
@@ -1145,9 +1172,9 @@ def _plot_debt_fcf_evolution(ticker: str, balance_df: pd.DataFrame, cashflow_df:
             return
         
         # Colors
-        primary_orange = "#ff6b35"
-        primary_blue = "#004e89"
-        primary_pink = "#f72585"
+        primary_orange = "#ff6d01"
+        primary_blue = "#ff00ff"
+        primary_pink = "#01c2ef"
         
         fig_deuda = go.Figure()
         if "FCF" in df_deuda.columns:
@@ -1194,7 +1221,12 @@ def _plot_debt_fcf_evolution(ticker: str, balance_df: pd.DataFrame, cashflow_df:
             barmode="group",
             height=500,
             margin=dict(l=30, r=30, t=60, b=30),
+            paper_bgcolor="#141f41",
+            plot_bgcolor="#141f41",
+            font=dict(color="#ffffff"),
         )
+        fig_deuda.update_yaxes(showgrid=False, zeroline=False)
+        fig_deuda.update_xaxes(showgrid=False, zeroline=False)
         st.plotly_chart(fig_deuda, use_container_width=True, key=f"plotly_chart_deuda_{ticker}")
     except Exception as e:
         st.warning(f"No se pudo generar el gráfico de deuda: {e}")
@@ -1249,9 +1281,9 @@ def _plot_per_evolution(ticker: str, income_df: pd.DataFrame, info: Dict[str, An
             return
         
         # Colors
-        primary_orange = "#ff6b35"
-        primary_blue = "#004e89"
-        primary_pink = "#f72585"
+        primary_orange = "#ff6d01"
+        primary_blue = "#ff00ff"
+        primary_pink = "#01c2ef"
         
         fig_combined = go.Figure()
         fig_combined.add_trace(
@@ -1294,7 +1326,12 @@ def _plot_per_evolution(ticker: str, income_df: pd.DataFrame, info: Dict[str, An
             barmode="group",
             height=450,
             margin=dict(l=30, r=30, t=60, b=30),
+            paper_bgcolor="#141f41",
+            plot_bgcolor="#141f41",
+            font=dict(color="#ffffff"),
         )
+        fig_combined.update_yaxes(showgrid=False, zeroline=False)
+        fig_combined.update_xaxes(showgrid=False, zeroline=False)
         st.plotly_chart(fig_combined, use_container_width=True, key=f"plotly_chart_per_{ticker}")
     except Exception as e:
         st.warning(f"No se pudo generar el gráfico PER: {e}")
@@ -1433,9 +1470,9 @@ def _plot_ev_ebitda_evolution(ticker: str, income_df: pd.DataFrame, balance_df: 
             st.info("ℹ️ Usando capitalización de mercado actual para todos los años (EV histórico aproximado)")
         
         # Colors
-        primary_orange = "#ff6b35"
-        primary_blue = "#004e89"
-        primary_pink = "#f72585"
+        primary_orange = "#ff6d01"
+        primary_blue = "#ff00ff"
+        primary_pink = "#01c2ef"
         
         fig_ev = go.Figure()
         if "EBITDA" in df_ev.columns:
@@ -1481,7 +1518,12 @@ def _plot_ev_ebitda_evolution(ticker: str, income_df: pd.DataFrame, balance_df: 
             barmode="group",
             height=500,
             margin=dict(l=30, r=30, t=60, b=30),
+            paper_bgcolor="#141f41",
+            plot_bgcolor="#141f41",
+            font=dict(color="#ffffff"),
         )
+        fig_ev.update_yaxes(showgrid=False, zeroline=False)
+        fig_ev.update_xaxes(showgrid=False, zeroline=False)
         st.plotly_chart(fig_ev, use_container_width=True, key=f"plotly_chart_ev_{ticker}")
     except Exception as e:
         st.warning(f"No se pudo generar el gráfico EV/EBITDA: {e}")
@@ -1646,6 +1688,7 @@ def _plot_ratio_evolution(ticker: str, ratio_name: str, ratio_data: pd.Series) -
         y=ratio_data.values, 
         mode="lines+markers",
         name=ratio_name,
+        line=dict(color="#ff6d01"),
         text=[f"{v:.2f}" for v in ratio_data.values],
         textposition="top center"
     ))
@@ -1655,11 +1698,12 @@ def _plot_ratio_evolution(ticker: str, ratio_name: str, ratio_data: pd.Series) -
         yaxis_title=ratio_name,
         height=400,
         margin=dict(l=20, r=20, t=10, b=30),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="#141f41",
+        plot_bgcolor="#141f41",
+        font=dict(color="#ffffff"),
     )
-    fig.update_yaxes(showgrid=False)
-    fig.update_xaxes(showgrid=False)
+    fig.update_yaxes(showgrid=False, zeroline=False)
+    fig.update_xaxes(showgrid=False, zeroline=False)
     st.plotly_chart(fig, use_container_width=True, key=f"ratio_{ratio_name}_{ticker}")
 
 
@@ -1695,8 +1739,8 @@ def page_analysis() -> None:
           display: block;
           margin-bottom: 8px;
         }
-        .kpi-label { font-size: 0.78rem; color: rgba(0,0,0,0.55); margin-bottom:6px; }
-        .kpi-value { font-size: 1.4rem; font-weight:700; }
+        .kpi-label { font-size: 0.78rem; color: #ffffff; margin-bottom:6px; }
+        .kpi-value { font-size: 1.4rem; font-weight:700; color: #01c2ef; }
 
         /* pequeño ajuste para los metrics bajo los charts */
         .stMetric { background: transparent; }
@@ -1707,6 +1751,23 @@ def page_analysis() -> None:
         }
 
         div[data-testid="stForm"] { max-width: 520px !important; margin: 0 auto !important; border-radius: 10px; }
+        
+        /* Logo with white circle background */
+        .logo-circle {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            background-color: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px;
+        }
+        .logo-circle img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -1784,12 +1845,12 @@ def page_analysis() -> None:
         c_logo, c_text = st.columns([0.12, 0.88], gap="small", vertical_alignment="center")
         with c_logo:
             if logo_url:
-                st.image(logo_url, width=72)
+                st.markdown(f'<div class="logo-circle"><img src="{logo_url}" /></div>', unsafe_allow_html=True)
         with c_text:
             st.markdown(f"### {ticker} — {company_name}")
             st.markdown(f"## {_fmt_price(last_price, currency)}")
             if delta_txt:
-                color = "#16a34a" if (pct_val is not None and pct_val >= 0) else "#dc2626"
+                color = "#01c2ef" if (pct_val is not None and pct_val >= 0) else "#ff00ff"
                 st.markdown(f"<div style='margin-top:-6px; color:{color}; font-weight:600'>{delta_txt}</div>", unsafe_allow_html=True)
 
     # ---------- KPIs (reordenados: 4 arriba + 4 abajo) ----------

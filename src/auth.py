@@ -71,10 +71,11 @@ def _setup_screen() -> None:
         <style>
         /* Narrow the forms (login) and make them centered and squared */
         div[data-testid="stForm"] {
-            max-width: 520px !important;
+            max-width: 400px !important;
+            width: 400px !important;
             margin: 0 auto !important;
             border-radius: 12px !important;
-            padding: 8px !important;
+            padding: 24px !important;
         }
         /* Slightly larger title icon */
         .login-title-icon { font-size: 1.1rem; margin-right: 8px; vertical-align: middle; }
@@ -84,7 +85,7 @@ def _setup_screen() -> None:
     )
 
     st.write("")
-    with _centered_card(2.4):
+    with _centered_card(3.5):
         st.markdown("## 🛠️ Crear usuario admin (primer arranque)")
         st.caption("Este paso se ejecuta solo cuando aún no existe ningún usuario.")
 
@@ -130,7 +131,7 @@ def require_login() -> bool:
         return False
 
     st.write("")
-    with _centered_card(2.4):
+    with _centered_card(3.5):
         st.markdown("## 🔐 Iniciar sesión")
 
         with st.form("login_form"):
