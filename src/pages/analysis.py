@@ -1594,13 +1594,7 @@ def _calculate_financial_ratios(balance_df: pd.DataFrame, income_df: pd.DataFram
     
     if net_income is not None and equity is not None:
         ratios["ROE (%)"] = (net_income / equity) * 100
-    
-    if net_income is not None and revenue is not None:
-        ratios["Margen de Utilidad (%)"] = (net_income / revenue) * 100
-    
-    if total_assets is not None and equity is not None:
-        ratios["Apalancamiento"] = total_assets / equity
-    
+
     # ROIC = NOPAT / Invested Capital
     # NOPAT = EBIT * (1 - Tax Rate)
     # Invested Capital = Total Assets - Current Liabilities
@@ -1626,6 +1620,12 @@ def _calculate_financial_ratios(balance_df: pd.DataFrame, income_df: pd.DataFram
         nopat = ebit * (1 - tax_rate)
         invested_capital = total_assets - current_liab
         ratios["ROIC (%)"] = (nopat / invested_capital) * 100
+    
+    if net_income is not None and revenue is not None:
+        ratios["Margen de Utilidad (%)"] = (net_income / revenue) * 100
+    
+    if total_assets is not None and equity is not None:
+        ratios["Apalancamiento"] = total_assets / equity
     
     return ratios
 
