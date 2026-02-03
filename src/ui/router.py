@@ -28,6 +28,12 @@ def run_app():
             max-width: 290px !important;
         }
 
+        /* Dashboard background color (excluding sidebar) */
+        section.main {
+            background-color: #141f41 !important;
+            padding-top: 0rem !important;
+        }
+
         /* Ajusta padding superior general */
         div[data-testid="stAppViewContainer"] section.main div.block-container {
             padding-top: 0rem !important;
@@ -36,10 +42,26 @@ def run_app():
             max-width: 100% !important;
         }
 
-        section.main { padding-top: 0rem !important; }
+        /* All titles and text to white */
+        h1, h2, h3, h4, h5, h6 {
+            color: #ffffff !important;
+            margin-bottom: 0.25rem !important;
+        }
+        
+        /* Chart titles and labels */
+        .js-plotly-plot .plotly text {
+            fill: #ffffff !important;
+        }
+        
+        /* Specific text elements */
+        .stMarkdown, [data-testid="stMarkdownContainer"] {
+            color: #ffffff !important;
+        }
 
-        h2, h3 { margin-bottom: 0.25rem !important; }
-        [data-testid="stCaptionContainer"] { margin-top: -6px !important; }
+        [data-testid="stCaptionContainer"] { 
+            margin-top: -6px !important;
+            color: #ffffff !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
