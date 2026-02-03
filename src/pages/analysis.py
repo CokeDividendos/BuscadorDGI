@@ -1868,6 +1868,7 @@ def page_analysis() -> None:
         dividends = inputs["dividends"]
         cashflow = inputs["cashflow"]
 
+        st.markdown("## Valoración por dividendo")
         sub_tabs = st.tabs(["📈 Evolución del dividendo", "🛡️ Seguridad del dividendo", "📌 Geraldine Weiss"])
         with sub_tabs[0]:
             _plot_dividend_evolution(ticker, price_daily, dividends)
