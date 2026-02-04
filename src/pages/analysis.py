@@ -325,9 +325,8 @@ def _plot_dividend_safety(ticker: str, cashflow: pd.DataFrame) -> None:
 
 
 def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.Series, annual_div: Optional[float] = None) -> None:
-    """
-    Plot Geraldine Weiss chart with dividend bands and KPIs.
-    
+    """Plot Geraldine Weiss chart with dividend bands and KPIs.
+
     Args:
         ticker: Stock ticker symbol
         price_daily: Daily price data
