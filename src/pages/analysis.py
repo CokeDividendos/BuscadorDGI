@@ -403,7 +403,7 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
     top_cols[1].metric("Div. anual (último)", f"${last_div:,.2f}")
     top_cols[2].metric("CAGR div.", f"{cagr:.2f}%" if cagr is not None else "N/D")
     top_cols[3].metric("Yield mín.", f"{y_min:.2%}")
-    
+
     bottom_cols = st.columns(3)
     bottom_cols[0].metric("Yield máx.", f"{y_max:.2%}")
     bottom_cols[1].metric("Infravalorado (teórico)", f"${(last_div / y_max):,.2f}" if y_max > 0 else "N/D")
