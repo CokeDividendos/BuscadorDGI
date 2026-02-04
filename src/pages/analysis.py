@@ -1872,15 +1872,15 @@ def page_analysis() -> None:
             # Fila superior: 4 KPIs generales
             top_cols = st.columns(4, gap="large")
             with top_cols[0]:
-                _kpi_card("Beta", _fmt_kpi(stats.get("beta")))
+                _kpi_card("## Beta", _fmt_kpi(stats.get("beta")))
             with top_cols[1]:
-                pe = stats.get("pe_ttm")
+                pe = stats.get("## pe_ttm")
                 pe_txt = (_fmt_kpi(pe) + "x") if isinstance(pe, (int, float)) else "N/D"
-                _kpi_card("PER (TTM)", pe_txt)
+                _kpi_card("## PER (TTM)", pe_txt)
             with top_cols[2]:
-                _kpi_card("EPS (TTM)", _fmt_kpi(stats.get("eps_ttm")))
+                _kpi_card("## EPS (TTM)", _fmt_kpi(stats.get("eps_ttm")))
             with top_cols[3]:
-                _kpi_card("Target 1Y", _fmt_kpi(stats.get("target_1y")))
+                _kpi_card("## Target 1Y", _fmt_kpi(stats.get("target_1y")))
 
             # Fila inferior: 4 KPIs relacionados con dividendos (incluye PayOut)
             bottom_cols = st.columns(4, gap="large")
