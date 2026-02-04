@@ -325,6 +325,15 @@ def _plot_dividend_safety(ticker: str, cashflow: pd.DataFrame) -> None:
 
 
 def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.Series, annual_div: Optional[float] = None) -> None:
+    """
+    Plot Geraldine Weiss chart with dividend bands and KPIs.
+    
+    Args:
+        ticker: Stock ticker symbol
+        price_daily: Daily price data
+        dividends: Dividend series data
+        annual_div: Optional cached annual dividend value from KPIs to avoid redundant API calls
+    """
     if price_daily is None or price_daily.empty:
         st.warning("No hay precio diario suficiente para Geraldine Weiss.")
         return
@@ -2007,6 +2016,9 @@ def page_analysis() -> None:
             fwd_div_yield = _divk_get(divk, "fwd_div_yield", "forward_div_yield", "forward_dividend_yield")
             annual_div = _divk_get(divk, "annual_dividend", "annual_div", "annualDividend")
             payout = _divk_get(divk, "payout_ratio", "payout", "payoutRatio")
+            
+            # Convert annual_div to float for later use, or None if not a valid number
+            annual_div_float = float(annual_div) if isinstance(annual_div, (int, float)) else None
 
             with bottom_cols[0]:
                 val = "N/D"
@@ -2062,7 +2074,7 @@ def page_analysis() -> None:
             _plot_dividend_safety(ticker, cashflow)
         with sub_tabs[2]:
             # Pass cached annual_div to avoid redundant API calls
-            _plot_geraldine_weiss(ticker, price_daily, dividends, annual_div=annual_div if isinstance(annual_div, (int, float)) else None)
+            _plot_geraldine_weiss(ticker, price_daily, dividends, annual_div=annual_div_float)
     
     elif selected_section == "Balance":
         st.markdown("## Balance")
