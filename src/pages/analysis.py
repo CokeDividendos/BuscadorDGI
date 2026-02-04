@@ -406,11 +406,10 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
     st.plotly_chart(fig, use_container_width=True, key=f"gw_{ticker}")
 
     # Display KPIs in two rows
-    top_cols = st.columns(4)
-    top_cols[0].metric("Precio actual", f"${current_price:,.2f}")
-    top_cols[1].metric("Div. anual (último)", f"${last_div:,.2f}")
-    top_cols[2].metric("CAGR div.", f"{cagr:.2f}%" if cagr is not None else "N/D")
-    top_cols[3].metric("Yield mín.", f"{y_min:.2%}")
+    top_cols = st.columns(3)
+    top_cols[0].metric("Div. anual (último)", f"${last_div:,.2f}")
+    top_cols[1].metric("CAGR div.", f"{cagr:.2f}%" if cagr is not None else "N/D")
+    top_cols[2].metric("Yield mín.", f"{y_min:.2%}")
 
     bottom_cols = st.columns(3)
     bottom_cols[0].metric("Yield máx.", f"{y_max:.2%}")
