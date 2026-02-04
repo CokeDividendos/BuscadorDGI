@@ -75,9 +75,21 @@ def _setup_screen() -> None:
             margin: 0 auto !important;
             border-radius: 12px !important;
             padding: 24px !important;
+            background-color: #1e2a47 !important;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3) !important;
         }
         /* Slightly larger title icon */
         .login-title-icon { font-size: 1.1rem; margin-right: 8px; vertical-align: middle; }
+        /* Orange submit buttons in setup form with white text */
+        div[data-testid="stForm"] button[kind="primaryFormSubmit"] {
+            background-color: #ff6d01 !important;
+            color: white !important;
+            border: none !important;
+        }
+        div[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover {
+            background-color: #e66101 !important;
+            color: white !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -128,6 +140,34 @@ def require_login() -> bool:
     if not has_admin_user():
         _setup_screen()
         return False
+
+    # Add CSS for login form styling
+    st.markdown(
+        """
+        <style>
+        /* Style the login form container */
+        div[data-testid="stForm"] {
+            width: 400px !important;
+            margin: 0 auto !important;
+            border-radius: 12px !important;
+            padding: 24px !important;
+            background-color: #1e2a47 !important;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3) !important;
+        }
+        /* Orange submit buttons in login form with white text */
+        div[data-testid="stForm"] button[kind="primaryFormSubmit"] {
+            background-color: #ff6d01 !important;
+            color: white !important;
+            border: none !important;
+        }
+        div[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover {
+            background-color: #e66101 !important;
+            color: white !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.write("")
     with _centered_card(3.5):

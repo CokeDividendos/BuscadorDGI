@@ -62,6 +62,17 @@ def run_app():
             margin-top: -6px !important;
             color: #ffffff !important;
         }
+        
+        /* Orange buttons in sidebar (logout and clear cache) with white text */
+        section[data-testid="stSidebar"] button[kind="secondary"] {
+            background-color: #ff6d01 !important;
+            color: white !important;
+            border: none !important;
+        }
+        section[data-testid="stSidebar"] button[kind="secondary"]:hover {
+            background-color: #e66101 !important;
+            color: white !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,

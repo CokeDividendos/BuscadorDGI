@@ -949,10 +949,14 @@ def _plot_cashflow_vs_capex(ticker: str, cashflow_df: pd.DataFrame) -> None:
         st.warning("No hay datos suficientes para graficar flujo de caja vs CapEx.")
         return
     
+    # Calculate FCF (Free Cash Flow) = OCF - CapEx
+    data["FCF"] = data["Flujo de Caja Operativo"] - data["CapEx"]
+    
     st.markdown(f"**Flujo de Caja Operativo vs CapEx — {ticker}**")
     fig = go.Figure()
     fig.add_trace(go.Bar(x=data.index.astype(str), y=data["Flujo de Caja Operativo"], name="Flujo de Caja Operativo", marker_color="#ff6d01"))
     fig.add_trace(go.Bar(x=data.index.astype(str), y=data["CapEx"], name="CapEx", marker_color="#ff00ff"))
+    fig.add_trace(go.Scatter(x=data.index.astype(str), y=data["FCF"], name="FCF", mode="lines+markers", line=dict(color="#01c2ef", width=2), marker=dict(size=8)))
     
     fig.update_layout(
         xaxis_title="Año",
