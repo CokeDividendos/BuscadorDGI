@@ -1540,6 +1540,115 @@ def _plot_ev_ebitda_evolution(ticker: str, income_df: pd.DataFrame, balance_df: 
         st.warning(f"No se pudo generar el gráfico EV/EBITDA: {e}")
 
 
+def _plot_fc_usage(ticker: str, cashflow_df: pd.DataFrame) -> None:
+    """Plot Cash Flow Usage: CapEx, Dividends, Share Buybacks, and Debt Repayment"""
+    
+    st.markdown("### Uso del Flujo de Caja")
+    
+    try:
+        # Find CapEx column
+        capex_col = None
+        capex_candidates = ["Capital Expenditures", "CapitalExpenditures", "capex"]
+        for col in cashflow_df.columns:
+            if col in capex_candidates or "capital expenditure" in str(col).lower():
+                capex_col = col
+                break
+        
+        # Find Dividends column
+        div_col = None
+        div_candidates = [
+            "Cash Dividends Paid",
+            "CashDividendsPaid",
+            "cashDividendsPaid",
+            "Dividends Paid",
+            "DividendsPaid",
+        ]
+        for col in cashflow_df.columns:
+            if col in div_candidates:
+                div_col = col
+                break
+        
+        # Find Share Buybacks column
+        buyback_col = None
+        for col in cashflow_df.columns:
+            col_lower = str(col).lower()
+            if ("repurchase" in col_lower and "stock" in col_lower) or "buyback" in col_lower or "treasury stock" in col_lower:
+                buyback_col = col
+                break
+        
+        # Find Debt Repayment column
+        debt_repay_col = None
+        for col in cashflow_df.columns:
+            col_lower = str(col).lower()
+            if "repayment of debt" in col_lower or "long term debt repayment" in col_lower or "debt repayment" in col_lower:
+                debt_repay_col = col
+                break
+        
+        # Extract data
+        capex = pd.to_numeric(cashflow_df[capex_col], errors="coerce").abs() if capex_col else None
+        dividends = pd.to_numeric(cashflow_df[div_col], errors="coerce").abs() if div_col else None
+        buybacks = pd.to_numeric(cashflow_df[buyback_col], errors="coerce").abs() if buyback_col else None
+        debt_repay = pd.to_numeric(cashflow_df[debt_repay_col], errors="coerce").abs() if debt_repay_col else None
+        
+        # Build dataframe with available data
+        df_fc_usage = pd.DataFrame()
+        if capex is not None:
+            df_fc_usage["CapEx"] = capex
+        if dividends is not None:
+            df_fc_usage["Dividendos"] = dividends
+        if buybacks is not None:
+            df_fc_usage["Recompra de Acciones"] = buybacks
+        if debt_repay is not None:
+            df_fc_usage["Pago de Deuda"] = debt_repay
+        
+        df_fc_usage = df_fc_usage.dropna(how="all")
+        
+        if df_fc_usage.empty:
+            st.warning("No hay datos suficientes para generar el gráfico de uso del flujo de caja.")
+            return
+        
+        # Colors matching the style
+        colors = {
+            "CapEx": "#ff6d01",         # Orange
+            "Dividendos": "#ff00ff",    # Magenta
+            "Recompra de Acciones": "#01c2ef",  # Cyan
+            "Pago de Deuda": "#00ff00"  # Green
+        }
+        
+        fig_fc = go.Figure()
+        
+        # Add bars for each category
+        for col in df_fc_usage.columns:
+            y_values = df_fc_usage[col] / 1e6  # Convert to millions
+            fig_fc.add_trace(
+                go.Bar(
+                    x=df_fc_usage.index.astype(str),
+                    y=y_values,
+                    name=col,
+                    marker_color=colors.get(col, "#ffffff"),
+                    text=y_values.apply(lambda x: f"{x:.1f}M" if pd.notna(x) else ""),
+                    textposition="outside",
+                )
+            )
+        
+        fig_fc.update_layout(
+            title="Uso del Flujo de Caja",
+            xaxis_title="Año",
+            yaxis_title="Millones USD",
+            barmode="group",
+            height=500,
+            margin=dict(l=30, r=30, t=60, b=30),
+            paper_bgcolor="#141f41",
+            plot_bgcolor="#141f41",
+            font=dict(color="#ffffff"),
+        )
+        fig_fc.update_yaxes(showgrid=False, zeroline=False)
+        fig_fc.update_xaxes(showgrid=False, zeroline=False)
+        st.plotly_chart(fig_fc, use_container_width=True, key=f"plotly_chart_fc_usage_{ticker}")
+    except Exception as e:
+        st.warning(f"No se pudo generar el gráfico de uso del flujo de caja: {e}")
+
+
 # =========================================================
 # Financial Ratios Section (Análisis Razonado)
 # =========================================================
@@ -2012,7 +2121,7 @@ def page_analysis() -> None:
             st.warning("No hay datos financieros suficientes para la valoración por múltiplos.")
         else:
             # Create tabs for each chart
-            sub_tabs = st.tabs(["💰 Evolución de la Deuda", "📊 Evolución del PER", "📈 Evolución EV/EBITDA"])
+            sub_tabs = st.tabs(["💰 Evolución de la Deuda", "📊 Evolución del PER", "📈 Evolución EV/EBITDA", "📊 Uso del FC"])
             with sub_tabs[0]:
                 if not balance_df.empty and not cashflow_df.empty:
                     _plot_debt_fcf_evolution(ticker, balance_df, cashflow_df)
@@ -2028,6 +2137,11 @@ def page_analysis() -> None:
                     _plot_ev_ebitda_evolution(ticker, income_df, balance_df, info)
                 else:
                     st.warning("No hay datos suficientes para este análisis.")
+            with sub_tabs[3]:
+                if not cashflow_df.empty:
+                    _plot_fc_usage(ticker, cashflow_df)
+                else:
+                    st.warning("No hay datos suficientes de flujo de efectivo para este análisis.")
     
     elif selected_section == "Análisis Razonado":
         st.markdown("## Análisis Razonado")
