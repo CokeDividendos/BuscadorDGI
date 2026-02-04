@@ -2015,7 +2015,7 @@ def page_analysis() -> None:
             fwd_div_yield = _divk_get(divk, "fwd_div_yield", "forward_div_yield", "forward_dividend_yield")
             annual_div = _divk_get(divk, "annual_dividend", "annual_div", "annualDividend")
             payout = _divk_get(divk, "payout_ratio", "payout", "payoutRatio")
-            
+
             # Convert annual_div to float for later use, or None if not a valid number
             annual_div_float = float(annual_div) if isinstance(annual_div, (int, float)) else None
 
