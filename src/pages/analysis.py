@@ -1542,7 +1542,6 @@ def _plot_ev_ebitda_evolution(ticker: str, income_df: pd.DataFrame, balance_df: 
 
 def _plot_fc_usage(ticker: str, cashflow_df: pd.DataFrame) -> None:
     """Plot Cash Flow Usage: CapEx, Dividends, Share Buybacks, and Debt Repayment"""
-    import numpy as np
     
     st.markdown("### Uso del Flujo de Caja")
     
@@ -1620,13 +1619,14 @@ def _plot_fc_usage(ticker: str, cashflow_df: pd.DataFrame) -> None:
         
         # Add bars for each category
         for col in df_fc_usage.columns:
+            y_values = df_fc_usage[col] / 1e6  # Convert to millions
             fig_fc.add_trace(
                 go.Bar(
                     x=df_fc_usage.index.astype(str),
-                    y=df_fc_usage[col],
+                    y=y_values,
                     name=col,
                     marker_color=colors.get(col, "#ffffff"),
-                    text=df_fc_usage[col].apply(lambda x: f"{x/1e6:.0f}M" if abs(x) >= 1e6 else f"{x:.0f}" if pd.notna(x) else ""),
+                    text=y_values.apply(lambda x: f"{x:.1f}M" if pd.notna(x) else ""),
                     textposition="outside",
                 )
             )
