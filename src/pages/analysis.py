@@ -324,7 +324,15 @@ def _plot_dividend_safety(ticker: str, cashflow: pd.DataFrame) -> None:
         st.dataframe(out, use_container_width=True)
 
 
-def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.Series) -> None:
+def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.Series, annual_div: Optional[float] = None) -> None:
+    """Plot Geraldine Weiss chart with dividend bands and KPIs.
+
+    Args:
+        ticker: Stock ticker symbol
+        price_daily: Daily price data
+        dividends: Dividend series data
+        annual_div: Optional cached annual dividend value from KPIs to avoid redundant API calls
+    """
     if price_daily is None or price_daily.empty:
         st.warning("No hay precio diario suficiente para Geraldine Weiss.")
         return
@@ -341,7 +349,8 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
 
     current_year = datetime.now().year
     last_year = int(annual.index.max())
-    last_div = float(annual.loc[last_year])
+    # Use cached annual_div if provided, otherwise calculate from dividends
+    last_div = annual_div if annual_div is not None else float(annual.loc[last_year])
 
     def _adj_div(year: int) -> Optional[float]:
         if year in annual.index:
@@ -396,13 +405,17 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
     fig.update_xaxes(showgrid=False, zeroline=False)
     st.plotly_chart(fig, use_container_width=True, key=f"gw_{ticker}")
 
-    cols = st.columns(6)
-    cols[0].metric("Precio actual", f"${current_price:,.2f}")
-    cols[1].metric("Div. anual (último)", f"${last_div:,.2f}")
-    cols[2].metric("CAGR div.", f"{cagr:.2f}%" if cagr is not None else "N/D")
-    cols[3].metric("Yield mín.", f"{y_min:.2%}")
-    cols[4].metric("Yield máx.", f"{y_max:.2%}")
-    cols[5].metric("Infravalorado (teórico)", f"${(last_div / y_max):,.2f}" if y_max > 0 else "N/D")
+    # Display KPIs in two rows
+    top_cols = st.columns(4)
+    top_cols[0].metric("Precio actual", f"${current_price:,.2f}")
+    top_cols[1].metric("Div. anual (último)", f"${last_div:,.2f}")
+    top_cols[2].metric("CAGR div.", f"{cagr:.2f}%" if cagr is not None else "N/D")
+    top_cols[3].metric("Yield mín.", f"{y_min:.2%}")
+
+    bottom_cols = st.columns(3)
+    bottom_cols[0].metric("Yield máx.", f"{y_max:.2%}")
+    bottom_cols[1].metric("Infravalorado (teórico)", f"${(last_div / y_max):,.2f}" if y_max > 0 else "N/D")
+    bottom_cols[2].metric("Sobrevalorado (teórico)", f"${(last_div / y_min):,.2f}" if y_min > 0 else "N/D")
 
     with st.expander("Ver tabla mensual (GW)"):
         show = monthly[["Close", "DivAnual", "Yield", "Sobrevalorado", "Infravalorado"]].copy()
@@ -2003,6 +2016,9 @@ def page_analysis() -> None:
             annual_div = _divk_get(divk, "annual_dividend", "annual_div", "annualDividend")
             payout = _divk_get(divk, "payout_ratio", "payout", "payoutRatio")
 
+            # Convert annual_div to float for later use, or None if not a valid number
+            annual_div_float = float(annual_div) if isinstance(annual_div, (int, float)) else None
+
             with bottom_cols[0]:
                 val = "N/D"
                 if isinstance(div_yield, (int, float)):
@@ -2056,7 +2072,8 @@ def page_analysis() -> None:
         with sub_tabs[1]:
             _plot_dividend_safety(ticker, cashflow)
         with sub_tabs[2]:
-            _plot_geraldine_weiss(ticker, price_daily, dividends)
+            # Pass cached annual_div to avoid redundant API calls
+            _plot_geraldine_weiss(ticker, price_daily, dividends, annual_div=annual_div_float)
     
     elif selected_section == "Balance":
         st.markdown("## Balance")
