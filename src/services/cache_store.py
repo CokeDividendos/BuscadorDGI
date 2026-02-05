@@ -1,9 +1,40 @@
 # src/services/cache_store.py
 import json
+import math
 import time
+from datetime import datetime
 from typing import Any, Optional
 
+import pandas as pd
+
 from src.db import get_conn
+
+
+class CacheJSONEncoder(json.JSONEncoder):
+    """
+    Custom JSON encoder that handles pandas Timestamps and other non-serializable types.
+    
+    This encoder converts:
+    - pandas.Timestamp -> ISO format string
+    - datetime objects -> ISO format string
+    - NaN -> null
+    - Infinity -> string representation
+    """
+    def default(self, obj):
+        # Handle pandas Timestamp
+        if isinstance(obj, pd.Timestamp):
+            return obj.isoformat()
+        # Handle datetime objects
+        elif isinstance(obj, datetime):
+            return obj.isoformat()
+        # Handle NaN and Infinity
+        elif isinstance(obj, float):
+            if math.isnan(obj):
+                return None
+            elif math.isinf(obj):
+                return "Infinity" if obj > 0 else "-Infinity"
+        # Let the base class handle other types or raise TypeError
+        return super().default(obj)
 
 
 def _ensure_cache_table() -> None:
@@ -65,7 +96,7 @@ def cache_set(key: str, value: Any, ttl_seconds: Optional[int] = None) -> None:
         """,
         (
             key,
-            json.dumps(value, ensure_ascii=False),
+            json.dumps(value, ensure_ascii=False, cls=CacheJSONEncoder),
             int(time.time()),
             int(ttl_seconds) if ttl_seconds is not None else None,
         ),
