@@ -3,6 +3,8 @@
 from urllib.parse import urlparse
 import requests
 
+from src.services.cache_store import cache_get, cache_set
+
 
 def _clean_domain(url: str) -> str:
     if not url:
@@ -37,10 +39,21 @@ def _is_valid_image(url: str, timeout: float = 2.5) -> bool:
 def logo_candidates(company_website: str) -> list[str]:
     """
     Devuelve SOLO logos válidos (filtrados).
+    Los resultados se cachean por 365 días (aprox. 12 meses) para optimizar el rendimiento.
     """
     domain = _clean_domain(company_website)
     if not domain:
         return []
+    
+    # Crear una clave de caché única por dominio
+    cache_key = f"logo:candidates:{domain}"
+    
+    # Intentar obtener del caché (TTL: 365 días)
+    cached_logos = cache_get(cache_key)
+    if cached_logos is not None:
+        # Verificar que sea una lista válida
+        if isinstance(cached_logos, list):
+            return cached_logos
 
     candidates = [
         # Mejor calidad (logo real)
@@ -57,5 +70,9 @@ def logo_candidates(company_website: str) -> list[str]:
     for url in candidates:
         if _is_valid_image(url):
             valid_logos.append(url)
+    
+    # Cachear el resultado por 365 días (aproximadamente 12 meses)
+    ttl_12_months = 365 * 24 * 60 * 60
+    cache_set(cache_key, valid_logos, ttl_seconds=ttl_12_months)
 
     return valid_logos
