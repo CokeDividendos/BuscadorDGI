@@ -78,7 +78,7 @@ def _setup_screen() -> None:
             background-color: #1e2a47 !important;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3) !important;
         }
-        /* Shadow input fields to make them stand out */
+        /* Add inset shadow to input fields */
         div[data-testid="stForm"] input[type="text"],
         div[data-testid="stForm"] input[type="password"],
         div[data-testid="stForm"] input[type="email"] {
@@ -160,7 +160,7 @@ def require_login() -> bool:
             background-color: #1e2a47 !important;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3) !important;
         }
-        /* Shadow input fields to make them stand out */
+        /* Add inset shadow to input fields */
         div[data-testid="stForm"] input[type="text"],
         div[data-testid="stForm"] input[type="password"],
         div[data-testid="stForm"] input[type="email"] {
