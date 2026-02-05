@@ -56,12 +56,12 @@ def _ensure_admin_from_secrets() -> None:
 
 def _centered_card(width_ratio: float = 1.8):
     """
-    Helper para centrar contenido en una 'card' (container con border).
+    Helper para centrar contenido en una 'card' (container sin border).
     width_ratio: mientras más grande, más angosta la card (ej: 1.8–2.2).
     """
     left, mid, right = st.columns([1, width_ratio, 1], gap="large")
     with mid:
-        return st.container(border=True)
+        return st.container(border=False)
 
 
 def _setup_screen() -> None:
@@ -77,6 +77,12 @@ def _setup_screen() -> None:
             padding: 24px !important;
             background-color: #1e2a47 !important;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3) !important;
+        }
+        /* Shadow input fields to make them stand out */
+        div[data-testid="stForm"] input[type="text"],
+        div[data-testid="stForm"] input[type="password"],
+        div[data-testid="stForm"] input[type="email"] {
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4) inset !important;
         }
         /* Slightly larger title icon */
         .login-title-icon { font-size: 1.1rem; margin-right: 8px; vertical-align: middle; }
@@ -153,6 +159,12 @@ def require_login() -> bool:
             padding: 24px !important;
             background-color: #1e2a47 !important;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3) !important;
+        }
+        /* Shadow input fields to make them stand out */
+        div[data-testid="stForm"] input[type="text"],
+        div[data-testid="stForm"] input[type="password"],
+        div[data-testid="stForm"] input[type="email"] {
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4) inset !important;
         }
         /* Orange submit buttons in login form with white text */
         div[data-testid="stForm"] button[kind="primaryFormSubmit"] {
