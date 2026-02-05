@@ -31,7 +31,9 @@ YEARS = 5
 DIVIDENDS_CACHE_TTL_SECONDS = 60 * 60 * 24 * 30  # 30 días
 
 # Retry configuration for yfinance API calls
-RETRY_MAX_ATTEMPTS = 3
+# MAX_ATTEMPTS includes the initial attempt (e.g., 3 = 1 initial + 2 retries)
+# With BASE_DELAY=2, backoff delays are: 2s after attempt 1, 4s after attempt 2
+MAX_ATTEMPTS = 3
 RETRY_BASE_DELAY = 2  # Base delay in seconds for exponential backoff
 RETRY_JITTER_MIN = 0.0
 RETRY_JITTER_MAX = 0.5
@@ -470,7 +472,7 @@ def _load_ticker_info(ticker: str) -> Dict[str, Any]:
     Returns empty dict if info cannot be retrieved.
     Implements retry logic with exponential backoff for transient errors.
     """
-    for attempt in range(1, RETRY_MAX_ATTEMPTS + 1):
+    for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
             ticker_obj = yf.Ticker(ticker)
             info = ticker_obj.info
@@ -489,7 +491,7 @@ def _load_ticker_info(ticker: str) -> Dict[str, Any]:
                 return {}
             
             # For other errors, retry with exponential backoff (except on last attempt)
-            if attempt < RETRY_MAX_ATTEMPTS:
+            if attempt < MAX_ATTEMPTS:
                 sleep_time = (RETRY_BASE_DELAY ** attempt) + random.uniform(RETRY_JITTER_MIN, RETRY_JITTER_MAX)
                 time.sleep(sleep_time)
             # On final attempt, silently return empty dict to allow app to continue
