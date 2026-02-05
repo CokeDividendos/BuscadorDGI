@@ -268,18 +268,19 @@ def page_resumen() -> None:
     c_left, c_mid, c_right = st.columns([1, 2, 1])
     with c_mid:
         st.markdown('<div class="search-middle">', unsafe_allow_html=True)
-        if "ticker_main" not in st.session_state:
-            st.session_state["ticker_main"] = "AAPL"
-
+        
         def _submit_search():
             val = (st.session_state.get("ticker_main") or "").strip().upper()
             if val:
                 st.session_state["ticker"] = val
 
+        # Initialize ticker_main if not set
+        if "ticker_main" not in st.session_state:
+            st.session_state["ticker_main"] = ""
+
         st.text_input(
             "Ticker (ej: AAPL, MSFT, KO)",
             key="ticker_main",
-            value=st.session_state.get("ticker_main", "AAPL"),
             label_visibility="visible",
             placeholder="Buscar ticker y presiona Enter (ej: AAPL, MSFT, KO)",
             on_change=_submit_search,

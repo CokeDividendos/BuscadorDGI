@@ -90,21 +90,25 @@ def run_app():
         
         # 2. GPT API Key input
         current_api_key = get_user_gpt_api_key(user_email)
-        api_key_input = st.text_input(
-            "API KEY GPT",
-            value=current_api_key or "",
-            type="password",
-            placeholder="Ingrese su API KEY de GPT",
-            help="Esta API KEY se usa para generar resúmenes financieros automáticos"
-        )
         
-        # Save API key if changed
-        if api_key_input and api_key_input != current_api_key:
-            try:
-                update_user_gpt_api_key(user_email, api_key_input)
-                st.success("✓ API KEY guardada")
-            except Exception as e:
-                st.error(f"Error al guardar API KEY: {e}")
+        # Use a form to avoid re-running on every keystroke
+        with st.form("api_key_form", clear_on_submit=False):
+            api_key_input = st.text_input(
+                "API KEY GPT",
+                value=current_api_key or "",
+                type="password",
+                placeholder="Ingrese su API KEY de GPT",
+                help="Esta API KEY se usa para generar resúmenes financieros automáticos"
+            )
+            submitted = st.form_submit_button("Guardar API KEY", use_container_width=True)
+            
+            if submitted and api_key_input != current_api_key:
+                try:
+                    update_user_gpt_api_key(user_email, api_key_input)
+                    st.success("✓ API KEY guardada")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error al guardar API KEY: {e}")
         
         st.divider()
 
