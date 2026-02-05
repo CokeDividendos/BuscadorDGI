@@ -1,9 +1,10 @@
 # src/ui/router.py
 import streamlit as st
 
-from src.db import init_db
+from src.db import init_db, get_user_gpt_api_key, update_user_gpt_api_key
 from src.auth import require_login, is_admin, logout_button
 from src.pages.analysis import page_analysis
+from src.pages.resumen import page_resumen
 from src.pages.admin_users import page_admin_users
 from src.services.cache_store import cache_clear_all
 from src.services.usage_limits import remaining_searches
@@ -86,20 +87,63 @@ def run_app():
     with st.sidebar:
         # 1. User email at the top
         st.markdown(f"**Usuario:** {user_email}")
+        
+        # 2. GPT API Key input
+        current_api_key = get_user_gpt_api_key(user_email)
+        api_key_input = st.text_input(
+            "API KEY GPT",
+            value=current_api_key or "",
+            type="password",
+            placeholder="Ingrese su API KEY de GPT",
+            help="Esta API KEY se usa para generar resúmenes financieros automáticos"
+        )
+        
+        # Save API key if changed
+        if api_key_input and api_key_input != current_api_key:
+            try:
+                update_user_gpt_api_key(user_email, api_key_input)
+                st.success("✓ API KEY guardada")
+            except Exception as e:
+                st.error(f"Error al guardar API KEY: {e}")
+        
         st.divider()
 
-        # 2. Data sections (Dividendos, Balance, etc.) - Only in Análisis page
-        # Initialize page selection if not exists
+        # 3. Main navigation sections (Resumen, Análisis, Admin)
         if "page_section" not in st.session_state:
-            st.session_state["page_section"] = "Análisis"
+            st.session_state["page_section"] = "Resumen"  # Default to Resumen
         
+        st.markdown("### Navegación")
+        page_sections = ["Resumen", "Análisis"]
+        if admin:
+            page_sections.append("Admin · Usuarios")
+
+        # Get current index for page selection
+        current_page = st.session_state.get("page_section", "Resumen")
+        try:
+            current_idx = page_sections.index(current_page) if current_page in page_sections else 0
+        except ValueError:
+            current_idx = 0
+
+        page_section = st.radio(
+            "Secciones de página",
+            page_sections,
+            index=current_idx,
+            key="page_section_radio",
+            label_visibility="collapsed"
+        )
+        
+        # Update page section in session state
+        st.session_state["page_section"] = page_section
+        
+        st.divider()
+
+        # 4. Data sections (Dividendos, Balance, etc.) - Only in Análisis page
         # Initialize analysis section state if not exists (for page_analysis)
         if "analysis_section" not in st.session_state:
             st.session_state["analysis_section"] = "Dividendos"
         
         # Show data sections only when in Análisis page
-        current_page = st.session_state.get("page_section", "Análisis")
-        if current_page == "Análisis":
+        if page_section == "Análisis":
             st.markdown("### Secciones de datos")
             data_sections = [
                 "Dividendos",
@@ -126,39 +170,14 @@ def run_app():
             st.session_state["analysis_section"] = selected_data_section
             st.divider()
 
-        # 3. Page navigation sections (Análisis, Admin)
-        st.markdown("### Navegación")
-        page_sections = ["Análisis"]
-        if admin:
-            page_sections.append("Admin · Usuarios")
-
-        # Get current index for page selection
-        try:
-            current_idx = page_sections.index(current_page) if current_page in page_sections else 0
-        except ValueError:
-            current_idx = 0
-
-        page_section = st.radio(
-            "Secciones de página",
-            page_sections,
-            index=current_idx,
-            key="page_section_radio",
-            label_visibility="collapsed"
-        )
-        
-        # Update page section in session state
-        st.session_state["page_section"] = page_section
-        
-        st.divider()
-
-        # 4. Counter display (for non-admin users) - above buttons
+        # 5. Counter display (for non-admin users) - above buttons
         if not admin and user_email:
             rem = remaining_searches(user_email, DAILY_LIMIT)
             st.info(f"🔎 Búsquedas restantes hoy: {rem}/{DAILY_LIMIT}")
         elif admin:
             st.success("👑 Admin: sin límite diario (alimenta el caché global).")
 
-        # 5. Logout and clear cache buttons at the bottom
+        # 6. Logout and clear cache buttons at the bottom
         logout_button()
         if admin:
             if st.button("🧹 Limpiar caché", key="clear_cache_btn", use_container_width=True):
@@ -167,7 +186,9 @@ def run_app():
                 st.rerun()
 
     # Route to the appropriate page
-    if page_section == "Análisis":
+    if page_section == "Resumen":
+        page_resumen()
+    elif page_section == "Análisis":
         page_analysis()
     elif page_section == "Admin · Usuarios":
         page_admin_users()

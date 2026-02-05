@@ -106,6 +106,24 @@ def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
     return users.get(_norm_email(email))
 
 
+def update_user_gpt_api_key(email: str, api_key: str) -> None:
+    """Update the GPT API key for a user."""
+    email_n = _norm_email(email)
+    users = load_users()
+    if email_n not in users:
+        raise ValueError(f"User {email_n} not found")
+    users[email_n]["gpt_api_key"] = api_key
+    save_users(users)
+
+
+def get_user_gpt_api_key(email: str) -> Optional[str]:
+    """Get the GPT API key for a user."""
+    user = get_user_by_email(email)
+    if user:
+        return user.get("gpt_api_key")
+    return None
+
+
 def has_any_user() -> bool:
     return len(load_users()) > 0
 
