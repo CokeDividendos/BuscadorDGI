@@ -505,7 +505,7 @@ def _load_ticker_info(ticker: str) -> Dict[str, Any]:
             # Don't retry on rate limit errors, fail fast
             if "RateLimit" in error_type:
                 st.warning(
-                    "⚠️ Se ha alcanzado el límite de solicitudes a Yahoo Finance. "
+                    "⚠️ Se ha alcanzado el límite de solicitudes diario. "
                     "Algunos datos pueden no estar disponibles. Por favor, intenta nuevamente más tarde."
                 )
                 return {}
