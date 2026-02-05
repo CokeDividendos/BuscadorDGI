@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import math
+import random
+import time
 from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
 
@@ -27,6 +29,14 @@ from src.services.usage_limits import consume_search, remaining_searches
 # =========================================================
 YEARS = 5
 DIVIDENDS_CACHE_TTL_SECONDS = 60 * 60 * 24 * 30  # 30 días
+
+# Retry configuration for yfinance API calls
+# MAX_ATTEMPTS includes the initial attempt (e.g., 3 = 1 initial + 2 retries)
+# With BASE_DELAY=2, backoff delays are: 2s after attempt 1, 4s after attempt 2
+MAX_ATTEMPTS = 3
+RETRY_BASE_DELAY = 2  # Base delay in seconds for exponential backoff
+RETRY_JITTER_MIN = 0.0
+RETRY_JITTER_MAX = 0.5
 
 # Color scheme constants
 COLOR_PRIMARY = "#ff6d01"     # Orange - Primary chart elements
@@ -453,6 +463,40 @@ def _load_financial_statements(ticker: str) -> Dict[str, Any]:
         "income_stmt": income_stmt,
         "cashflow": cashflow,
     }
+
+
+@st.cache_data(ttl=DIVIDENDS_CACHE_TTL_SECONDS, show_spinner=False)
+def _load_ticker_info(ticker: str) -> Dict[str, Any]:
+    """
+    Safely load ticker info with error handling for rate limits and other exceptions.
+    Returns empty dict if info cannot be retrieved.
+    Implements retry logic with exponential backoff for transient errors.
+    """
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        try:
+            ticker_obj = yf.Ticker(ticker)
+            info = ticker_obj.info
+            if not isinstance(info, dict):
+                return {}
+            return info
+        except Exception as e:
+            error_type = type(e).__name__
+            
+            # Don't retry on rate limit errors, fail fast
+            if "RateLimit" in error_type:
+                st.warning(
+                    "⚠️ Se ha alcanzado el límite de solicitudes a Yahoo Finance. "
+                    "Algunos datos pueden no estar disponibles. Por favor, intenta nuevamente más tarde."
+                )
+                return {}
+            
+            # For other errors, retry with exponential backoff (except on last attempt)
+            if attempt < MAX_ATTEMPTS:
+                sleep_time = (RETRY_BASE_DELAY ** attempt) + random.uniform(RETRY_JITTER_MIN, RETRY_JITTER_MAX)
+                time.sleep(sleep_time)
+            # On final attempt, silently return empty dict to allow app to continue
+    
+    return {}
 
 
 def _prepare_financial_df(df: pd.DataFrame, years: int = YEARS) -> pd.DataFrame:
@@ -2127,9 +2171,8 @@ def page_analysis() -> None:
         income_df = _prepare_financial_df(financial_data["income_stmt"], YEARS)
         cashflow_df = _prepare_financial_df(financial_data["cashflow"], YEARS)
         
-        # Get ticker info for market cap and PE ratio
-        t = yf.Ticker(ticker)
-        info = t.info
+        # Get ticker info for market cap and PE ratio (with rate limit protection)
+        info = _load_ticker_info(ticker)
         
         if balance_df.empty and income_df.empty and cashflow_df.empty:
             st.warning("No hay datos financieros suficientes para la valoración por múltiplos.")
