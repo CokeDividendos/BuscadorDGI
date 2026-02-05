@@ -1949,53 +1949,17 @@ def page_analysis() -> None:
 
     # Note: Sidebar sections are now handled in router.py
     # No sidebar logic needed here anymore
+    # Ticker search and company header are now in Resumen page only
 
-    # Buscador (Enter activa)
-    c_left, c_mid, c_right = st.columns([1, 2, 1])
-    with c_mid:
-        st.markdown('<div class="search-middle">', unsafe_allow_html=True)
-        if "ticker_main" not in st.session_state:
-            st.session_state["ticker_main"] = "AAPL"
-
-        def _submit_search():
-            val = (st.session_state.get("ticker_main") or "").strip().upper()
-            if val:
-                st.session_state["ticker"] = val
-
-        st.text_input(
-            "Ticker (ej: AAPL, MSFT, KO)",
-            key="ticker_main",
-            value=st.session_state.get("ticker_main", "AAPL"),
-            label_visibility="visible",
-            placeholder="Buscar ticker y presiona Enter (ej: AAPL, MSFT, KO)",
-            on_change=_submit_search,
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
-
+    # Check if ticker has been searched in Resumen page
     if "ticker" not in st.session_state:
-        st.info("Escribe un ticker y presiona Enter para cargar datos.")
+        st.info("Por favor, busque un ticker en la sección 'Resumen' primero.")
         return
 
     ticker = (st.session_state.get("ticker") or "").strip().upper()
     if not ticker:
-        st.error("Ticker vacío.")
+        st.error("Ticker vacío. Por favor, busque un ticker en la sección 'Resumen'.")
         return
-
-    # Track last searched ticker to only consume counter on NEW ticker searches
-    last_ticker = st.session_state.get("last_searched_ticker", None)
-    is_new_ticker = (ticker != last_ticker)
-    
-    # Consumo límite - ONLY on new ticker entry, not on section changes
-    if (not admin) and user_email and is_new_ticker:
-        ok, rem_after = consume_search(user_email, DAILY_LIMIT, cost=1)
-        if not ok:
-            st.error("🚫 Búsquedas diarias alcanzadas. Vuelve mañana.")
-            return
-        # Update last searched ticker after successful consumption
-        st.session_state["last_searched_ticker"] = ticker
-    elif is_new_ticker:
-        # For admin or other cases, just track the ticker without consuming
-        st.session_state["last_searched_ticker"] = ticker
     
     # Carga datos - This uses cache, so repeated calls are efficient
     price = get_price_data(ticker) or {}
@@ -2004,97 +1968,11 @@ def page_analysis() -> None:
     stats = get_key_stats(ticker) or {}
     divk = get_dividend_kpis(ticker) or {}
 
+    # Company name for display in titles
     company_name = raw.get("longName") or raw.get("shortName") or profile.get("shortName") or ticker
-    last_price = price.get("last_price")
-    currency = price.get("currency") or ""
-    delta_txt, pct_val = _fmt_delta(price.get("net_change"), price.get("pct_change"))
 
-    website = (profile.get("website") or raw.get("website") or "") if isinstance(profile, dict) else ""
-    logos = logo_candidates(website) if website else []
-    logo_url = next((u for u in logos if isinstance(u, str) and u.startswith(("http://", "https://"))), "")
-
-    # Header: logo left
-    left, right = st.columns([1.15, 0.85], gap="large")
-    with left:
-        c_logo, c_text = st.columns([0.12, 0.88], gap="small", vertical_alignment="center")
-        with c_logo:
-            if logo_url:
-                st.markdown(f'<div class="logo-circle"><img src="{logo_url}" /></div>', unsafe_allow_html=True)
-        with c_text:
-            st.markdown(f"### {ticker} — {company_name}")
-            st.markdown(f"## {_fmt_price(last_price, currency)}")
-            if delta_txt:
-                color = "#01c2ef" if (pct_val is not None and pct_val >= 0) else "#ff00ff"
-                st.markdown(f"<div style='margin-top:-6px; color:{color}; font-weight:600'>{delta_txt}</div>", unsafe_allow_html=True)
-
-    # ---------- KPIs (reordenados: 4 arriba + 4 abajo) ----------
-    with right:
-        st.markdown("### KPIs clave")
-        
-        # Contenedor único con sombra para todos los KPIs
-        st.markdown('<div class="kpis-container">', unsafe_allow_html=True)
-        
-        try:
-            # Try-finally ensures HTML closing tag is always rendered, even if data processing fails
-            # Fila superior: 4 KPIs generales
-            top_cols = st.columns(4, gap="large")
-            with top_cols[0]:
-                _kpi_card("Beta", _fmt_kpi(stats.get("beta")))
-            with top_cols[1]:
-                pe = stats.get("pe_ttm")
-                pe_txt = (_fmt_kpi(pe) + "x") if isinstance(pe, (int, float)) else "N/D"
-                _kpi_card("PER (TTM)", pe_txt)
-            with top_cols[2]:
-                _kpi_card("EPS (TTM)", _fmt_kpi(stats.get("eps_ttm")))
-            with top_cols[3]:
-                _kpi_card("Target 1Y", _fmt_kpi(stats.get("target_1y")))
-
-            # Fila inferior: 4 KPIs relacionados con dividendos (incluye PayOut)
-            bottom_cols = st.columns(4, gap="large")
-
-            div_yield = _divk_get(divk, "div_yield", "dividend_yield", "dividendYield", "dividend_yield_pct")
-            fwd_div_yield = _divk_get(divk, "fwd_div_yield", "forward_div_yield", "forward_dividend_yield")
-            annual_div = _divk_get(divk, "annual_dividend", "annual_div", "annualDividend")
-            payout = _divk_get(divk, "payout_ratio", "payout", "payoutRatio")
-
-            # Convert annual_div to float for later use, or None if not a valid number
-            annual_div_float = float(annual_div) if isinstance(annual_div, (int, float)) else None
-
-            with bottom_cols[0]:
-                val = "N/D"
-                if isinstance(div_yield, (int, float)):
-                    val = _fmt_kpi(div_yield, suffix="%", decimals=2)
-                elif div_yield:
-                    val = _fmt_kpi(div_yield)
-                _kpi_card("Dividend Yield", val)
-
-            with bottom_cols[1]:
-                val = "N/D"
-                if isinstance(fwd_div_yield, (int, float)):
-                    val = _fmt_kpi(fwd_div_yield, suffix="%", decimals=2)
-                elif fwd_div_yield:
-                    val = _fmt_kpi(fwd_div_yield)
-                _kpi_card("Fwd Div Yield", val)
-
-            with bottom_cols[2]:
-                val = "N/D"
-                if isinstance(annual_div, (int, float)):
-                    val = _fmt_kpi(annual_div, decimals=2)
-                elif annual_div:
-                    val = _fmt_kpi(annual_div)
-                _kpi_card("Div. anual ($)", val)
-
-            with bottom_cols[3]:
-                val = "N/D"
-                if isinstance(payout, (int, float)):
-                    val = _fmt_kpi(payout, suffix="%", decimals=0)
-                elif payout:
-                    val = _fmt_kpi(payout)
-                _kpi_card("PayOut Ratio", val)
-        finally:
-            # Cerrar contenedor de KPIs (siempre se ejecuta)
-            st.markdown('</div>', unsafe_allow_html=True)
-
+    # Display a simple header with the ticker
+    st.markdown(f"## {ticker} — {company_name}")
     st.divider()
 
     # Display content based on selected section
@@ -2113,8 +1991,8 @@ def page_analysis() -> None:
         with sub_tabs[1]:
             _plot_dividend_safety(ticker, cashflow)
         with sub_tabs[2]:
-            # Pass cached annual_div to avoid redundant API calls
-            _plot_geraldine_weiss(ticker, price_daily, dividends, annual_div=annual_div_float)
+            # Don't pass annual_div since it's not available in this simplified view
+            _plot_geraldine_weiss(ticker, price_daily, dividends)
     
     elif selected_section == "Balance":
         st.markdown("## Balance")
