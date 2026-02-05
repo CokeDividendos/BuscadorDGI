@@ -206,6 +206,10 @@ def page_resumen() -> None:
     user_email = _get_user_email()
     admin = is_admin()
 
+    # Initialize ticker_main state at the start
+    if "ticker_main" not in st.session_state:
+        st.session_state["ticker_main"] = ""
+
     # CSS — sin sombras en KPIs, tarjetas individuales ni gráficos
     st.markdown(
         """
@@ -247,7 +251,7 @@ def page_resumen() -> None:
         .logo-circle {
             width: 90px;
             height: 90px;
-            border-radius: 20%;
+            border-radius: 50%;
             background-color: #ffffff;
             display: flex;
             align-items: center;
@@ -273,10 +277,6 @@ def page_resumen() -> None:
             val = (st.session_state.get("ticker_main") or "").strip().upper()
             if val:
                 st.session_state["ticker"] = val
-
-        # Initialize ticker_main if not set
-        if "ticker_main" not in st.session_state:
-            st.session_state["ticker_main"] = ""
 
         st.text_input(
             "Ticker (ej: AAPL, MSFT, KO)",
