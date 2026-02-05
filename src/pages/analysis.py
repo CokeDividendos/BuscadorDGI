@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import math
+import random
+import time
 from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
 
@@ -27,6 +29,12 @@ from src.services.usage_limits import consume_search, remaining_searches
 # =========================================================
 YEARS = 5
 DIVIDENDS_CACHE_TTL_SECONDS = 60 * 60 * 24 * 30  # 30 días
+
+# Retry configuration for yfinance API calls
+RETRY_MAX_ATTEMPTS = 3
+RETRY_BASE_DELAY = 2  # Base delay in seconds for exponential backoff
+RETRY_JITTER_MIN = 0.0
+RETRY_JITTER_MAX = 0.5
 
 # Color scheme constants
 COLOR_PRIMARY = "#ff6d01"     # Orange - Primary chart elements
@@ -462,13 +470,7 @@ def _load_ticker_info(ticker: str) -> Dict[str, Any]:
     Returns empty dict if info cannot be retrieved.
     Implements retry logic with exponential backoff for transient errors.
     """
-    import time
-    import random
-    
-    max_attempts = 3
-    last_error = None
-    
-    for attempt in range(1, max_attempts + 1):
+    for attempt in range(1, RETRY_MAX_ATTEMPTS + 1):
         try:
             ticker_obj = yf.Ticker(ticker)
             info = ticker_obj.info
@@ -476,7 +478,6 @@ def _load_ticker_info(ticker: str) -> Dict[str, Any]:
                 return {}
             return info
         except Exception as e:
-            last_error = e
             error_type = type(e).__name__
             
             # Don't retry on rate limit errors, fail fast
@@ -488,13 +489,10 @@ def _load_ticker_info(ticker: str) -> Dict[str, Any]:
                 return {}
             
             # For other errors, retry with exponential backoff (except on last attempt)
-            if attempt < max_attempts:
-                sleep_time = (2 ** (attempt - 1)) + random.uniform(0, 0.5)
+            if attempt < RETRY_MAX_ATTEMPTS:
+                sleep_time = (RETRY_BASE_DELAY ** (attempt - 1)) + random.uniform(RETRY_JITTER_MIN, RETRY_JITTER_MAX)
                 time.sleep(sleep_time)
-            else:
-                # On final attempt, log the error but don't crash
-                # Silent fail - we return empty dict to continue processing
-                pass
+            # On final attempt, silently return empty dict to allow app to continue
     
     return {}
 
