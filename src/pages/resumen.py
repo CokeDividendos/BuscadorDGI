@@ -11,6 +11,7 @@ import yfinance as yf
 
 from src.auth import is_admin
 from src.db import get_user_gpt_api_key
+from src.services.cache_store import cache_get, cache_set
 from src.services.finance_data import (
     get_key_stats,
     get_price_data,
@@ -24,6 +25,10 @@ from src.services.usage_limits import consume_search, remaining_searches
 # Constantes
 # =========================================================
 YEARS = 5
+
+# Cache TTL constants (in seconds)
+CHART_CACHE_TTL = 60 * 60 * 24  # 24 hours for price and drawdown charts
+AI_SUMMARY_CACHE_TTL = 60 * 60 * 24 * 90  # 3 months for AI summary
 
 # Color scheme constants
 COLOR_PRIMARY = "#ff6d01"     # Orange - Primary chart elements
@@ -86,9 +91,15 @@ def _divk_get(divk: Dict[str, Any], *keys: str) -> Any:
 
 
 def _generate_gpt_summary(ticker: str, api_key: str) -> str:
-    """Generate a financial summary using GPT API."""
+    """Generate a financial summary using GPT API with caching (3 months)."""
     if not api_key:
         return "⚠️ No se ha configurado una API KEY de GPT. Por favor, ingrese su API KEY en el sidebar."
+    
+    # Check cache first
+    cache_key = f"gpt_summary_{ticker}"
+    cached_summary = cache_get(cache_key)
+    if cached_summary:
+        return cached_summary
     
     try:
         import openai
@@ -106,7 +117,12 @@ def _generate_gpt_summary(ticker: str, api_key: str) -> str:
             temperature=0.7
         )
         
-        return response.choices[0].message.content.strip()
+        summary = response.choices[0].message.content.strip()
+        
+        # Cache the summary for 3 months
+        cache_set(cache_key, summary, ttl_seconds=AI_SUMMARY_CACHE_TTL)
+        
+        return summary
     except ImportError:
         return "⚠️ La librería openai no está instalada. Por favor, instálela para usar esta funcionalidad."
     except Exception as e:
@@ -114,15 +130,33 @@ def _generate_gpt_summary(ticker: str, api_key: str) -> str:
 
 
 def _plot_price_variation_5y(ticker: str) -> None:
-    """Plot 5-year price variation chart."""
-    try:
-        t = yf.Ticker(ticker)
-        hist = t.history(period="5y", interval="1d")
-        
-        if hist.empty:
-            st.warning("No hay datos de precio disponibles para los últimos 5 años.")
+    """Plot 5-year price variation chart with caching (24 hours)."""
+    # Check cache first
+    cache_key = f"price_chart_data_{ticker}"
+    cached_data = cache_get(cache_key)
+    
+    if cached_data:
+        hist = pd.DataFrame(cached_data['data'], index=pd.DatetimeIndex(cached_data['index']))
+    else:
+        try:
+            t = yf.Ticker(ticker)
+            hist = t.history(period="5y", interval="1d")
+            
+            if hist.empty:
+                st.warning("No hay datos de precio disponibles para los últimos 5 años.")
+                return
+            
+            # Cache the data for 24 hours
+            cache_data = {
+                'data': hist.to_dict('list'),
+                'index': hist.index.astype(str).tolist()
+            }
+            cache_set(cache_key, cache_data, ttl_seconds=CHART_CACHE_TTL)
+        except Exception as e:
+            st.error(f"Error al generar el gráfico de precio: {str(e)}")
             return
-        
+    
+    try:
         fig = go.Figure()
         fig.add_trace(
             go.Scatter(
@@ -154,15 +188,33 @@ def _plot_price_variation_5y(ticker: str) -> None:
 
 
 def _plot_drawdown(ticker: str) -> None:
-    """Plot drawdown chart."""
-    try:
-        t = yf.Ticker(ticker)
-        hist = t.history(period="5y", interval="1d")
-        
-        if hist.empty:
-            st.warning("No hay datos disponibles para calcular el drawdown.")
+    """Plot drawdown chart with caching (24 hours)."""
+    # Check cache first
+    cache_key = f"drawdown_chart_data_{ticker}"
+    cached_data = cache_get(cache_key)
+    
+    if cached_data:
+        hist = pd.DataFrame(cached_data['data'], index=pd.DatetimeIndex(cached_data['index']))
+    else:
+        try:
+            t = yf.Ticker(ticker)
+            hist = t.history(period="5y", interval="1d")
+            
+            if hist.empty:
+                st.warning("No hay datos disponibles para calcular el drawdown.")
+                return
+            
+            # Cache the data for 24 hours
+            cache_data = {
+                'data': hist.to_dict('list'),
+                'index': hist.index.astype(str).tolist()
+            }
+            cache_set(cache_key, cache_data, ttl_seconds=CHART_CACHE_TTL)
+        except Exception as e:
+            st.error(f"Error al generar el gráfico de drawdown: {str(e)}")
             return
-        
+    
+    try:
         # Calculate drawdown
         close = hist['Close']
         running_max = close.cummax()
@@ -413,9 +465,18 @@ def page_resumen() -> None:
     
     api_key = get_user_gpt_api_key(user_email)
     if api_key:
-        with st.spinner("Generando resumen con GPT..."):
-            summary = _generate_gpt_summary(ticker, api_key)
-            st.markdown(summary)
+        # Use session state to store the summary for the current ticker
+        # This ensures the summary persists when switching modules
+        session_summary_key = f"gpt_summary_display_{ticker}"
+        
+        # Only generate if not in session state or ticker changed
+        if session_summary_key not in st.session_state:
+            with st.spinner("Generando resumen con GPT..."):
+                summary = _generate_gpt_summary(ticker, api_key)
+                st.session_state[session_summary_key] = summary
+        
+        # Display the summary from session state
+        st.markdown(st.session_state[session_summary_key])
     else:
         st.info("⚠️ Para ver el resumen generado por GPT, configure su API KEY en el sidebar.")
 
