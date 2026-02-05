@@ -455,6 +455,50 @@ def _load_financial_statements(ticker: str) -> Dict[str, Any]:
     }
 
 
+@st.cache_data(ttl=DIVIDENDS_CACHE_TTL_SECONDS, show_spinner=False)
+def _load_ticker_info(ticker: str) -> Dict[str, Any]:
+    """
+    Safely load ticker info with error handling for rate limits and other exceptions.
+    Returns empty dict if info cannot be retrieved.
+    Implements retry logic with exponential backoff for transient errors.
+    """
+    import time
+    import random
+    
+    max_attempts = 3
+    last_error = None
+    
+    for attempt in range(1, max_attempts + 1):
+        try:
+            ticker_obj = yf.Ticker(ticker)
+            info = ticker_obj.info
+            if info is None or not isinstance(info, dict):
+                return {}
+            return info
+        except Exception as e:
+            last_error = e
+            error_type = type(e).__name__
+            
+            # Don't retry on rate limit errors, fail fast
+            if "RateLimit" in error_type:
+                st.warning(
+                    "⚠️ Se ha alcanzado el límite de solicitudes a Yahoo Finance. "
+                    "Algunos datos pueden no estar disponibles. Por favor, intenta nuevamente más tarde."
+                )
+                return {}
+            
+            # For other errors, retry with exponential backoff (except on last attempt)
+            if attempt < max_attempts:
+                sleep_time = (2 ** (attempt - 1)) + random.uniform(0, 0.5)
+                time.sleep(sleep_time)
+            else:
+                # On final attempt, log the error but don't crash
+                # Silent fail - we return empty dict to continue processing
+                pass
+    
+    return {}
+
+
 def _prepare_financial_df(df: pd.DataFrame, years: int = YEARS) -> pd.DataFrame:
     """Transpose and prepare financial statement dataframe"""
     if df is None or df.empty:
@@ -2127,9 +2171,8 @@ def page_analysis() -> None:
         income_df = _prepare_financial_df(financial_data["income_stmt"], YEARS)
         cashflow_df = _prepare_financial_df(financial_data["cashflow"], YEARS)
         
-        # Get ticker info for market cap and PE ratio
-        t = yf.Ticker(ticker)
-        info = t.info
+        # Get ticker info for market cap and PE ratio (with rate limit protection)
+        info = _load_ticker_info(ticker)
         
         if balance_df.empty and income_df.empty and cashflow_df.empty:
             st.warning("No hay datos financieros suficientes para la valoración por múltiplos.")
