@@ -78,21 +78,24 @@ def _setup_screen() -> None:
             background-color: #1e2a47 !important;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3) !important;
         }
-        /* Add inset shadow to input fields */
+        /* Add inset shadow to input fields with gray background */
         div[data-testid="stForm"] input[type="text"],
         div[data-testid="stForm"] input[type="password"],
         div[data-testid="stForm"] input[type="email"] {
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4) inset !important;
+            background-color: #2a3a5a !important;
         }
         /* Slightly larger title icon */
         .login-title-icon { font-size: 1.1rem; margin-right: 8px; vertical-align: middle; }
         /* Orange submit buttons in setup form with white text */
-        div[data-testid="stForm"] button[kind="primaryFormSubmit"] {
+        div[data-testid="stForm"] button[kind="primaryFormSubmit"],
+        div[data-testid="stForm"] button[kind="secondaryFormSubmit"] {
             background-color: #ff6d01 !important;
             color: white !important;
             border: none !important;
         }
-        div[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover {
+        div[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover,
+        div[data-testid="stForm"] button[kind="secondaryFormSubmit"]:hover {
             background-color: #e66101 !important;
             color: white !important;
         }
@@ -160,21 +163,28 @@ def require_login() -> bool:
             background-color: #1e2a47 !important;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3) !important;
         }
-        /* Add inset shadow to input fields */
+        /* Add inset shadow to input fields with gray background */
         div[data-testid="stForm"] input[type="text"],
         div[data-testid="stForm"] input[type="password"],
         div[data-testid="stForm"] input[type="email"] {
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4) inset !important;
+            background-color: #2a3a5a !important;
         }
         /* Orange submit buttons in login form with white text */
-        div[data-testid="stForm"] button[kind="primaryFormSubmit"] {
+        div[data-testid="stForm"] button[kind="primaryFormSubmit"],
+        div[data-testid="stForm"] button[kind="secondaryFormSubmit"] {
             background-color: #ff6d01 !important;
             color: white !important;
             border: none !important;
         }
-        div[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover {
+        div[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover,
+        div[data-testid="stForm"] button[kind="secondaryFormSubmit"]:hover {
             background-color: #e66101 !important;
             color: white !important;
+        }
+        /* Center the login title */
+        .login-title-centered {
+            text-align: center;
         }
         </style>
         """,
@@ -183,7 +193,7 @@ def require_login() -> bool:
 
     st.write("")
     with _centered_card(3.5):
-        st.markdown("## 🔐 Iniciar sesión")
+        st.markdown('<h2 class="login-title-centered">🔐 Iniciar sesión</h2>', unsafe_allow_html=True)
 
         with st.form("login_form"):
             email = st.text_input("Email").strip().lower()
