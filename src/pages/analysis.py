@@ -474,7 +474,7 @@ def _load_ticker_info(ticker: str) -> Dict[str, Any]:
         try:
             ticker_obj = yf.Ticker(ticker)
             info = ticker_obj.info
-            if info is None or not isinstance(info, dict):
+            if not isinstance(info, dict):
                 return {}
             return info
         except Exception as e:
@@ -490,7 +490,7 @@ def _load_ticker_info(ticker: str) -> Dict[str, Any]:
             
             # For other errors, retry with exponential backoff (except on last attempt)
             if attempt < RETRY_MAX_ATTEMPTS:
-                sleep_time = (RETRY_BASE_DELAY ** (attempt - 1)) + random.uniform(RETRY_JITTER_MIN, RETRY_JITTER_MAX)
+                sleep_time = (RETRY_BASE_DELAY ** attempt) + random.uniform(RETRY_JITTER_MIN, RETRY_JITTER_MAX)
                 time.sleep(sleep_time)
             # On final attempt, silently return empty dict to allow app to continue
     
