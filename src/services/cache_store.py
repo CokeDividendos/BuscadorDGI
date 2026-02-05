@@ -1,6 +1,5 @@
 # src/services/cache_store.py
 import json
-import math
 import time
 from datetime import datetime
 from typing import Any, Optional
@@ -12,13 +11,13 @@ from src.db import get_conn
 
 class CacheJSONEncoder(json.JSONEncoder):
     """
-    Custom JSON encoder that handles pandas Timestamps and other non-serializable types.
+    Custom JSON encoder that handles pandas Timestamps and datetime objects.
     
     This encoder converts:
     - pandas.Timestamp -> ISO format string
     - datetime objects -> ISO format string
-    - NaN -> null
-    - Infinity -> string representation
+    
+    Note: NaN and Infinity values are handled by Python's json module by default.
     """
     def default(self, obj):
         # Handle pandas Timestamp
@@ -27,12 +26,6 @@ class CacheJSONEncoder(json.JSONEncoder):
         # Handle datetime objects
         elif isinstance(obj, datetime):
             return obj.isoformat()
-        # Handle NaN and Infinity
-        elif isinstance(obj, float):
-            if math.isnan(obj):
-                return None
-            elif math.isinf(obj):
-                return "Infinity" if obj > 0 else "-Infinity"
         # Let the base class handle other types or raise TypeError
         return super().default(obj)
 
