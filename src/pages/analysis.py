@@ -14,7 +14,7 @@ import yfinance as yf
 
 # IMPORTAR sólo is_admin desde auth — _get_user_email se define localmente
 from src.auth import is_admin
-from src.services.cache_store import cache_clear_all
+from src.services.cache_store import cache_clear_all, cache_get, cache_set
 from src.services.finance_data import (
     get_key_stats,
     get_price_data,
@@ -29,6 +29,7 @@ from src.services.usage_limits import consume_search, remaining_searches
 # =========================================================
 YEARS = 5
 DIVIDENDS_CACHE_TTL_SECONDS = 60 * 60 * 24 * 30  # 30 días
+FINANCIAL_STATEMENTS_CACHE_TTL = 60 * 60 * 24 * 90  # 3 months for balance, income, cashflow
 
 # Retry configuration for yfinance API calls
 # MAX_ATTEMPTS includes the initial attempt (e.g., 3 = 1 initial + 2 retries)
@@ -432,9 +433,20 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
 # =========================================================
 # Financial Statements Data Loaders
 # =========================================================
-@st.cache_data(ttl=DIVIDENDS_CACHE_TTL_SECONDS, show_spinner=False)
 def _load_financial_statements(ticker: str) -> Dict[str, Any]:
-    """Load balance sheet, income statement, and cash flow data"""
+    """Load balance sheet, income statement, and cash flow data with caching (3 months)"""
+    # Check cache first
+    cache_key = f"financial_statements_{ticker}"
+    cached_data = cache_get(cache_key)
+    
+    if cached_data:
+        # Reconstruct DataFrames from cached data with proper orientation
+        return {
+            "balance_sheet": pd.DataFrame.from_dict(cached_data["balance_sheet"], orient='tight') if cached_data["balance_sheet"] else pd.DataFrame(),
+            "income_stmt": pd.DataFrame.from_dict(cached_data["income_stmt"], orient='tight') if cached_data["income_stmt"] else pd.DataFrame(),
+            "cashflow": pd.DataFrame.from_dict(cached_data["cashflow"], orient='tight') if cached_data["cashflow"] else pd.DataFrame(),
+        }
+    
     ticker_obj = yf.Ticker(ticker)
     
     try:
@@ -457,6 +469,14 @@ def _load_financial_statements(ticker: str) -> Dict[str, Any]:
             cashflow = pd.DataFrame()
     except Exception:
         cashflow = pd.DataFrame()
+    
+    # Cache the data for 3 months using 'tight' orientation to preserve index/column structure
+    cache_data = {
+        "balance_sheet": balance_sheet.to_dict(orient='tight') if not balance_sheet.empty else None,
+        "income_stmt": income_stmt.to_dict(orient='tight') if not income_stmt.empty else None,
+        "cashflow": cashflow.to_dict(orient='tight') if not cashflow.empty else None,
+    }
+    cache_set(cache_key, cache_data, ttl_seconds=FINANCIAL_STATEMENTS_CACHE_TTL)
     
     return {
         "balance_sheet": balance_sheet,
