@@ -136,7 +136,10 @@ def _plot_price_variation_5y(ticker: str) -> None:
     cached_data = cache_get(cache_key)
     
     if cached_data:
-        hist = pd.DataFrame(cached_data['data'], index=pd.DatetimeIndex(cached_data['index']))
+        # Reconstruct DataFrame with proper datetime index
+        hist = pd.DataFrame(cached_data['data'])
+        hist.index = pd.DatetimeIndex(cached_data['index'])
+        hist.index.name = cached_data.get('index_name')
     else:
         try:
             t = yf.Ticker(ticker)
@@ -149,7 +152,8 @@ def _plot_price_variation_5y(ticker: str) -> None:
             # Cache the data for 24 hours
             cache_data = {
                 'data': hist.to_dict('list'),
-                'index': hist.index.astype(str).tolist()
+                'index': hist.index.astype(str).tolist(),
+                'index_name': hist.index.name
             }
             cache_set(cache_key, cache_data, ttl_seconds=CHART_CACHE_TTL)
         except Exception as e:
@@ -194,7 +198,10 @@ def _plot_drawdown(ticker: str) -> None:
     cached_data = cache_get(cache_key)
     
     if cached_data:
-        hist = pd.DataFrame(cached_data['data'], index=pd.DatetimeIndex(cached_data['index']))
+        # Reconstruct DataFrame with proper datetime index
+        hist = pd.DataFrame(cached_data['data'])
+        hist.index = pd.DatetimeIndex(cached_data['index'])
+        hist.index.name = cached_data.get('index_name')
     else:
         try:
             t = yf.Ticker(ticker)
@@ -207,7 +214,8 @@ def _plot_drawdown(ticker: str) -> None:
             # Cache the data for 24 hours
             cache_data = {
                 'data': hist.to_dict('list'),
-                'index': hist.index.astype(str).tolist()
+                'index': hist.index.astype(str).tolist(),
+                'index_name': hist.index.name
             }
             cache_set(cache_key, cache_data, ttl_seconds=CHART_CACHE_TTL)
         except Exception as e:
@@ -467,6 +475,9 @@ def page_resumen() -> None:
     if api_key:
         # Use session state to store the summary for the current ticker
         # This ensures the summary persists when switching modules
+        # Note: session_summary_key (gpt_summary_display_) is separate from cache_key (gpt_summary_)
+        # - cache_key: shared across all users, persists 3 months in database
+        # - session_summary_key: per-user session, avoids re-generating on module switch
         session_summary_key = f"gpt_summary_display_{ticker}"
         
         # Only generate if not in session state or ticker changed

@@ -440,11 +440,11 @@ def _load_financial_statements(ticker: str) -> Dict[str, Any]:
     cached_data = cache_get(cache_key)
     
     if cached_data:
-        # Reconstruct DataFrames from cached data
+        # Reconstruct DataFrames from cached data with proper orientation
         return {
-            "balance_sheet": pd.DataFrame(cached_data["balance_sheet"]) if cached_data["balance_sheet"] else pd.DataFrame(),
-            "income_stmt": pd.DataFrame(cached_data["income_stmt"]) if cached_data["income_stmt"] else pd.DataFrame(),
-            "cashflow": pd.DataFrame(cached_data["cashflow"]) if cached_data["cashflow"] else pd.DataFrame(),
+            "balance_sheet": pd.DataFrame.from_dict(cached_data["balance_sheet"], orient='tight') if cached_data["balance_sheet"] else pd.DataFrame(),
+            "income_stmt": pd.DataFrame.from_dict(cached_data["income_stmt"], orient='tight') if cached_data["income_stmt"] else pd.DataFrame(),
+            "cashflow": pd.DataFrame.from_dict(cached_data["cashflow"], orient='tight') if cached_data["cashflow"] else pd.DataFrame(),
         }
     
     ticker_obj = yf.Ticker(ticker)
@@ -470,11 +470,11 @@ def _load_financial_statements(ticker: str) -> Dict[str, Any]:
     except Exception:
         cashflow = pd.DataFrame()
     
-    # Cache the data for 3 months
+    # Cache the data for 3 months using 'tight' orientation to preserve index/column structure
     cache_data = {
-        "balance_sheet": balance_sheet.to_dict() if not balance_sheet.empty else None,
-        "income_stmt": income_stmt.to_dict() if not income_stmt.empty else None,
-        "cashflow": cashflow.to_dict() if not cashflow.empty else None,
+        "balance_sheet": balance_sheet.to_dict(orient='tight') if not balance_sheet.empty else None,
+        "income_stmt": income_stmt.to_dict(orient='tight') if not income_stmt.empty else None,
+        "cashflow": cashflow.to_dict(orient='tight') if not cashflow.empty else None,
     }
     cache_set(cache_key, cache_data, ttl_seconds=FINANCIAL_STATEMENTS_CACHE_TTL)
     
