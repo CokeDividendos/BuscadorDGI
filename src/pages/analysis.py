@@ -417,13 +417,17 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
     st.plotly_chart(fig, use_container_width=True, key=f"gw_{ticker}")
 
     # Display KPIs in a single row
+    # Get projected values from the last data point in the bands
+    projected_infravalorado = monthly["Infravalorado"].iloc[-1]
+    projected_sobrevalorado = monthly["Sobrevalorado"].iloc[-1]
+    
     cols = st.columns(6)
     cols[0].metric("Div. anual (último)", f"${last_div:,.2f}")
     cols[1].metric("CAGR div.", f"{cagr:.2f}%" if cagr is not None else "N/D")
     cols[2].metric("Yield mín.", f"{y_min:.2%}")
     cols[3].metric("Yield máx.", f"{y_max:.2%}")
-    cols[4].metric("Infravalorado (teórico)", f"${(last_div / y_max):,.2f}" if y_max > 0 else "N/D")
-    cols[5].metric("Sobrevalorado (teórico)", f"${(last_div / y_min):,.2f}" if y_min > 0 else "N/D")
+    cols[4].metric("Infravalorado (teórico)", f"${projected_infravalorado:,.2f}" if pd.notna(projected_infravalorado) else "N/D")
+    cols[5].metric("Sobrevalorado (teórico)", f"${projected_sobrevalorado:,.2f}" if pd.notna(projected_sobrevalorado) else "N/D")
 
     with st.expander("Ver tabla mensual (GW)"):
         show = monthly[["Close", "DivAnual", "Yield", "Sobrevalorado", "Infravalorado"]].copy()
