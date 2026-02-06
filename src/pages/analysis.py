@@ -1948,14 +1948,14 @@ def page_analysis() -> None:
         
         /* Logo with white circle background */
         .logo-circle {
-            width: 30px;
-            height: 30px;
-            border-radius: 40%;
+            width: 120px;
+            height: 120px;
+            border-radius: 30%;
             background-color: #ffffff;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 20px;
+            padding: 60px;
         }
         .logo-circle img {
             width: 100%;
