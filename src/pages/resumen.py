@@ -380,14 +380,14 @@ def page_resumen() -> None:
         
         /* Logo with white square background with rounded corners */
         .logo-circle {
-            width: 110px;
-            height: 110px;
+            width: 85px;
+            height: 85px;
             border-radius: 10px;
             background-color: #ffffff;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 10px;
+            padding: 8px;
         }
         .logo-circle img {
             width: 100%;
