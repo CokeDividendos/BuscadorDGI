@@ -1919,6 +1919,10 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
     from PIL import Image
     import numpy as np
     
+    # Configuration constants
+    HEATMAP_GRID_RESOLUTION = 10  # Grid resolution for clickable area
+    POSITION_CHANGE_THRESHOLD = 0.01  # Minimum change to trigger update
+    
     # Load the background image
     assets_path = Path(__file__).parent.parent / "assets" / "PizarraFondo.png"
     
@@ -1971,10 +1975,9 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
     
     # Add a clickable heatmap (invisible) to capture clicks across entire board
     # This uses a low-resolution grid to make the entire area clickable
-    grid_res = 10
-    x_grid = np.linspace(0, 1, grid_res)
-    y_grid = np.linspace(0, 1, grid_res)
-    z_grid = np.zeros((grid_res, grid_res))
+    x_grid = np.linspace(0, 1, HEATMAP_GRID_RESOLUTION)
+    y_grid = np.linspace(0, 1, HEATMAP_GRID_RESOLUTION)
+    z_grid = np.zeros((HEATMAP_GRID_RESOLUTION, HEATMAP_GRID_RESOLUTION))
     
     fig.add_trace(go.Heatmap(
         x=x_grid,
@@ -2078,7 +2081,7 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
                 new_y = max(0.0, min(1.0, new_y))
                 
                 # Only update if position has actually changed
-                if abs(new_x - x_pos) > 0.01 or abs(new_y - y_pos) > 0.01:
+                if abs(new_x - x_pos) > POSITION_CHANGE_THRESHOLD or abs(new_y - y_pos) > POSITION_CHANGE_THRESHOLD:
                     # Save the new position immediately (persistent, no TTL)
                     cache_set(cache_key, {"x": new_x, "y": new_y})
                     st.rerun()
