@@ -1965,20 +1965,38 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
         )
     )
     
-    # Add the logo as a marker at the saved/default position
+    # Add the logo as an image marker at the saved/default position
     if logo_url:
+        # Add logo as a layout image at the position
+        fig.add_layout_image(
+            dict(
+                source=logo_url,
+                xref="x",
+                yref="y",
+                x=x_pos - 0.05,  # Center the logo (assuming logo is about 0.1 units wide)
+                y=y_pos + 0.05,  # Center the logo (assuming logo is about 0.1 units tall)
+                sizex=0.1,
+                sizey=0.1,
+                xanchor="left",
+                yanchor="bottom",
+                layer="above"
+            )
+        )
+        
+        # Also add an invisible scatter point for better UX
         fig.add_trace(go.Scatter(
             x=[x_pos],
             y=[y_pos],
             mode="markers",
             marker=dict(
-                size=50,
-                color="rgba(255, 109, 1, 0.8)",
+                size=20,
+                color="rgba(255, 109, 1, 0.3)",
                 symbol="circle",
-                line=dict(color="white", width=2)
+                line=dict(color="rgba(255, 109, 1, 0.6)", width=2)
             ),
-            hovertemplate=f"<b>{ticker}</b><br>Click para mover<extra></extra>",
-            name=ticker
+            hovertemplate=f"<b>{ticker}</b><br>Posición guardada<extra></extra>",
+            name=ticker,
+            showlegend=False
         ))
     
     # Configure layout
@@ -1997,60 +2015,75 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
             scaleanchor="x",
             scaleratio=1
         ),
-        height=600,
+        height=700,
         margin=dict(l=0, r=0, t=30, b=0),
         paper_bgcolor="#141f41",
         plot_bgcolor="#141f41",
         showlegend=False,
-        hovermode="closest"
+        hovermode="closest",
+        dragmode="pan"  # Allow panning
     )
     
-    # Display the figure and capture click events
-    st.markdown(f"**Pizarra de Valoración — {ticker}**")
-    st.caption("Haz clic en cualquier punto de la pizarra para posicionar el logo de la empresa")
+    # Display the figure
+    st.markdown(f"**Pizarra de Valoración Interactiva — {ticker}**")
+    st.caption("Usa los controles de abajo para posicionar el logo de la empresa en la pizarra")
     
-    # Use plotly_events to capture click events
-    selected_points = st.plotly_chart(
+    st.plotly_chart(
         fig, 
         use_container_width=True,
-        key=f"valuation_board_{ticker}"
+        key=f"valuation_board_{ticker}",
+        config={
+            'displayModeBar': True,
+            'displaylogo': False,
+            'modeBarButtonsToRemove': ['select2d', 'lasso2d', 'autoScale2d'],
+        }
     )
     
-    # Check if we have click events via session state
-    # Since st.plotly_chart doesn't return click events directly,
-    # we'll use a different approach with streamlit-plotly-events or manual handling
-    
-    # For now, let's add a manual position input as a workaround
+    # Manual position controls in a more compact layout
     st.markdown("---")
-    st.markdown("**Posicionamiento manual (opcional)**")
-    col1, col2, col3 = st.columns([1, 1, 1])
+    st.markdown("**Ajustar posición del logo**")
+    
+    col1, col2, col3 = st.columns([2, 2, 1])
     
     with col1:
         new_x = st.slider(
-            "Posición X (0 = izquierda, 1 = derecha)",
+            "← Izquierda / Derecha →",
             min_value=0.0,
             max_value=1.0,
             value=float(x_pos),
             step=0.01,
-            key=f"x_slider_{ticker}"
+            key=f"x_slider_{ticker}",
+            help="Desliza para mover el logo horizontalmente"
         )
     
     with col2:
         new_y = st.slider(
-            "Posición Y (0 = abajo, 1 = arriba)",
+            "↓ Abajo / Arriba ↑",
             min_value=0.0,
             max_value=1.0,
             value=float(y_pos),
             step=0.01,
-            key=f"y_slider_{ticker}"
+            key=f"y_slider_{ticker}",
+            help="Desliza para mover el logo verticalmente"
         )
     
     with col3:
-        if st.button("Guardar posición", key=f"save_pos_{ticker}"):
+        st.write("")  # Spacing
+        if st.button("💾 Guardar", key=f"save_pos_{ticker}", use_container_width=True, type="primary"):
             # Save the new position without TTL (permanent until manually changed)
             cache_set(cache_key, {"x": new_x, "y": new_y})
-            st.success("✓ Posición guardada")
+            st.success("✓ Guardado")
             st.rerun()
+        
+        if st.button("↺ Centrar", key=f"reset_pos_{ticker}", use_container_width=True):
+            # Reset to center
+            cache_set(cache_key, {"x": 0.5, "y": 0.5})
+            st.success("✓ Centrado")
+            st.rerun()
+    
+    # Show current position info
+    st.info(f"📍 Posición actual: X={x_pos:.2f}, Y={y_pos:.2f}")
+
 
 
 # =========================================================
