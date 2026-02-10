@@ -1928,7 +1928,7 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
             # Basic validation passed, escape for HTML
             logo_url_safe = html.escape(logo_url)
         else:
-            st.warning(f"URL del logo no válida: {html.escape(logo_url)}")
+            st.warning(f"URL del logo no válida: {logo_url}")
             return
     
     # Load the background image
@@ -2001,7 +2001,7 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
         <img id="company-logo" 
              src="{logo_url_safe}" 
              alt="Logo de {ticker_safe}"
-             onerror="console.error('Failed to load company logo:', this.src); this.style.display='none';">
+             onerror="console.error('Failed to load company logo'); this.style.display='none';">
     </div>
     
     <div id="position-info">
@@ -2014,9 +2014,10 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
             const logo = document.getElementById('company-logo');
             const positionText = document.getElementById('position-text');
             const ticker = '{ticker_safe}';
-            // Note: Using string concatenation instead of template literals to avoid
-            // escaping complexity with Python f-strings (template literals would need ${{ticker}})
-            // The ticker value is HTML-escaped on the Python side for security
+            // Note: Using string concatenation instead of template literals.
+            // In JavaScript, template literals use backticks and dollar-brace syntax.
+            // To use them inside a Python f-string would require complex escaping.
+            // The ticker value is HTML-escaped on the Python side for security.
             const storageKey = 'valuation_board_position_' + ticker;
             
             // Load saved position from localStorage
@@ -2029,8 +2030,7 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
                         return true;
                     }}
                 }} catch (e) {{
-                    console.error('Error loading position from localStorage:', e.message, 
-                                  '(localStorage may be unavailable or disabled)');
+                    console.error('Error loading position from localStorage: ' + e.message + ' (localStorage may be unavailable or disabled)');
                 }}
                 return false;
             }}
@@ -2040,8 +2040,7 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
                 try {{
                     localStorage.setItem(storageKey, JSON.stringify({{ x: x, y: y }}));
                 }} catch (e) {{
-                    console.error('Error saving position to localStorage:', e.message,
-                                  '(localStorage may be full or unavailable)');
+                    console.error('Error saving position to localStorage: ' + e.message + ' (localStorage may be full or unavailable)');
                 }}
             }}
             
