@@ -1917,6 +1917,7 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
     import base64
     from pathlib import Path
     from PIL import Image
+    import numpy as np
     
     # Load the background image
     assets_path = Path(__file__).parent.parent / "assets" / "PizarraFondo.png"
@@ -1968,18 +1969,21 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
         )
     )
     
-    # Add an invisible full-area trace to capture clicks anywhere on the board
-    # This creates a clickable surface across the entire board
-    fig.add_trace(go.Scatter(
-        x=[0, 1, 1, 0, 0],
-        y=[0, 0, 1, 1, 0],
-        mode="lines",
-        line=dict(width=0),
-        fill="toself",
-        fillcolor="rgba(0,0,0,0)",
-        hoverinfo="skip",
-        showlegend=False,
-        name="clickable_area"
+    # Add a clickable heatmap (invisible) to capture clicks across entire board
+    # This uses a low-resolution grid to make the entire area clickable
+    grid_res = 10
+    x_grid = np.linspace(0, 1, grid_res)
+    y_grid = np.linspace(0, 1, grid_res)
+    z_grid = np.zeros((grid_res, grid_res))
+    
+    fig.add_trace(go.Heatmap(
+        x=x_grid,
+        y=y_grid,
+        z=z_grid,
+        colorscale=[[0, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0)']],
+        showscale=False,
+        hoverinfo='x+y',
+        name='board'
     ))
     
     # Add the logo as an image marker at the saved/default position
@@ -2000,18 +2004,18 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
             )
         )
         
-        # Add a visible marker at the logo position for better UX and click feedback
+        # Add a visible marker at the logo position for better UX
         fig.add_trace(go.Scatter(
             x=[x_pos],
             y=[y_pos],
             mode="markers",
             marker=dict(
                 size=15,
-                color="rgba(255, 109, 1, 0.4)",
+                color="rgba(255, 109, 1, 0.5)",
                 symbol="circle",
-                line=dict(color="rgba(255, 109, 1, 0.8)", width=2)
+                line=dict(color="rgba(255, 109, 1, 1.0)", width=2)
             ),
-            hovertemplate=f"<b>{ticker}</b><br>X: {x_pos:.2f}, Y: {y_pos:.2f}<extra></extra>",
+            hovertemplate=f"<b>{ticker}</b><br>Posición: ({x_pos:.2f}, {y_pos:.2f})<extra></extra>",
             name=ticker,
             showlegend=False
         ))
@@ -2051,6 +2055,7 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
         use_container_width=True,
         key=f"valuation_board_{ticker}",
         on_select="rerun",
+        selection_mode="points",
         config={
             'displayModeBar': True,
             'displaylogo': False,
@@ -2059,22 +2064,24 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
     )
     
     # Process click event if it occurred
-    if event and event.selection and event.selection.points:
-        # Get the first clicked point
-        point = event.selection.points[0]
-        if 'x' in point and 'y' in point:
-            new_x = float(point['x'])
-            new_y = float(point['y'])
-            
-            # Clamp coordinates to valid range [0, 1]
-            new_x = max(0.0, min(1.0, new_x))
-            new_y = max(0.0, min(1.0, new_y))
-            
-            # Save the new position immediately (persistent, no TTL)
-            cache_set(cache_key, {"x": new_x, "y": new_y})
-            
-            # Update position and rerun to show the change
-            st.rerun()
+    if event and hasattr(event, 'selection') and event.selection:
+        points = event.selection.get('points', [])
+        if points and len(points) > 0:
+            point = points[0]
+            # Get coordinates from the click
+            if 'x' in point and 'y' in point:
+                new_x = float(point['x'])
+                new_y = float(point['y'])
+                
+                # Clamp coordinates to valid range [0, 1]
+                new_x = max(0.0, min(1.0, new_x))
+                new_y = max(0.0, min(1.0, new_y))
+                
+                # Only update if position has actually changed
+                if abs(new_x - x_pos) > 0.01 or abs(new_y - y_pos) > 0.01:
+                    # Save the new position immediately (persistent, no TTL)
+                    cache_set(cache_key, {"x": new_x, "y": new_y})
+                    st.rerun()
     
     # Show current position and optional center button
     col1, col2 = st.columns([3, 1])
