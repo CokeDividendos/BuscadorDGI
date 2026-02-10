@@ -2141,8 +2141,8 @@ def page_analysis() -> None:
         
         /* Logo with white square background with rounded corners */
         .logo-circle {
-            width: 130px;
-            height: 130px;
+            width: 110px;
+            height: 110px;
             border-radius: 15px;
             background-color: #ffffff;
             display: flex;
