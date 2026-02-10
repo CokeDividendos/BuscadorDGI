@@ -382,12 +382,12 @@ def page_resumen() -> None:
         .logo-circle {
             width: 110px;
             height: 110px;
-            border-radius: 12px;
+            border-radius: 10px;
             background-color: #ffffff;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 12px;
+            padding: 10px;
         }
         .logo-circle img {
             width: 100%;
