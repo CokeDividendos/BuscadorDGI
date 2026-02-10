@@ -2148,7 +2148,7 @@ def page_analysis() -> None:
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 60px;
+            padding: 90px;
         }
         .logo-circle img {
             width: 100%;
