@@ -2000,7 +2000,7 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
             const logo = document.getElementById('company-logo');
             const positionText = document.getElementById('position-text');
             const ticker = '{ticker}';
-            const storageKey = `valuation_board_position_${{ticker}}`;
+            const storageKey = 'valuation_board_position_' + ticker;
             
             // Load saved position from localStorage
             function loadPosition() {{
@@ -2020,7 +2020,7 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
             // Save position to localStorage
             function savePosition(x, y) {{
                 try {{
-                    localStorage.setItem(storageKey, JSON.stringify({{ x, y }}));
+                    localStorage.setItem(storageKey, JSON.stringify({{ x: x, y: y }}));
                 }} catch (e) {{
                     console.error('Error saving position:', e);
                 }}
@@ -2032,7 +2032,7 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
                 logo.style.top = yPercent + '%';
                 logo.style.display = 'block';
                 
-                positionText.textContent = `Posición del logo: X=${{xPercent.toFixed(1)}}%, Y=${{yPercent.toFixed(1)}}%`;
+                positionText.textContent = 'Posición del logo: X=' + xPercent.toFixed(1) + '%, Y=' + yPercent.toFixed(1) + '%';
             }}
             
             // Handle click on board
