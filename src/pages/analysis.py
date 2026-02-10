@@ -1930,7 +1930,7 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
     board_base64 = base64.b64encode(img_bytes).decode()
     
     # Display header and instructions
-    st.markdown(f"**Pizarra de Valoración Estática — {ticker}**")
+    st.markdown(f"**Pizarra de Valoración Interactiva — {ticker}**")
     st.caption("💡 Haz clic en cualquier punto de la pizarra para posicionar el logo de la empresa. La posición se guarda automáticamente.")
     
     # Create the HTML/CSS/JavaScript component
@@ -1987,7 +1987,7 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
         <img id="company-logo" 
              src="{logo_url}" 
              alt="Logo de {ticker}"
-             onerror="this.style.display='none';">
+             onerror="console.error('Failed to load company logo:', this.src); this.style.display='none';">
     </div>
     
     <div id="position-info">
@@ -2001,7 +2001,7 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
             const positionText = document.getElementById('position-text');
             const ticker = '{ticker}';
             // Note: Using string concatenation instead of template literals to avoid
-            // escaping complexity with Python f-strings (would require ${{{ticker}}})
+            // escaping complexity with Python f-strings (template literals would need ${{ticker}})
             const storageKey = 'valuation_board_position_' + ticker;
             
             // Load saved position from localStorage
@@ -2014,7 +2014,8 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
                         return true;
                     }}
                 }} catch (e) {{
-                    console.error('Error loading position:', e);
+                    console.error('Error loading position from localStorage:', e.message, 
+                                  '(localStorage may be unavailable or disabled)');
                 }}
                 return false;
             }}
@@ -2024,7 +2025,8 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
                 try {{
                     localStorage.setItem(storageKey, JSON.stringify({{ x: x, y: y }}));
                 }} catch (e) {{
-                    console.error('Error saving position:', e);
+                    console.error('Error saving position to localStorage:', e.message,
+                                  '(localStorage may be full or unavailable)');
                 }}
             }}
             
@@ -2051,13 +2053,23 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
                 savePosition(xClamped, yClamped);
             }});
             
-            // Initialize position when logo image loads
-            // This ensures the image is ready before positioning
-            logo.addEventListener('load', function() {{
+            // Initialize position - called after setup
+            function initializePosition() {{
                 if (!loadPosition()) {{
                     // Default to center if no saved position exists
                     placeLogo(50, 50);
                 }}
+            }}
+            
+            // Initialize when logo image loads successfully
+            logo.addEventListener('load', function() {{
+                initializePosition();
+            }});
+            
+            // Also initialize if logo fails to load (fallback)
+            logo.addEventListener('error', function() {{
+                console.warn('Logo image failed to load, initializing position anyway');
+                initializePosition();
             }});
         }})();
     </script>
