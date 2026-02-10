@@ -2139,16 +2139,16 @@ def page_analysis() -> None:
 
         div[data-testid="stForm"] { max-width: 520px !important; margin: 0 auto !important; border-radius: 10px; }
         
-        /* Logo with white circle background */
+        /* Logo with white square background with rounded corners */
         .logo-circle {
-            width: 120px;
-            height: 120px;
-            border-radius: 30%;
+            width: 130px;
+            height: 130px;
+            border-radius: 15px;
             background-color: #ffffff;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 90px;
+            padding: 15px;
         }
         .logo-circle img {
             width: 100%;
