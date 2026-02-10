@@ -294,3 +294,69 @@ def get_dividend_kpis(ticker: str) -> dict:
             return _load()
 
     return _cache_get_or_set(key, ttl, _load)
+
+
+def get_52w_range(ticker: str) -> dict:
+    """
+    Get 52-week range data (low, high, current price).
+    Cache 30 days. Uses yfinance info first, falls back to historical data.
+    
+    Returns:
+      - low_52w: 52-week low price
+      - high_52w: 52-week high price
+      - current_price: current/latest price
+    """
+    t = (ticker or "").strip().upper()
+    key = f"yf:52w_range:{t}"
+    ttl = 60 * 60 * 24 * 30  # 30 days
+
+    def _load():
+        import yfinance as yf
+        
+        # Try to get from profile/info first
+        low_52w = None
+        high_52w = None
+        current_price = None
+        
+        try:
+            prof = get_profile_data(t)
+            raw = prof.get("raw") if isinstance(prof, dict) else {}
+            
+            # Try different field names for 52-week data
+            low_52w = raw.get("fiftyTwoWeekLow") or raw.get("52WeekLow")
+            high_52w = raw.get("fiftyTwoWeekHigh") or raw.get("52WeekHigh")
+            current_price = raw.get("currentPrice") or raw.get("regularMarketPrice")
+        except Exception:
+            pass
+        
+        # If we don't have 52W data, calculate from 1-year history
+        if low_52w is None or high_52w is None:
+            try:
+                tk = yf.Ticker(t)
+                hist = yf_call(lambda: tk.history(period="1y", interval="1d", auto_adjust=True))
+                
+                if hist is not None and not hist.empty and "Close" in hist.columns:
+                    low_52w = float(hist["Close"].min())
+                    high_52w = float(hist["Close"].max())
+                    
+                    # Get current price from latest close if not available
+                    if current_price is None:
+                        current_price = float(hist["Close"].iloc[-1])
+            except Exception:
+                pass
+        
+        # Try to get current price from get_price_data if still None
+        if current_price is None:
+            try:
+                price_data = get_price_data(t)
+                current_price = price_data.get("last_price")
+            except Exception:
+                pass
+        
+        return {
+            "low_52w": float(low_52w) if low_52w is not None else None,
+            "high_52w": float(high_52w) if high_52w is not None else None,
+            "current_price": float(current_price) if current_price is not None else None,
+        }
+    
+    return _cache_get_or_set(key, ttl, _load)
