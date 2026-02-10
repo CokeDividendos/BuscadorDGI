@@ -1928,7 +1928,7 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
             # Basic validation passed, escape for HTML
             logo_url_safe = html.escape(logo_url)
         else:
-            st.warning(f"URL del logo no válida: {logo_url}")
+            st.warning("URL del logo no válida. Solo se permiten URLs con protocolo http, https o data.")
             return
     
     # Load the background image
@@ -2030,7 +2030,7 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
                         return true;
                     }}
                 }} catch (e) {{
-                    console.error('Error loading position from localStorage: ' + e.message + ' (localStorage may be unavailable or disabled)');
+                    console.error('Error loading position from localStorage (localStorage may be unavailable or disabled)');
                 }}
                 return false;
             }}
@@ -2040,7 +2040,7 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
                 try {{
                     localStorage.setItem(storageKey, JSON.stringify({{ x: x, y: y }}));
                 }} catch (e) {{
-                    console.error('Error saving position to localStorage: ' + e.message + ' (localStorage may be full or unavailable)');
+                    console.error('Error saving position to localStorage (localStorage may be full or unavailable)');
                 }}
             }}
             
