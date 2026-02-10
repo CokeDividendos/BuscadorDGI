@@ -2000,6 +2000,8 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
             const logo = document.getElementById('company-logo');
             const positionText = document.getElementById('position-text');
             const ticker = '{ticker}';
+            // Note: Using string concatenation instead of template literals to avoid
+            // escaping complexity with Python f-strings (would require ${{{ticker}}})
             const storageKey = 'valuation_board_position_' + ticker;
             
             // Load saved position from localStorage
@@ -2031,7 +2033,7 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
                 logo.style.left = xPercent + '%';
                 logo.style.top = yPercent + '%';
                 logo.style.display = 'block';
-                
+                // String concatenation for consistency
                 positionText.textContent = 'Posición del logo: X=' + xPercent.toFixed(1) + '%, Y=' + yPercent.toFixed(1) + '%';
             }}
             
@@ -2049,15 +2051,11 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
                 savePosition(xClamped, yClamped);
             }});
             
-            // Load position on page load
-            if (!loadPosition()) {{
-                // Default to center if no saved position
-                placeLogo(50, 50);
-            }}
-            
-            // Ensure logo loads properly
+            // Initialize position when logo image loads
+            // This ensures the image is ready before positioning
             logo.addEventListener('load', function() {{
                 if (!loadPosition()) {{
+                    // Default to center if no saved position exists
                     placeLogo(50, 50);
                 }}
             }});
