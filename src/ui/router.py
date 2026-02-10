@@ -155,6 +155,7 @@ def run_app():
                 "EERR",
                 "EFE",
                 "Valoración por múltiplos",
+                "Pizarra de Valoración",
                 "Análisis Razonado",
             ]
             

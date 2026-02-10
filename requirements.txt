@@ -7,3 +7,4 @@ python-dotenv
 requests-cache
 yfinance
 openai
+Pillow

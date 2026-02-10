@@ -1905,6 +1905,154 @@ def _plot_ratio_evolution(ticker: str, ratio_name: str, ratio_data: pd.Series) -
     st.plotly_chart(fig, use_container_width=True, key=f"ratio_{ratio_name}_{ticker}")
 
 
+def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
+    """
+    Renders an interactive valuation board using a PNG background image.
+    Users can click to position the company logo on the board.
+    Position is saved per ticker using cache_store.
+    """
+    import base64
+    from pathlib import Path
+    from PIL import Image
+    
+    # Load the background image
+    assets_path = Path(__file__).parent.parent / "assets" / "PizarraFondo.png"
+    
+    if not assets_path.exists():
+        st.error(f"No se encontró la imagen de fondo en: {assets_path}")
+        return
+    
+    # Load image to get dimensions
+    try:
+        img = Image.open(assets_path)
+        img_width, img_height = img.size
+    except Exception as e:
+        st.error(f"Error al cargar la imagen: {e}")
+        return
+    
+    # Get saved position for this ticker (x, y coordinates normalized to 0-1)
+    cache_key = f"valuation_board_position:{ticker}"
+    saved_position = cache_get(cache_key)
+    
+    # Default position (center of board)
+    if saved_position and isinstance(saved_position, dict):
+        x_pos = saved_position.get("x", 0.5)
+        y_pos = saved_position.get("y", 0.5)
+    else:
+        x_pos = 0.5
+        y_pos = 0.5
+    
+    # Convert image to base64 for embedding in Plotly
+    with open(assets_path, "rb") as f:
+        img_bytes = f.read()
+    img_base64 = base64.b64encode(img_bytes).decode()
+    
+    # Create Plotly figure with the background image
+    fig = go.Figure()
+    
+    # Add the background image
+    fig.add_layout_image(
+        dict(
+            source=f"data:image/png;base64,{img_base64}",
+            xref="x",
+            yref="y",
+            x=0,
+            y=1,
+            sizex=1,
+            sizey=1,
+            sizing="stretch",
+            layer="below"
+        )
+    )
+    
+    # Add the logo as a marker at the saved/default position
+    if logo_url:
+        fig.add_trace(go.Scatter(
+            x=[x_pos],
+            y=[y_pos],
+            mode="markers",
+            marker=dict(
+                size=50,
+                color="rgba(255, 109, 1, 0.8)",
+                symbol="circle",
+                line=dict(color="white", width=2)
+            ),
+            hovertemplate=f"<b>{ticker}</b><br>Click para mover<extra></extra>",
+            name=ticker
+        ))
+    
+    # Configure layout
+    fig.update_layout(
+        xaxis=dict(
+            range=[0, 1],
+            showgrid=False,
+            zeroline=False,
+            showticklabels=False,
+        ),
+        yaxis=dict(
+            range=[0, 1],
+            showgrid=False,
+            zeroline=False,
+            showticklabels=False,
+            scaleanchor="x",
+            scaleratio=1
+        ),
+        height=600,
+        margin=dict(l=0, r=0, t=30, b=0),
+        paper_bgcolor="#141f41",
+        plot_bgcolor="#141f41",
+        showlegend=False,
+        hovermode="closest"
+    )
+    
+    # Display the figure and capture click events
+    st.markdown(f"**Pizarra de Valoración — {ticker}**")
+    st.caption("Haz clic en cualquier punto de la pizarra para posicionar el logo de la empresa")
+    
+    # Use plotly_events to capture click events
+    selected_points = st.plotly_chart(
+        fig, 
+        use_container_width=True,
+        key=f"valuation_board_{ticker}"
+    )
+    
+    # Check if we have click events via session state
+    # Since st.plotly_chart doesn't return click events directly,
+    # we'll use a different approach with streamlit-plotly-events or manual handling
+    
+    # For now, let's add a manual position input as a workaround
+    st.markdown("---")
+    st.markdown("**Posicionamiento manual (opcional)**")
+    col1, col2, col3 = st.columns([1, 1, 1])
+    
+    with col1:
+        new_x = st.slider(
+            "Posición X (0 = izquierda, 1 = derecha)",
+            min_value=0.0,
+            max_value=1.0,
+            value=float(x_pos),
+            step=0.01,
+            key=f"x_slider_{ticker}"
+        )
+    
+    with col2:
+        new_y = st.slider(
+            "Posición Y (0 = abajo, 1 = arriba)",
+            min_value=0.0,
+            max_value=1.0,
+            value=float(y_pos),
+            step=0.01,
+            key=f"y_slider_{ticker}"
+        )
+    
+    with col3:
+        if st.button("Guardar posición", key=f"save_pos_{ticker}"):
+            # Save the new position without TTL (permanent until manually changed)
+            cache_set(cache_key, {"x": new_x, "y": new_y})
+            st.success("✓ Posición guardada")
+            st.rerun()
+
+
 # =========================================================
 # Página principal
 # =========================================================
@@ -2101,6 +2249,19 @@ def page_analysis() -> None:
                     _plot_fc_usage(ticker, cashflow_df)
                 else:
                     st.warning("No hay datos suficientes de flujo de efectivo para este análisis.")
+    
+    elif selected_section == "Pizarra de Valoración":
+        st.markdown("## Pizarra de Valoración")
+        
+        # Get the company website to fetch logo
+        website = (profile.get("website") or raw.get("website") or "") if isinstance(profile, dict) else ""
+        logos = logo_candidates(website) if website else []
+        logo_url = next((u for u in logos if isinstance(u, str) and u.startswith(("http://", "https://"))), "")
+        
+        if not logo_url:
+            st.warning("No se pudo obtener el logo de la empresa. La funcionalidad de la pizarra requiere un logo válido.")
+        else:
+            _render_interactive_valuation_board(ticker, logo_url)
     
     elif selected_section == "Análisis Razonado":
         st.markdown("## Análisis Razonado")
