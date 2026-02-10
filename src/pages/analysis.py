@@ -1916,6 +1916,20 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
     """
     import base64
     from pathlib import Path
+    import html
+    
+    # Sanitize inputs to prevent XSS attacks
+    ticker_safe = html.escape(ticker)
+    
+    # Validate logo URL - only allow http, https, and data URIs
+    logo_url_safe = ""
+    if logo_url:
+        if logo_url.startswith(("http://", "https://", "data:")):
+            # Basic validation passed, escape for HTML
+            logo_url_safe = html.escape(logo_url)
+        else:
+            st.warning(f"URL del logo no válida: {html.escape(logo_url)}")
+            return
     
     # Load the background image
     assets_path = Path(__file__).parent.parent / "assets" / "PizarraFondo.png"
@@ -1930,7 +1944,7 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
     board_base64 = base64.b64encode(img_bytes).decode()
     
     # Display header and instructions
-    st.markdown(f"**Pizarra de Valoración Interactiva — {ticker}**")
+    st.markdown(f"**Pizarra de Valoración Interactiva — {ticker_safe}**")
     st.caption("💡 Haz clic en cualquier punto de la pizarra para posicionar el logo de la empresa. La posición se guarda automáticamente.")
     
     # Create the HTML/CSS/JavaScript component
@@ -1985,8 +1999,8 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
              src="data:image/png;base64,{board_base64}" 
              alt="Pizarra de Valoración">
         <img id="company-logo" 
-             src="{logo_url}" 
-             alt="Logo de {ticker}"
+             src="{logo_url_safe}" 
+             alt="Logo de {ticker_safe}"
              onerror="console.error('Failed to load company logo:', this.src); this.style.display='none';">
     </div>
     
@@ -1999,9 +2013,10 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
             const board = document.getElementById('valuation-board');
             const logo = document.getElementById('company-logo');
             const positionText = document.getElementById('position-text');
-            const ticker = '{ticker}';
+            const ticker = '{ticker_safe}';
             // Note: Using string concatenation instead of template literals to avoid
             // escaping complexity with Python f-strings (template literals would need ${{ticker}})
+            // The ticker value is HTML-escaped on the Python side for security
             const storageKey = 'valuation_board_position_' + ticker;
             
             // Load saved position from localStorage
