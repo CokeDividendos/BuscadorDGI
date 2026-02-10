@@ -39,6 +39,13 @@ COLOR_BACKGROUND = "#141f41"  # Dark blue - Chart background
 COLOR_TEXT = "#ffffff"        # White - All text
 
 
+def _hex_to_rgba(hex_color: str, alpha: float = 1.0) -> str:
+    """Convert hex color to rgba string."""
+    hex_color = hex_color.lstrip('#')
+    r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    return f'rgba({r}, {g}, {b}, {alpha})'
+
+
 # =========================================================
 # Helpers UI / formato
 # =========================================================
@@ -287,9 +294,9 @@ def _render_52w_gauge(ticker: str, current_price: float, low_52w: float, high_52
                 'borderwidth': 2,
                 'bordercolor': COLOR_TEXT,
                 'steps': [
-                    {'range': [low_52w, low_52w + range_52w * 0.33], 'color': 'rgba(255, 0, 255, 0.3)'},
-                    {'range': [low_52w + range_52w * 0.33, low_52w + range_52w * 0.67], 'color': 'rgba(1, 194, 239, 0.3)'},
-                    {'range': [low_52w + range_52w * 0.67, high_52w], 'color': 'rgba(255, 109, 1, 0.3)'},
+                    {'range': [low_52w, low_52w + range_52w * 0.33], 'color': _hex_to_rgba(COLOR_SECONDARY, 0.3)},
+                    {'range': [low_52w + range_52w * 0.33, low_52w + range_52w * 0.67], 'color': _hex_to_rgba(COLOR_TERTIARY, 0.3)},
+                    {'range': [low_52w + range_52w * 0.67, high_52w], 'color': _hex_to_rgba(COLOR_PRIMARY, 0.3)},
                 ],
                 'threshold': {
                     'line': {'color': COLOR_TERTIARY, 'width': 4},
