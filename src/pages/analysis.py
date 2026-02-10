@@ -1967,18 +1967,18 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
     
     # Add the logo as an image marker at the saved/default position
     if logo_url:
-        # Add logo as a layout image at the position
+        # Add logo as a layout image at the position (centered)
         fig.add_layout_image(
             dict(
                 source=logo_url,
                 xref="x",
                 yref="y",
-                x=x_pos - 0.05,  # Center the logo (assuming logo is about 0.1 units wide)
-                y=y_pos + 0.05,  # Center the logo (assuming logo is about 0.1 units tall)
+                x=x_pos,
+                y=y_pos,
                 sizex=0.1,
                 sizey=0.1,
-                xanchor="left",
-                yanchor="bottom",
+                xanchor="center",  # Center the logo horizontally
+                yanchor="middle",  # Center the logo vertically
                 layer="above"
             )
         )
@@ -2013,7 +2013,7 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
             zeroline=False,
             showticklabels=False,
             scaleanchor="x",
-            scaleratio=1
+            scaleratio=img_height / img_width  # Use actual image aspect ratio
         ),
         height=700,
         margin=dict(l=0, r=0, t=30, b=0),
@@ -2070,7 +2070,8 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
     with col3:
         st.write("")  # Spacing
         if st.button("💾 Guardar", key=f"save_pos_{ticker}", use_container_width=True, type="primary"):
-            # Save the new position without TTL (permanent until manually changed)
+            # Save the new position permanently (no TTL - persists until manually changed)
+            # cache_set without ttl_seconds parameter will store indefinitely
             cache_set(cache_key, {"x": new_x, "y": new_y})
             st.success("✓ Guardado")
             st.rerun()
