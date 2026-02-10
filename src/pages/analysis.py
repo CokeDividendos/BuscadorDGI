@@ -1907,21 +1907,15 @@ def _plot_ratio_evolution(ticker: str, ratio_name: str, ratio_data: pd.Series) -
 
 def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
     """
-    Renders an interactive valuation board using a PNG background image.
+    Renders a static valuation board using HTML/CSS/JavaScript.
     Users can click anywhere on the board to position the company logo.
-    Position is saved per ticker using cache_store.
+    The board remains static (no page rerun) and logo position is saved in localStorage.
     
-    Click behavior: Click anywhere on the board to move the logo to that position.
-    Coordinates are normalized (0-1) with X from left to right, Y from bottom to top.
+    Click behavior: Click anywhere on the board to place the logo at that position.
+    Position is persistent across page loads using localStorage.
     """
     import base64
     from pathlib import Path
-    from PIL import Image
-    import numpy as np
-    
-    # Configuration constants
-    HEATMAP_GRID_RESOLUTION = 10  # Grid resolution for clickable area
-    POSITION_CHANGE_THRESHOLD = 0.01  # Minimum change to trigger update
     
     # Load the background image
     assets_path = Path(__file__).parent.parent / "assets" / "PizarraFondo.png"
@@ -1930,173 +1924,149 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
         st.error(f"No se encontró la imagen de fondo en: {assets_path}")
         return
     
-    # Load image to get dimensions
-    try:
-        img = Image.open(assets_path)
-        img_width, img_height = img.size
-    except Exception as e:
-        st.error(f"Error al cargar la imagen: {e}")
-        return
-    
-    # Get saved position for this ticker (x, y coordinates normalized to 0-1)
-    cache_key = f"valuation_board_position:{ticker}"
-    saved_position = cache_get(cache_key)
-    
-    # Default position (center of board)
-    if saved_position and isinstance(saved_position, dict):
-        x_pos = saved_position.get("x", 0.5)
-        y_pos = saved_position.get("y", 0.5)
-    else:
-        x_pos = 0.5
-        y_pos = 0.5
-    
-    # Convert image to base64 for embedding in Plotly
+    # Convert image to base64 for embedding
     with open(assets_path, "rb") as f:
         img_bytes = f.read()
-    img_base64 = base64.b64encode(img_bytes).decode()
-    
-    # Create Plotly figure with the background image
-    fig = go.Figure()
-    
-    # Add the background image
-    fig.add_layout_image(
-        dict(
-            source=f"data:image/png;base64,{img_base64}",
-            xref="x",
-            yref="y",
-            x=0,
-            y=1,
-            sizex=1,
-            sizey=1,
-            sizing="stretch",
-            layer="below"
-        )
-    )
-    
-    # Add a clickable heatmap (invisible) to capture clicks across entire board
-    # This uses a low-resolution grid to make the entire area clickable
-    x_grid = np.linspace(0, 1, HEATMAP_GRID_RESOLUTION)
-    y_grid = np.linspace(0, 1, HEATMAP_GRID_RESOLUTION)
-    z_grid = np.zeros((HEATMAP_GRID_RESOLUTION, HEATMAP_GRID_RESOLUTION))
-    
-    fig.add_trace(go.Heatmap(
-        x=x_grid,
-        y=y_grid,
-        z=z_grid,
-        colorscale=[[0, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0)']],
-        showscale=False,
-        hoverinfo='x+y',
-        name='board'
-    ))
-    
-    # Add the logo as an image marker at the saved/default position
-    if logo_url:
-        # Add logo as a layout image at the position (centered)
-        fig.add_layout_image(
-            dict(
-                source=logo_url,
-                xref="x",
-                yref="y",
-                x=x_pos,
-                y=y_pos,
-                sizex=0.1,
-                sizey=0.1,
-                xanchor="center",
-                yanchor="middle",
-                layer="above"
-            )
-        )
-        
-        # Add a visible marker at the logo position for better UX
-        fig.add_trace(go.Scatter(
-            x=[x_pos],
-            y=[y_pos],
-            mode="markers",
-            marker=dict(
-                size=15,
-                color="rgba(255, 109, 1, 0.5)",
-                symbol="circle",
-                line=dict(color="rgba(255, 109, 1, 1.0)", width=2)
-            ),
-            hovertemplate=f"<b>{ticker}</b><br>Posición: ({x_pos:.2f}, {y_pos:.2f})<extra></extra>",
-            name=ticker,
-            showlegend=False
-        ))
-    
-    # Configure layout
-    fig.update_layout(
-        xaxis=dict(
-            range=[0, 1],
-            showgrid=False,
-            zeroline=False,
-            showticklabels=False,
-        ),
-        yaxis=dict(
-            range=[0, 1],
-            showgrid=False,
-            zeroline=False,
-            showticklabels=False,
-            scaleanchor="x",
-            scaleratio=img_height / img_width
-        ),
-        height=700,
-        margin=dict(l=0, r=0, t=30, b=0),
-        paper_bgcolor="#141f41",
-        plot_bgcolor="#141f41",
-        showlegend=False,
-        hovermode="closest",
-        dragmode=False  # Disable panning to make clicks easier
-    )
+    board_base64 = base64.b64encode(img_bytes).decode()
     
     # Display header and instructions
-    st.markdown(f"**Pizarra de Valoración Interactiva — {ticker}**")
-    st.caption("💡 Haz clic en cualquier punto de la pizarra para posicionar el logo de la empresa")
+    st.markdown(f"**Pizarra de Valoración Estática — {ticker}**")
+    st.caption("💡 Haz clic en cualquier punto de la pizarra para posicionar el logo de la empresa. La posición se guarda automáticamente.")
     
-    # Render the Plotly chart and capture click events
-    event = st.plotly_chart(
-        fig, 
-        use_container_width=True,
-        key=f"valuation_board_{ticker}",
-        on_select="rerun",
-        selection_mode="points",
-        config={
-            'displayModeBar': True,
-            'displaylogo': False,
-            'modeBarButtonsToRemove': ['select2d', 'lasso2d', 'autoScale2d', 'zoom2d', 'pan2d'],
-        }
-    )
+    # Create the HTML/CSS/JavaScript component
+    html_code = f"""
+    <style>
+        #valuation-board-container {{
+            position: relative;
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: #141f41;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }}
+        
+        #valuation-board {{
+            position: relative;
+            width: 100%;
+            cursor: crosshair;
+            display: block;
+        }}
+        
+        #company-logo {{
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            object-fit: contain;
+            pointer-events: none;
+            display: none;
+            border: 2px solid #ff6d01;
+            border-radius: 8px;
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 4px;
+            box-shadow: 0 2px 8px rgba(255, 109, 1, 0.5);
+            transform: translate(-50%, -50%);
+        }}
+        
+        #position-info {{
+            margin-top: 10px;
+            padding: 10px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            color: #ffffff;
+            font-family: monospace;
+            font-size: 14px;
+        }}
+    </style>
     
-    # Process click event if it occurred
-    if event and hasattr(event, 'selection') and event.selection:
-        points = event.selection.get('points', [])
-        if points and len(points) > 0:
-            point = points[0]
-            # Get coordinates from the click
-            if 'x' in point and 'y' in point:
-                new_x = float(point['x'])
-                new_y = float(point['y'])
+    <div id="valuation-board-container">
+        <img id="valuation-board" 
+             src="data:image/png;base64,{board_base64}" 
+             alt="Pizarra de Valoración">
+        <img id="company-logo" 
+             src="{logo_url}" 
+             alt="Logo de {ticker}"
+             onerror="this.style.display='none';">
+    </div>
+    
+    <div id="position-info">
+        📍 <span id="position-text">Haz clic en la pizarra para posicionar el logo</span>
+    </div>
+    
+    <script>
+        (function() {{
+            const board = document.getElementById('valuation-board');
+            const logo = document.getElementById('company-logo');
+            const positionText = document.getElementById('position-text');
+            const ticker = '{ticker}';
+            const storageKey = `valuation_board_position_${{ticker}}`;
+            
+            // Load saved position from localStorage
+            function loadPosition() {{
+                try {{
+                    const saved = localStorage.getItem(storageKey);
+                    if (saved) {{
+                        const pos = JSON.parse(saved);
+                        placeLogo(pos.x, pos.y);
+                        return true;
+                    }}
+                }} catch (e) {{
+                    console.error('Error loading position:', e);
+                }}
+                return false;
+            }}
+            
+            // Save position to localStorage
+            function savePosition(x, y) {{
+                try {{
+                    localStorage.setItem(storageKey, JSON.stringify({{ x, y }}));
+                }} catch (e) {{
+                    console.error('Error saving position:', e);
+                }}
+            }}
+            
+            // Place logo at specified position (percentage)
+            function placeLogo(xPercent, yPercent) {{
+                logo.style.left = xPercent + '%';
+                logo.style.top = yPercent + '%';
+                logo.style.display = 'block';
                 
-                # Clamp coordinates to valid range [0, 1]
-                new_x = max(0.0, min(1.0, new_x))
-                new_y = max(0.0, min(1.0, new_y))
+                positionText.textContent = `Posición del logo: X=${{xPercent.toFixed(1)}}%, Y=${{yPercent.toFixed(1)}}%`;
+            }}
+            
+            // Handle click on board
+            board.addEventListener('click', function(event) {{
+                const rect = board.getBoundingClientRect();
+                const x = ((event.clientX - rect.left) / rect.width) * 100;
+                const y = ((event.clientY - rect.top) / rect.height) * 100;
                 
-                # Only update if position has actually changed
-                if abs(new_x - x_pos) > POSITION_CHANGE_THRESHOLD or abs(new_y - y_pos) > POSITION_CHANGE_THRESHOLD:
-                    # Save the new position immediately (persistent, no TTL)
-                    cache_set(cache_key, {"x": new_x, "y": new_y})
-                    st.rerun()
+                // Clamp to valid range
+                const xClamped = Math.max(0, Math.min(100, x));
+                const yClamped = Math.max(0, Math.min(100, y));
+                
+                placeLogo(xClamped, yClamped);
+                savePosition(xClamped, yClamped);
+            }});
+            
+            // Load position on page load
+            if (!loadPosition()) {{
+                // Default to center if no saved position
+                placeLogo(50, 50);
+            }}
+            
+            // Ensure logo loads properly
+            logo.addEventListener('load', function() {{
+                if (!loadPosition()) {{
+                    placeLogo(50, 50);
+                }}
+            }});
+        }})();
+    </script>
+    """
     
-    # Show current position and optional center button
-    col1, col2 = st.columns([3, 1])
-    
-    with col1:
-        st.info(f"📍 Posición actual: X={x_pos:.2f}, Y={y_pos:.2f}")
-    
-    with col2:
-        if st.button("↺ Centrar", key=f"center_pos_{ticker}", use_container_width=True):
-            # Reset to center position
-            cache_set(cache_key, {"x": 0.5, "y": 0.5})
-            st.rerun()
+    # Render the HTML component
+    st.components.v1.html(html_code, height=750, scrolling=False)
 
 
 
