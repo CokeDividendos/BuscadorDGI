@@ -378,16 +378,16 @@ def page_resumen() -> None:
 
         div[data-testid="stForm"] { max-width: 520px !important; margin: 0 auto !important; border-radius: 10px; }
         
-        /* Logo with white circle background */
+        /* Logo with white square background with rounded corners */
         .logo-circle {
-            width: 90px;
-            height: 90px;
-            border-radius: 50%;
+            width: 110px;
+            height: 110px;
+            border-radius: 12px;
             background-color: #ffffff;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 8px;
+            padding: 12px;
         }
         .logo-circle img {
             width: 100%;
