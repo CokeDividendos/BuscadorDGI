@@ -2141,14 +2141,14 @@ def page_analysis() -> None:
         
         /* Logo with white square background with rounded corners */
         .logo-circle {
-            width: 110px;
-            height: 110px;
-            border-radius: 15px;
+            width: 85px;
+            height: 85px;
+            border-radius: 12px;
             background-color: #ffffff;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 15px;
+            padding: 10px;
         }
         .logo-circle img {
             width: 100%;
