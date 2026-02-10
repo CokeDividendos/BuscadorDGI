@@ -17,6 +17,7 @@ from src.services.finance_data import (
     get_price_data,
     get_profile_data,
     get_dividend_kpis,
+    get_52w_range,
 )
 from src.services.logos import logo_candidates
 from src.services.usage_limits import consume_search, remaining_searches
@@ -246,6 +247,81 @@ def _plot_drawdown(ticker: str) -> None:
         st.plotly_chart(fig, use_container_width=True, key=f"drawdown_{ticker}")
     except Exception as e:
         st.error(f"Error al generar el gráfico de drawdown: {str(e)}")
+
+
+def _render_52w_gauge(ticker: str, current_price: float, low_52w: float, high_52w: float) -> None:
+    """
+    Render 52-week range gauge chart.
+    Shows current price position within the 52-week range.
+    """
+    try:
+        # Validate data
+        if low_52w is None or high_52w is None or current_price is None:
+            st.info("No hay datos suficientes para mostrar el rango de 52 semanas.")
+            return
+        
+        # Avoid division by zero
+        if high_52w == low_52w:
+            st.info("El rango de 52 semanas es muy estrecho para mostrar el gráfico.")
+            return
+        
+        # Calculate position percentage
+        range_52w = high_52w - low_52w
+        position_pct = ((current_price - low_52w) / range_52w) * 100
+        
+        # Create gauge chart
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=current_price,
+            title={'text': f"Rango 52 Semanas — {ticker}", 'font': {'size': 20, 'color': COLOR_TEXT}},
+            number={'prefix': "$", 'font': {'size': 28, 'color': COLOR_TEXT}},
+            gauge={
+                'axis': {
+                    'range': [low_52w, high_52w],
+                    'tickwidth': 1,
+                    'tickcolor': COLOR_TEXT,
+                    'tickfont': {'color': COLOR_TEXT, 'size': 12}
+                },
+                'bar': {'color': COLOR_PRIMARY, 'thickness': 0.75},
+                'bgcolor': COLOR_BACKGROUND,
+                'borderwidth': 2,
+                'bordercolor': COLOR_TEXT,
+                'steps': [
+                    {'range': [low_52w, low_52w + range_52w * 0.33], 'color': 'rgba(255, 0, 255, 0.3)'},
+                    {'range': [low_52w + range_52w * 0.33, low_52w + range_52w * 0.67], 'color': 'rgba(1, 194, 239, 0.3)'},
+                    {'range': [low_52w + range_52w * 0.67, high_52w], 'color': 'rgba(255, 109, 1, 0.3)'},
+                ],
+                'threshold': {
+                    'line': {'color': COLOR_TERTIARY, 'width': 4},
+                    'thickness': 0.75,
+                    'value': current_price
+                }
+            }
+        ))
+        
+        fig.update_layout(
+            height=300,
+            margin=dict(l=20, r=20, t=60, b=20),
+            paper_bgcolor=COLOR_BACKGROUND,
+            font=dict(color=COLOR_TEXT),
+        )
+        
+        st.plotly_chart(fig, use_container_width=True, key=f"52w_gauge_{ticker}")
+        
+        # Display text summary below gauge
+        st.markdown(
+            f"""
+            <div style='text-align: center; color: {COLOR_TEXT}; margin-top: -10px;'>
+                <strong>52W Low:</strong> ${low_52w:,.2f} | 
+                <strong>52W High:</strong> ${high_52w:,.2f} | 
+                <strong>Actual:</strong> ${current_price:,.2f}<br>
+                <strong>Posición:</strong> {position_pct:.1f}% del rango
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    except Exception as e:
+        st.error(f"Error al generar el gráfico de rango 52 semanas: {str(e)}")
 
 
 def page_resumen() -> None:
@@ -490,3 +566,13 @@ def page_resumen() -> None:
     
     with col2:
         _plot_drawdown(ticker)
+    
+    # 52-Week Range Gauge
+    st.markdown("### Rango 52 Semanas")
+    range_data = get_52w_range(ticker)
+    _render_52w_gauge(
+        ticker,
+        range_data.get("current_price"),
+        range_data.get("low_52w"),
+        range_data.get("high_52w")
+    )
