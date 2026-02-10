@@ -1905,6 +1905,188 @@ def _plot_ratio_evolution(ticker: str, ratio_name: str, ratio_data: pd.Series) -
     st.plotly_chart(fig, use_container_width=True, key=f"ratio_{ratio_name}_{ticker}")
 
 
+def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
+    """
+    Renders an interactive valuation board using a PNG background image.
+    Users can click to position the company logo on the board.
+    Position is saved per ticker using cache_store.
+    """
+    import base64
+    from pathlib import Path
+    from PIL import Image
+    
+    # Load the background image
+    assets_path = Path(__file__).parent.parent / "assets" / "PizarraFondo.png"
+    
+    if not assets_path.exists():
+        st.error(f"No se encontró la imagen de fondo en: {assets_path}")
+        return
+    
+    # Load image to get dimensions
+    try:
+        img = Image.open(assets_path)
+        img_width, img_height = img.size
+    except Exception as e:
+        st.error(f"Error al cargar la imagen: {e}")
+        return
+    
+    # Get saved position for this ticker (x, y coordinates normalized to 0-1)
+    cache_key = f"valuation_board_position:{ticker}"
+    saved_position = cache_get(cache_key)
+    
+    # Default position (center of board)
+    if saved_position and isinstance(saved_position, dict):
+        x_pos = saved_position.get("x", 0.5)
+        y_pos = saved_position.get("y", 0.5)
+    else:
+        x_pos = 0.5
+        y_pos = 0.5
+    
+    # Convert image to base64 for embedding in Plotly
+    with open(assets_path, "rb") as f:
+        img_bytes = f.read()
+    img_base64 = base64.b64encode(img_bytes).decode()
+    
+    # Create Plotly figure with the background image
+    fig = go.Figure()
+    
+    # Add the background image
+    fig.add_layout_image(
+        dict(
+            source=f"data:image/png;base64,{img_base64}",
+            xref="x",
+            yref="y",
+            x=0,
+            y=1,
+            sizex=1,
+            sizey=1,
+            sizing="stretch",
+            layer="below"
+        )
+    )
+    
+    # Add the logo as an image marker at the saved/default position
+    if logo_url:
+        # Add logo as a layout image at the position (centered)
+        fig.add_layout_image(
+            dict(
+                source=logo_url,
+                xref="x",
+                yref="y",
+                x=x_pos,
+                y=y_pos,
+                sizex=0.1,
+                sizey=0.1,
+                xanchor="center",  # Center the logo horizontally
+                yanchor="middle",  # Center the logo vertically
+                layer="above"
+            )
+        )
+        
+        # Also add an invisible scatter point for better UX
+        fig.add_trace(go.Scatter(
+            x=[x_pos],
+            y=[y_pos],
+            mode="markers",
+            marker=dict(
+                size=20,
+                color="rgba(255, 109, 1, 0.3)",
+                symbol="circle",
+                line=dict(color="rgba(255, 109, 1, 0.6)", width=2)
+            ),
+            hovertemplate=f"<b>{ticker}</b><br>Posición guardada<extra></extra>",
+            name=ticker,
+            showlegend=False
+        ))
+    
+    # Configure layout
+    fig.update_layout(
+        xaxis=dict(
+            range=[0, 1],
+            showgrid=False,
+            zeroline=False,
+            showticklabels=False,
+        ),
+        yaxis=dict(
+            range=[0, 1],
+            showgrid=False,
+            zeroline=False,
+            showticklabels=False,
+            scaleanchor="x",
+            scaleratio=img_height / img_width  # Use actual image aspect ratio
+        ),
+        height=700,
+        margin=dict(l=0, r=0, t=30, b=0),
+        paper_bgcolor="#141f41",
+        plot_bgcolor="#141f41",
+        showlegend=False,
+        hovermode="closest",
+        dragmode="pan"  # Allow panning
+    )
+    
+    # Display the figure
+    st.markdown(f"**Pizarra de Valoración Interactiva — {ticker}**")
+    st.caption("Usa los controles de abajo para posicionar el logo de la empresa en la pizarra")
+    
+    st.plotly_chart(
+        fig, 
+        use_container_width=True,
+        key=f"valuation_board_{ticker}",
+        config={
+            'displayModeBar': True,
+            'displaylogo': False,
+            'modeBarButtonsToRemove': ['select2d', 'lasso2d', 'autoScale2d'],
+        }
+    )
+    
+    # Manual position controls in a more compact layout
+    st.markdown("---")
+    st.markdown("**Ajustar posición del logo**")
+    
+    col1, col2, col3 = st.columns([2, 2, 1])
+    
+    with col1:
+        new_x = st.slider(
+            "← Izquierda / Derecha →",
+            min_value=0.0,
+            max_value=1.0,
+            value=float(x_pos),
+            step=0.01,
+            key=f"x_slider_{ticker}",
+            help="Desliza para mover el logo horizontalmente"
+        )
+    
+    with col2:
+        new_y = st.slider(
+            "↓ Abajo / Arriba ↑",
+            min_value=0.0,
+            max_value=1.0,
+            value=float(y_pos),
+            step=0.01,
+            key=f"y_slider_{ticker}",
+            help="Desliza para mover el logo verticalmente"
+        )
+    
+    with col3:
+        st.write("")  # Spacing
+        if st.button("💾 Guardar", key=f"save_pos_{ticker}", use_container_width=True, type="primary"):
+            # Save the new position permanently (no TTL - persists until manually changed)
+            # cache_set without ttl_seconds parameter will store indefinitely
+            cache_set(cache_key, {"x": new_x, "y": new_y})
+            st.success("✓ Guardado")
+            st.rerun()
+        
+        if st.button("↺ Centrar", key=f"reset_pos_{ticker}", use_container_width=True):
+            # Reset to center
+            cache_set(cache_key, {"x": 0.5, "y": 0.5})
+            st.success("✓ Centrado")
+            st.rerun()
+    
+    # Show current position info
+    st.info(f"📍 Posición actual: X={x_pos:.2f}, Y={y_pos:.2f}")
+
+
+
 # =========================================================
 # Página principal
 # =========================================================
@@ -2101,6 +2283,19 @@ def page_analysis() -> None:
                     _plot_fc_usage(ticker, cashflow_df)
                 else:
                     st.warning("No hay datos suficientes de flujo de efectivo para este análisis.")
+    
+    elif selected_section == "Pizarra de Valoración":
+        st.markdown("## Pizarra de Valoración")
+        
+        # Get the company website to fetch logo
+        website = (profile.get("website") or raw.get("website") or "") if isinstance(profile, dict) else ""
+        logos = logo_candidates(website) if website else []
+        logo_url = next((u for u in logos if isinstance(u, str) and u.startswith(("http://", "https://"))), "")
+        
+        if not logo_url:
+            st.warning("No se pudo obtener el logo de la empresa. La funcionalidad de la pizarra requiere un logo válido.")
+        else:
+            _render_interactive_valuation_board(ticker, logo_url)
     
     elif selected_section == "Análisis Razonado":
         st.markdown("## Análisis Razonado")
