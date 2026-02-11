@@ -1,11 +1,12 @@
 # src/ui/router.py
 import streamlit as st
 
-from src.db import init_db, get_user_gpt_api_key, update_user_gpt_api_key, get_user_perplexity_api_key, update_user_perplexity_api_key, verify_database_integrity
+from src.db import init_db, verify_database_integrity
 from src.auth import require_login, is_admin, logout_button
 from src.pages.analysis import page_analysis
 from src.pages.resumen import page_resumen
 from src.pages.blogs import page_blogs
+from src.pages.api_keys import page_api_keys
 from src.pages.admin_users import page_admin_users
 from src.services.cache_store import cache_clear_all
 from src.services.usage_limits import remaining_searches
@@ -88,56 +89,16 @@ def run_app():
     with st.sidebar:
         # 1. User email at the top
         st.markdown(f"**Usuario:** {user_email}")
-        
-        # 2. API Keys section
-        st.markdown("### 🔑 API Keys")
-        
-        # GPT API Key
-        current_gpt_key = get_user_gpt_api_key(user_email)
-        with st.form("gpt_api_key_form", clear_on_submit=False):
-            gpt_key_input = st.text_input(
-                "OpenAI GPT",
-                value=current_gpt_key or "",
-                type="password",
-                placeholder="sk-...",
-                help="Para resúmenes financieros con GPT"
-            )
-            if st.form_submit_button("Guardar GPT", use_container_width=True):
-                if gpt_key_input != current_gpt_key:
-                    try:
-                        update_user_gpt_api_key(user_email, gpt_key_input)
-                        st.success("✓ API KEY GPT guardada")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error: {e}")
-        
-        # Perplexity API Key
-        current_perplexity_key = get_user_perplexity_api_key(user_email)
-        with st.form("perplexity_api_key_form", clear_on_submit=False):
-            perplexity_key_input = st.text_input(
-                "Perplexity AI",
-                value=current_perplexity_key or "",
-                type="password",
-                placeholder="pplx-...",
-                help="Para análisis de noticias con Perplexity"
-            )
-            if st.form_submit_button("Guardar Perplexity", use_container_width=True):
-                if perplexity_key_input != current_perplexity_key:
-                    try:
-                        update_user_perplexity_api_key(user_email, perplexity_key_input)
-                        st.success("✓ API KEY Perplexity guardada")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error: {e}")
-        
         st.divider()
-
-        # 3. Main navigation sections (Resumen, Análisis, Blogs, Admin)
+        
+        # 2. Main navigation sections
         if "page_section" not in st.session_state:
             st.session_state["page_section"] = "Resumen"  # Default to Resumen
         
         st.markdown("### Navegación")
-        page_sections = ["Resumen", "Análisis", "Blogs"]
+        
+        # Build page sections list
+        page_sections = ["Resumen", "Análisis", "Blogs", "🔑 API Keys"]
         if admin:
             page_sections.append("Admin · Usuarios")
 
@@ -217,5 +178,7 @@ def run_app():
         page_analysis()
     elif page_section == "Blogs":
         page_blogs()
+    elif page_section == "🔑 API Keys":
+        page_api_keys()
     elif page_section == "Admin · Usuarios":
         page_admin_users()
