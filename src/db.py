@@ -170,8 +170,12 @@ def load_users() -> Dict[str, Dict[str, Any]]:
             }
             if row["gpt_api_key"]:
                 users[email]["gpt_api_key"] = row["gpt_api_key"]
-            if row["perplexity_api_key"]:
-                users[email]["perplexity_api_key"] = row["perplexity_api_key"]
+            try:
+                if row["perplexity_api_key"]:
+                    users[email]["perplexity_api_key"] = row["perplexity_api_key"]
+            except (IndexError, KeyError):
+                # Column doesn't exist yet (shouldn't happen after migration)
+                pass
         
         return users
     except Exception as e:
@@ -307,8 +311,12 @@ def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
         }
         if row["gpt_api_key"]:
             user["gpt_api_key"] = row["gpt_api_key"]
-        if row["perplexity_api_key"]:
-            user["perplexity_api_key"] = row["perplexity_api_key"]
+        try:
+            if row["perplexity_api_key"]:
+                user["perplexity_api_key"] = row["perplexity_api_key"]
+        except (IndexError, KeyError):
+            # Column doesn't exist yet (shouldn't happen after migration)
+            pass
         
         return user
     except Exception as e:
