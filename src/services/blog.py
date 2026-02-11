@@ -141,34 +141,32 @@ def update_blog_post(
     conn = get_conn()
     cur = conn.cursor()
     
-    # Build update query dynamically based on provided fields
-    updates = []
-    params = []
+    # Build update query safely using predefined column mappings
+    allowed_updates = {
+        'title': title,
+        'content': content,
+        'images_json': json.dumps(images) if images is not None else None
+    }
     
-    if title is not None:
-        updates.append("title = ?")
-        params.append(title)
+    # Filter out None values
+    update_fields = {k: v for k, v in allowed_updates.items() if v is not None}
     
-    if content is not None:
-        updates.append("content = ?")
-        params.append(content)
-    
-    if images is not None:
-        updates.append("images_json = ?")
-        params.append(json.dumps(images))
-    
-    if not updates:
+    if not update_fields:
         conn.close()
         return False
     
+    # Build the SET clause safely
+    set_clauses = [f"{col} = ?" for col in update_fields.keys()]
+    params = list(update_fields.values())
+    
     # Always update the updated_at timestamp
-    updates.append("updated_at = ?")
+    set_clauses.append("updated_at = ?")
     params.append(_now_iso())
     
     # Add post_id to params
     params.append(post_id)
     
-    query = f"UPDATE blog_posts SET {', '.join(updates)} WHERE id = ?"
+    query = f"UPDATE blog_posts SET {', '.join(set_clauses)} WHERE id = ?"
     cur.execute(query, params)
     
     success = cur.rowcount > 0

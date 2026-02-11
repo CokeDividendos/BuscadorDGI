@@ -28,12 +28,12 @@ def _format_date(iso_date: str) -> str:
         return iso_date
 
 
-def _image_to_base64(image: Image.Image, format: str = "PNG") -> str:
+def _image_to_base64(image: Image.Image, image_format: str = "PNG") -> str:
     """Convert PIL Image to base64 string."""
     buffered = BytesIO()
-    image.save(buffered, format=format)
+    image.save(buffered, format=image_format)
     img_str = base64.b64encode(buffered.getvalue()).decode()
-    return f"data:image/{format.lower()};base64,{img_str}"
+    return f"data:image/{image_format.lower()};base64,{img_str}"
 
 
 def _render_blog_post_card(post: dict, show_admin_actions: bool = False) -> None:
@@ -190,7 +190,7 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
                         post_id=post_id,
                         title=title.strip(),
                         content=content.strip(),
-                        images=images if uploaded_files else None
+                        images=images
                     )
                     if success:
                         st.success("✓ Artículo actualizado correctamente")
