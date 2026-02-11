@@ -12,10 +12,14 @@ from src.db import (
 
 
 def _get_api_key_suffix(api_key: str) -> str:
-    """Get the last 8 (or 4 if shorter) characters of an API key for display."""
-    if len(api_key) >= 8:
-        return api_key[-8:]
-    return api_key[-4:] if len(api_key) >= 4 else api_key
+    """Get the last 4 characters of an API key for display.
+    
+    Industry standard is to show only the last 4 characters to minimize
+    security risk if the screen is shared or captured.
+    """
+    if not api_key:
+        return ''
+    return api_key[-4:]
 
 
 def page_api_keys() -> None:
