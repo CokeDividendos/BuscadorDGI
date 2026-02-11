@@ -56,7 +56,8 @@ def page_api_keys() -> None:
                 st.info("ℹ️ La API Key no ha cambiado")
     
     if current_gpt_key:
-        st.success(f"✅ API Key configurada (termina en: ...{current_gpt_key[-8:]})")
+        suffix = current_gpt_key[-8:] if len(current_gpt_key) >= 8 else current_gpt_key[-4:]
+        st.success(f"✅ API Key configurada (termina en: ...{suffix})")
     else:
         st.warning("⚠️ No has configurado tu API Key de GPT. Los resúmenes financieros no estarán disponibles.")
     
@@ -99,7 +100,8 @@ def page_api_keys() -> None:
                 st.info("ℹ️ La API Key no ha cambiado")
     
     if current_perplexity_key:
-        st.success(f"✅ API Key configurada (termina en: ...{current_perplexity_key[-8:]})")
+        suffix = current_perplexity_key[-8:] if len(current_perplexity_key) >= 8 else current_perplexity_key[-4:]
+        st.success(f"✅ API Key configurada (termina en: ...{suffix})")
     else:
         st.warning("⚠️ No has configurado tu API Key de Perplexity. El análisis de noticias no estará disponible.")
     
