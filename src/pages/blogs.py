@@ -187,15 +187,20 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
     if st.button("← Cancelar"):
         st.session_state["blog_view"] = "list"
         st.session_state.pop("editing_blog_post", None)
-        # Clear draft state if any
+        # Clear draft state
         st.session_state.pop('blog_content_draft', None)
+        st.session_state.pop('blog_editor_mode', None)
         st.rerun()
     
     st.markdown(f"## {'Editar' if is_edit else 'Crear'} artículo")
     
     # Initialize session state for content draft
-    if 'blog_content_draft' not in st.session_state:
+    # Track the current editor mode to avoid conflicts between create/edit
+    current_mode = f"edit_{post_id}" if is_edit else "create"
+    if st.session_state.get('blog_editor_mode') != current_mode:
+        st.session_state['blog_editor_mode'] = current_mode
         st.session_state['blog_content_draft'] = post['content'] if post else ""
+        st.session_state['images_inserted'] = False
     
     with st.form("blog_editor_form"):
         title = st.text_input(
@@ -204,17 +209,18 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
             max_chars=200
         )
         
-        # Ticker field
-        ticker = st.text_input(
+        # Ticker field with validation before normalization
+        ticker_input = st.text_input(
             "Ticker asociado (opcional)",
             value=post.get('ticker', '') if post else "",
             max_chars=10,
             help="Símbolo de la empresa (ej: AAPL, MSFT). Se mostrará en las búsquedas de esa empresa."
-        ).strip().upper()
+        )
         
-        # Validate ticker format if provided
+        # Validate ticker format before normalization
+        ticker = ticker_input.strip().upper() if ticker_input else ""
         ticker_error = None
-        if ticker and not re.match(r'^[A-Z0-9]{1,10}$', ticker):
+        if ticker_input and not re.match(r'^[A-Za-z0-9]{1,10}$', ticker_input.strip()):
             ticker_error = "El ticker solo debe contener letras y números (máximo 10 caracteres)"
         
         content = st.text_area(
@@ -224,9 +230,6 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
             help="Puedes usar formato Markdown: **negrita**, *cursiva*, # títulos, etc.",
             key="blog_content_input"
         )
-        
-        # Update draft state when content changes
-        st.session_state['blog_content_draft'] = content
         
         st.markdown("### Imágenes")
         st.caption("Sube imágenes y luego haz click en 'Insertar imágenes' para agregarlas al contenido")
@@ -297,6 +300,7 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
                         st.session_state["blog_view"] = "list"
                         st.session_state.pop("editing_blog_post", None)
                         st.session_state.pop('blog_content_draft', None)
+                        st.session_state.pop('blog_editor_mode', None)
                         st.rerun()
                     else:
                         st.error("Error al actualizar el artículo")
@@ -312,12 +316,13 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
                     st.success(f"✓ Artículo publicado correctamente (ID: {post_id})")
                     st.session_state["blog_view"] = "list"
                     st.session_state.pop('blog_content_draft', None)
+                    st.session_state.pop('blog_editor_mode', None)
                     st.rerun()
             except Exception as e:
                 st.error(f"Error al guardar el artículo: {e}")
     
     # Image preview and insert section (outside the form)
-    if uploaded_files:
+    if uploaded_files and not st.session_state.get('images_inserted', False):
         st.markdown("---")
         st.markdown("**Vista previa de imágenes:**")
         markdown_images = []
@@ -336,7 +341,10 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
             current_content = st.session_state.get('blog_content_draft', '')
             new_content = current_content + "\n\n" + "\n\n".join(markdown_images)
             st.session_state['blog_content_draft'] = new_content
+            st.session_state['images_inserted'] = True
             st.rerun()
+    elif st.session_state.get('images_inserted', False):
+        st.info("✓ Imágenes insertadas en el contenido. Puedes moverlas a la posición deseada en el editor.")
 
 
 def _render_blog_list(admin: bool) -> None:
