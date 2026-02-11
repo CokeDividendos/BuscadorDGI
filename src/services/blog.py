@@ -82,7 +82,7 @@ def get_blog_post(post_id: int) -> Optional[Dict[str, Any]]:
         "published_date": row["published_date"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
-        "ticker": row.get("ticker"),
+        "ticker": row["ticker"] if "ticker" in row.keys() else None,
         "images": json.loads(row["images_json"]) if row["images_json"] else []
     }
 
@@ -120,7 +120,7 @@ def list_blog_posts(limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
             "published_date": row["published_date"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
-            "ticker": row.get("ticker"),
+            "ticker": row["ticker"] if "ticker" in row.keys() else None,
             "images": json.loads(row["images_json"]) if row["images_json"] else []
         })
     
@@ -255,7 +255,7 @@ def get_blog_posts_by_ticker(ticker: str) -> List[Dict[str, Any]]:
             "published_date": row["published_date"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
-            "ticker": row.get("ticker"),
+            "ticker": row["ticker"] if "ticker" in row.keys() else None,
             "images": json.loads(row["images_json"]) if row["images_json"] else []
         })
     
