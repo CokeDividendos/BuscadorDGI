@@ -26,11 +26,99 @@ def _norm_email(email: str) -> str:
     return (email or "").strip().lower()
 
 
+def _migrate_users_from_json() -> None:
+    """
+    Migrate users from JSON file to SQLite if the JSON file exists.
+    After migration, rename the JSON file to .migrated as a backup.
+    """
+    if not USERS_PATH.exists():
+        return
+    
+    try:
+        # Read existing JSON data
+        raw = USERS_PATH.read_text(encoding="utf-8").strip() or "{}"
+        data = json.loads(raw)
+        
+        if not isinstance(data, dict) or not data:
+            # Empty or invalid JSON, just rename it
+            USERS_PATH.rename(USERS_PATH.with_suffix(".json.migrated"))
+            print(f"[INFO] Renamed empty/invalid {USERS_PATH} to .migrated", file=sys.stderr)
+            return
+        
+        # Check if users already exist in SQLite to avoid duplicate migration
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) as count FROM users")
+        count = cur.fetchone()["count"]
+        
+        if count > 0:
+            # Users already in SQLite, just rename the JSON file
+            conn.close()
+            USERS_PATH.rename(USERS_PATH.with_suffix(".json.migrated"))
+            print(f"[INFO] Users already in SQLite, renamed {USERS_PATH} to .migrated", file=sys.stderr)
+            return
+        
+        # Migrate users to SQLite
+        migrated_count = 0
+        for email_key, user_data in data.items():
+            if not isinstance(user_data, dict):
+                continue
+            
+            email = _norm_email(email_key)
+            role = user_data.get("role", "user")
+            created_at = user_data.get("created_at", _now_iso())
+            algo = user_data.get("algo", "pbkdf2_sha256")
+            iterations = user_data.get("iterations", "200000")
+            salt_b64 = user_data.get("salt_b64", "")
+            hash_b64 = user_data.get("hash_b64", "")
+            gpt_api_key = user_data.get("gpt_api_key")
+            
+            # Skip invalid entries
+            if not email or not salt_b64 or not hash_b64:
+                continue
+            
+            cur.execute("""
+                INSERT OR REPLACE INTO users (email, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (email, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key))
+            migrated_count += 1
+        
+        conn.commit()
+        conn.close()
+        
+        # Rename JSON file to .migrated
+        USERS_PATH.rename(USERS_PATH.with_suffix(".json.migrated"))
+        print(f"[INFO] Migrated {migrated_count} users from JSON to SQLite, renamed file to .migrated", file=sys.stderr)
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to migrate users from JSON: {e}", file=sys.stderr)
+        # Don't raise - allow the app to continue with empty users
+
+
 def ensure_users_file() -> None:
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
-        if not USERS_PATH.exists():
-            USERS_PATH.write_text("{}", encoding="utf-8")
+        
+        # Create users table if it doesn't exist
+        conn = get_conn()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                email TEXT PRIMARY KEY,
+                role TEXT NOT NULL DEFAULT 'user',
+                created_at TEXT NOT NULL,
+                algo TEXT NOT NULL,
+                iterations TEXT NOT NULL,
+                salt_b64 TEXT NOT NULL,
+                hash_b64 TEXT NOT NULL,
+                gpt_api_key TEXT
+            )
+        """)
+        conn.commit()
+        conn.close()
+        
+        # Migrate from JSON if exists
+        _migrate_users_from_json()
+        
     except Exception as e:
         print(f"Error in ensure_users_file: {e}", file=sys.stderr)
         raise
@@ -39,28 +127,61 @@ def ensure_users_file() -> None:
 def load_users() -> Dict[str, Dict[str, Any]]:
     ensure_users_file()
     try:
-        raw = USERS_PATH.read_text(encoding="utf-8").strip() or "{}"
-        data = json.loads(raw)
-        if not isinstance(data, dict):
-            return {}
-        out: Dict[str, Dict[str, Any]] = {}
-        for k, v in data.items():
-            if isinstance(v, dict):
-                out[_norm_email(k)] = v
-        return out
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM users")
+        rows = cur.fetchall()
+        conn.close()
+        
+        users = {}
+        for row in rows:
+            email = row["email"]
+            users[email] = {
+                "role": row["role"],
+                "created_at": row["created_at"],
+                "algo": row["algo"],
+                "iterations": row["iterations"],
+                "salt_b64": row["salt_b64"],
+                "hash_b64": row["hash_b64"],
+            }
+            if row["gpt_api_key"]:
+                users[email]["gpt_api_key"] = row["gpt_api_key"]
+        
+        return users
     except Exception as e:
         # Log the error for debugging, but return empty dict to allow app to continue
-        print(f"Error loading users from {USERS_PATH}: {e}", file=sys.stderr)
+        print(f"Error loading users from SQLite: {e}", file=sys.stderr)
         return {}
 
 
 def save_users(users: Dict[str, Dict[str, Any]]) -> None:
     ensure_users_file()
     try:
-        content = json.dumps(users, indent=2, ensure_ascii=False)
-        USERS_PATH.write_text(content, encoding="utf-8")
+        conn = get_conn()
+        cur = conn.cursor()
+        
+        # Clear existing users and insert new ones
+        cur.execute("DELETE FROM users")
+        
+        for email, user_data in users.items():
+            email_n = _norm_email(email)
+            role = user_data.get("role", "user")
+            created_at = user_data.get("created_at", _now_iso())
+            algo = user_data.get("algo", "pbkdf2_sha256")
+            iterations = user_data.get("iterations", "200000")
+            salt_b64 = user_data.get("salt_b64", "")
+            hash_b64 = user_data.get("hash_b64", "")
+            gpt_api_key = user_data.get("gpt_api_key")
+            
+            cur.execute("""
+                INSERT INTO users (email, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (email_n, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key))
+        
+        conn.commit()
+        conn.close()
     except Exception as e:
-        print(f"Error saving users to {USERS_PATH}: {e}", file=sys.stderr)
+        print(f"Error saving users to SQLite: {e}", file=sys.stderr)
         raise
 
 
@@ -94,26 +215,91 @@ def verify_password(password: str, meta: Dict[str, Any]) -> bool:
 
 def upsert_user(email: str, password: str, role: str = "user") -> Dict[str, Any]:
     email_n = _norm_email(email)
-    users = load_users()
+    ensure_users_file()
+    
     meta = hash_password(password)
-    users[email_n] = {"role": role, "created_at": _now_iso(), **meta}
-    save_users(users)
-    return users[email_n]
+    created_at = _now_iso()
+    
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        
+        # Insert or update user
+        cur.execute("""
+            INSERT INTO users (email, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key)
+            VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
+            ON CONFLICT(email) DO UPDATE SET
+                role = excluded.role,
+                algo = excluded.algo,
+                iterations = excluded.iterations,
+                salt_b64 = excluded.salt_b64,
+                hash_b64 = excluded.hash_b64
+        """, (email_n, role, created_at, meta["algo"], meta["iterations"], meta["salt_b64"], meta["hash_b64"]))
+        
+        conn.commit()
+        conn.close()
+        
+        return {"role": role, "created_at": created_at, **meta}
+    except Exception as e:
+        print(f"Error upserting user {email_n}: {e}", file=sys.stderr)
+        raise
 
 
 def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
-    users = load_users()
-    return users.get(_norm_email(email))
+    ensure_users_file()
+    email_n = _norm_email(email)
+    
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM users WHERE email = ?", (email_n,))
+        row = cur.fetchone()
+        conn.close()
+        
+        if not row:
+            return None
+        
+        user = {
+            "role": row["role"],
+            "created_at": row["created_at"],
+            "algo": row["algo"],
+            "iterations": row["iterations"],
+            "salt_b64": row["salt_b64"],
+            "hash_b64": row["hash_b64"],
+        }
+        if row["gpt_api_key"]:
+            user["gpt_api_key"] = row["gpt_api_key"]
+        
+        return user
+    except Exception as e:
+        print(f"Error getting user {email_n}: {e}", file=sys.stderr)
+        return None
 
 
 def update_user_gpt_api_key(email: str, api_key: str) -> None:
     """Update the GPT API key for a user."""
     email_n = _norm_email(email)
-    users = load_users()
-    if email_n not in users:
-        raise ValueError(f"User {email_n} not found")
-    users[email_n]["gpt_api_key"] = api_key
-    save_users(users)
+    ensure_users_file()
+    
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        
+        # Check if user exists
+        cur.execute("SELECT email FROM users WHERE email = ?", (email_n,))
+        if not cur.fetchone():
+            conn.close()
+            raise ValueError(f"User {email_n} not found")
+        
+        # Update the API key
+        cur.execute("UPDATE users SET gpt_api_key = ? WHERE email = ?", (api_key, email_n))
+        conn.commit()
+        conn.close()
+    except ValueError:
+        raise
+    except Exception as e:
+        print(f"Error updating GPT API key for {email_n}: {e}", file=sys.stderr)
+        raise
 
 
 def get_user_gpt_api_key(email: str) -> Optional[str]:
@@ -125,13 +311,32 @@ def get_user_gpt_api_key(email: str) -> Optional[str]:
 
 
 def has_any_user() -> bool:
-    return len(load_users()) > 0
+    ensure_users_file()
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) as count FROM users")
+        count = cur.fetchone()["count"]
+        conn.close()
+        return count > 0
+    except Exception as e:
+        print(f"Error checking if any user exists: {e}", file=sys.stderr)
+        return False
 
 
 def has_admin_user() -> bool:
     """Check if there is at least one user with 'admin' role."""
-    users = load_users()
-    return any(user.get("role") == "admin" for user in users.values())
+    ensure_users_file()
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) as count FROM users WHERE role = 'admin'")
+        count = cur.fetchone()["count"]
+        conn.close()
+        return count > 0
+    except Exception as e:
+        print(f"Error checking if admin user exists: {e}", file=sys.stderr)
+        return False
 
 
 def get_conn() -> sqlite3.Connection:
