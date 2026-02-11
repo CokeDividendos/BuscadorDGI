@@ -10,7 +10,7 @@ import streamlit as st
 import yfinance as yf
 
 from src.auth import is_admin
-from src.db import get_user_gpt_api_key
+from src.db import get_user_gpt_api_key, get_user_perplexity_api_key
 from src.services.blog import get_blog_posts_by_ticker
 from src.services.cache_store import cache_get, cache_set
 from src.services.finance_data import (
@@ -136,6 +136,55 @@ def _generate_gpt_summary(ticker: str, api_key: str) -> str:
         return "⚠️ La librería openai no está instalada. Por favor, instálela para usar esta funcionalidad."
     except Exception as e:
         return f"⚠️ Error al generar el resumen: {str(e)}"
+
+
+def _generate_perplexity_news_analysis(ticker: str, company_name: str, api_key: str) -> str:
+    """Generate news analysis using Perplexity API."""
+    if not api_key:
+        return ""
+    
+    # Check cache first (6 hours)
+    cache_key = f"perplexity_news_{ticker}"
+    cached = cache_get(cache_key)
+    if cached:
+        return cached
+    
+    try:
+        from openai import OpenAI
+        
+        client = OpenAI(
+            api_key=api_key,
+            base_url="https://api.perplexity.ai"
+        )
+        
+        prompt = f"""Proporciona un análisis conciso de las noticias financieras más relevantes sobre {ticker} ({company_name}). 
+
+Incluye:
+- Eventos importantes del último mes
+- Cambios significativos en valoración o perspectivas
+- Anuncios corporativos relevantes
+- Sentimiento general del mercado
+
+Cita las fuentes principales."""
+        
+        response = client.chat.completions.create(
+            model="llama-3.1-sonar-large-128k-online",
+            messages=[
+                {"role": "system", "content": "Eres un analista financiero experto que proporciona análisis de noticias concisos y bien fundamentados."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=500,
+            temperature=0.3
+        )
+        
+        analysis = response.choices[0].message.content.strip()
+        
+        # Cache for 6 hours
+        cache_set(cache_key, analysis, ttl_seconds=60 * 60 * 6)
+        
+        return analysis
+    except Exception as e:
+        return f"⚠️ Error al generar análisis de noticias: {str(e)}"
 
 
 def _plot_price_variation_5y(ticker: str) -> None:
@@ -564,6 +613,20 @@ def page_resumen() -> None:
         st.info("⚠️ Para ver el resumen generado por GPT, configure su API KEY en el sidebar.")
 
     st.divider()
+    
+    # Perplexity News Analysis (after GPT summary, before related posts)
+    perplexity_key = get_user_perplexity_api_key(user_email)
+    if perplexity_key:
+        st.markdown("### 📰 Análisis de Noticias Recientes")
+        
+        session_news_key = f"perplexity_news_display_{ticker}"
+        if session_news_key not in st.session_state:
+            with st.spinner("Analizando noticias recientes con Perplexity..."):
+                news = _generate_perplexity_news_analysis(ticker, company_name, perplexity_key)
+                st.session_state[session_news_key] = news
+        
+        st.markdown(st.session_state[session_news_key])
+        st.divider()
     
     # Show related blog posts
     related_posts = get_blog_posts_by_ticker(ticker)

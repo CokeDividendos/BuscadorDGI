@@ -1,7 +1,7 @@
 # src/ui/router.py
 import streamlit as st
 
-from src.db import init_db, get_user_gpt_api_key, update_user_gpt_api_key
+from src.db import init_db, get_user_gpt_api_key, update_user_gpt_api_key, get_user_perplexity_api_key, update_user_perplexity_api_key
 from src.auth import require_login, is_admin, logout_button
 from src.pages.analysis import page_analysis
 from src.pages.resumen import page_resumen
@@ -89,27 +89,46 @@ def run_app():
         # 1. User email at the top
         st.markdown(f"**Usuario:** {user_email}")
         
-        # 2. GPT API Key input
-        current_api_key = get_user_gpt_api_key(user_email)
+        # 2. API Keys section
+        st.markdown("### 🔑 API Keys")
         
-        # Use a form to avoid re-running on every keystroke
-        with st.form("api_key_form", clear_on_submit=False):
-            api_key_input = st.text_input(
-                "API KEY GPT",
-                value=current_api_key or "",
+        # GPT API Key
+        current_gpt_key = get_user_gpt_api_key(user_email)
+        with st.form("gpt_api_key_form", clear_on_submit=False):
+            gpt_key_input = st.text_input(
+                "OpenAI GPT",
+                value=current_gpt_key or "",
                 type="password",
-                placeholder="Ingrese su API KEY de GPT",
-                help="Esta API KEY se usa para generar resúmenes financieros automáticos"
+                placeholder="sk-...",
+                help="Para resúmenes financieros con GPT"
             )
-            submitted = st.form_submit_button("Guardar API KEY", use_container_width=True)
-            
-            if submitted and api_key_input != current_api_key:
-                try:
-                    update_user_gpt_api_key(user_email, api_key_input)
-                    st.success("✓ API KEY guardada")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error al guardar API KEY: {e}")
+            if st.form_submit_button("Guardar GPT", use_container_width=True):
+                if gpt_key_input != current_gpt_key:
+                    try:
+                        update_user_gpt_api_key(user_email, gpt_key_input)
+                        st.success("✓ API KEY GPT guardada")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+        
+        # Perplexity API Key
+        current_perplexity_key = get_user_perplexity_api_key(user_email)
+        with st.form("perplexity_api_key_form", clear_on_submit=False):
+            perplexity_key_input = st.text_input(
+                "Perplexity AI",
+                value=current_perplexity_key or "",
+                type="password",
+                placeholder="pplx-...",
+                help="Para análisis de noticias con Perplexity"
+            )
+            if st.form_submit_button("Guardar Perplexity", use_container_width=True):
+                if perplexity_key_input != current_perplexity_key:
+                    try:
+                        update_user_perplexity_api_key(user_email, perplexity_key_input)
+                        st.success("✓ API KEY Perplexity guardada")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
         
         st.divider()
 

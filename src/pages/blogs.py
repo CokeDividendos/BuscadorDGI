@@ -61,19 +61,27 @@ def _render_blog_post_card(post: dict, show_admin_actions: bool = False) -> None
         preview = post['content'][:200] + "..." if len(post['content']) > 200 else post['content']
         st.markdown(preview)
         
-        col1, col2 = st.columns([1, 4])
-        with col1:
-            if st.button("Leer más", key=f"read_{post['id']}", use_container_width=True):
-                st.session_state["selected_blog_post"] = post['id']
-                st.session_state["blog_view"] = "detail"
-                st.rerun()
-        
         if show_admin_actions:
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if st.button("Leer más", key=f"read_{post['id']}", use_container_width=True):
+                    st.session_state["selected_blog_post"] = post['id']
+                    st.session_state["blog_view"] = "detail"
+                    st.rerun()
             with col2:
                 if st.button("✏️ Editar", key=f"edit_{post['id']}", use_container_width=True):
                     st.session_state["editing_blog_post"] = post['id']
                     st.session_state["blog_view"] = "edit"
                     st.rerun()
+            with col3:
+                if st.button("🗑️ Eliminar", key=f"delete_{post['id']}", use_container_width=True):
+                    st.session_state["confirm_delete_post"] = post['id']
+                    st.rerun()
+        else:
+            if st.button("Leer más", key=f"read_{post['id']}", use_container_width=True):
+                st.session_state["selected_blog_post"] = post['id']
+                st.session_state["blog_view"] = "detail"
+                st.rerun()
 
 
 def _render_blog_detail(post_id: int) -> None:
@@ -88,11 +96,30 @@ def _render_blog_detail(post_id: int) -> None:
             st.rerun()
         return
     
-    # Back button
-    if st.button("← Volver a la lista"):
-        st.session_state["blog_view"] = "list"
-        st.session_state.pop("selected_blog_post", None)
-        st.rerun()
+    # Admin actions at the top
+    if is_admin():
+        col1, col2, col3 = st.columns([2, 1, 1])
+        with col1:
+            if st.button("← Volver a la lista"):
+                st.session_state["blog_view"] = "list"
+                st.session_state.pop("selected_blog_post", None)
+                st.rerun()
+        with col2:
+            if st.button("✏️ Editar"):
+                st.session_state["editing_blog_post"] = post_id
+                st.session_state["blog_view"] = "edit"
+                st.rerun()
+        with col3:
+            if st.button("🗑️ Eliminar"):
+                st.session_state["confirm_delete_post"] = post_id
+                st.session_state["blog_view"] = "list"
+                st.rerun()
+    else:
+        # Regular back button for non-admin
+        if st.button("← Volver a la lista"):
+            st.session_state["blog_view"] = "list"
+            st.session_state.pop("selected_blog_post", None)
+            st.rerun()
     
     st.markdown(f"# {post['title']}")
     
@@ -187,19 +214,39 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
     if st.button("← Cancelar"):
         st.session_state["blog_view"] = "list"
         st.session_state.pop("editing_blog_post", None)
-        # Clear draft state
         st.session_state.pop('blog_content_draft', None)
         st.session_state.pop('blog_editor_mode', None)
+        st.session_state.pop('markdown_images_generated', None)
         st.rerun()
     
     st.markdown(f"## {'Editar' if is_edit else 'Crear'} artículo")
     
     # Initialize session state for content draft
-    # Track the current editor mode to avoid conflicts between create/edit
     current_mode = f"edit_{post_id}" if is_edit else "create"
     if st.session_state.get('blog_editor_mode') != current_mode:
         st.session_state['blog_editor_mode'] = current_mode
         st.session_state['blog_content_draft'] = post['content'] if post else ""
+        st.session_state.pop('markdown_images_generated', None)
+    
+    # Show generated markdown BEFORE the form (if exists)
+    if 'markdown_images_generated' in st.session_state and st.session_state['markdown_images_generated']:
+        st.success("✅ Código Markdown generado - Copia y pega en el contenido abajo")
+        st.markdown("### 📋 Código Markdown de tus imágenes")
+        
+        for idx, md_data in enumerate(st.session_state['markdown_images_generated']):
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                # Show preview
+                st.image(md_data['preview'], width=150)
+            with col2:
+                st.code(md_data['markdown'], language="markdown")
+        
+        # All together
+        st.markdown("**Todo el código junto:**")
+        all_markdown = "\n\n".join([md['markdown'] for md in st.session_state['markdown_images_generated']])
+        st.code(all_markdown, language="markdown")
+        st.info("💡 Copia el código de arriba y pégalo en el campo 'Contenido' donde quieras las imágenes")
+        st.divider()
     
     with st.form("blog_editor_form"):
         title = st.text_input(
@@ -208,7 +255,6 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
             max_chars=200
         )
         
-        # Ticker field with validation before normalization
         ticker_input = st.text_input(
             "Ticker asociado (opcional)",
             value=post.get('ticker', '') if post else "",
@@ -216,7 +262,6 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
             help="Símbolo de la empresa (ej: AAPL, MSFT). Se mostrará en las búsquedas de esa empresa."
         )
         
-        # Validate ticker format before normalization
         ticker = ticker_input.strip().upper() if ticker_input else ""
         ticker_error = None
         if ticker_input and not re.match(r'^[A-Za-z0-9]{1,10}$', ticker_input.strip()):
@@ -226,20 +271,22 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
             "Contenido (soporta Markdown)",
             value=st.session_state.get('blog_content_draft', post['content'] if post else ''),
             height=400,
-            help="Puedes usar formato Markdown: **negrita**, *cursiva*, # títulos, etc.",
+            help="Puedes usar formato Markdown: **negrita**, *cursiva*, # títulos, imágenes incrustadas, etc.",
             key="blog_content_input"
         )
         
-        st.markdown("### Imágenes")
-        st.caption("Sube imágenes para generar el código Markdown que puedes copiar y pegar en el contenido")
+        st.markdown("### 🖼️ Imágenes")
+        st.caption("Sube imágenes y genera el código Markdown para insertarlas en el contenido")
+        
         uploaded_files = st.file_uploader(
-            "Adjuntar imágenes (opcional)",
+            "Subir imágenes",
             type=["png", "jpg", "jpeg", "gif"],
             accept_multiple_files=True,
-            help="Selecciona una o más imágenes. Se generará código Markdown para que lo copies."
+            help="Selecciona imágenes para generar código Markdown",
+            key="image_uploader"
         )
         
-        # Image captions INSIDE the form
+        # Image captions
         image_captions = {}
         if uploaded_files:
             st.markdown("**Descripciones de las imágenes:**")
@@ -247,16 +294,53 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
                 image_captions[file.name] = st.text_input(
                     f"Descripción para {file.name}",
                     key=f"caption_{idx}",
-                    max_chars=200
+                    max_chars=200,
+                    placeholder=file.name
                 )
         
-        # Botón de submit SIEMPRE al final del formulario
-        submitted = st.form_submit_button(
-            "💾 " + ("Actualizar artículo" if is_edit else "Publicar artículo"),
-            use_container_width=True
-        )
+        # Two submit buttons
+        col1, col2 = st.columns(2)
+        with col1:
+            generate_markdown = st.form_submit_button(
+                "📋 Generar Código Markdown",
+                use_container_width=True,
+                help="Genera el código Markdown de las imágenes sin publicar"
+            )
+        with col2:
+            submit_post = st.form_submit_button(
+                "💾 " + ("Actualizar artículo" if is_edit else "Publicar artículo"),
+                use_container_width=True
+            )
         
-        if submitted:
+        # Handle Markdown generation
+        if generate_markdown:
+            if uploaded_files:
+                markdown_data = []
+                for idx, file in enumerate(uploaded_files):
+                    try:
+                        img = Image.open(file)
+                        img_base64 = _image_to_base64(img)
+                        caption = image_captions.get(file.name, file.name)
+                        markdown_line = f"![{caption}]({img_base64})"
+                        
+                        # Store preview and markdown
+                        markdown_data.append({
+                            'markdown': markdown_line,
+                            'preview': img,
+                            'caption': caption
+                        })
+                    except Exception as e:
+                        st.warning(f"Error al procesar {file.name}: {e}")
+                
+                if markdown_data:
+                    st.session_state['markdown_images_generated'] = markdown_data
+                    st.rerun()
+            else:
+                st.warning("Sube al menos una imagen para generar el código Markdown")
+            st.stop()
+        
+        # Handle post submission
+        if submit_post:
             # Validation
             if not title or not title.strip():
                 st.error("El título es obligatorio.")
@@ -270,7 +354,7 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
                 st.error(ticker_error)
                 st.stop()
             
-            # Process images (for backward compatibility, still store them)
+            # Process images for backward compatibility
             images = []
             if uploaded_files:
                 for file in uploaded_files:
@@ -301,64 +385,55 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
                         st.session_state.pop("editing_blog_post", None)
                         st.session_state.pop('blog_content_draft', None)
                         st.session_state.pop('blog_editor_mode', None)
+                        st.session_state.pop('markdown_images_generated', None)
                         st.rerun()
                     else:
                         st.error("Error al actualizar el artículo")
                 else:
                     author_email = st.session_state.get('auth_email', '')
-                    post_id = create_blog_post(
+                    new_post_id = create_blog_post(
                         title=title.strip(),
                         content=content.strip(),
                         author_email=author_email,
                         images=images,
                         ticker=ticker if ticker else None
                     )
-                    st.success(f"✓ Artículo publicado correctamente (ID: {post_id})")
+                    st.success(f"✓ Artículo publicado correctamente (ID: {new_post_id})")
                     st.session_state["blog_view"] = "list"
                     st.session_state.pop('blog_content_draft', None)
                     st.session_state.pop('blog_editor_mode', None)
+                    st.session_state.pop('markdown_images_generated', None)
                     st.rerun()
             except Exception as e:
                 st.error(f"Error al guardar el artículo: {e}")
-    
-    # Image preview and Markdown generation (outside the form)
-    if uploaded_files:
-        st.markdown("---")
-        st.markdown("### 📋 Código Markdown generado para las imágenes")
-        st.caption("Copia este código y pégalo donde quieras que aparezcan las imágenes en tu contenido")
-        
-        markdown_images = []
-        for idx, file in enumerate(uploaded_files):
-            try:
-                # Read file again for preview (file_uploader maintains state)
-                img = Image.open(file)
-                img_base64 = _image_to_base64(img)
-                
-                # Get caption from form submission or default to filename
-                caption = image_captions.get(file.name, file.name) if image_captions else file.name
-                markdown_line = f"![{caption}]({img_base64})"
-                markdown_images.append(markdown_line)
-                
-                # Show preview
-                col1, col2 = st.columns([1, 3])
-                with col1:
-                    st.image(img, width=150)
-                with col2:
-                    st.code(markdown_line, language="markdown")
-            except Exception as e:
-                st.warning(f"Error al procesar {file.name}: {e}")
-        
-        # Copiar todo el Markdown junto
-        if markdown_images:
-            st.markdown("**Todo el código junto (listo para copiar):**")
-            all_markdown = "\n\n".join(markdown_images)
-            st.code(all_markdown, language="markdown")
-            
-            st.info("💡 Selecciona el código de arriba, cópialo (Ctrl+C o Cmd+C), y pégalo en el campo de contenido donde quieras que aparezcan las imágenes.")
 
 
 def _render_blog_list(admin: bool) -> None:
     """Render list of blog posts."""
+    # Check for delete confirmation
+    if "confirm_delete_post" in st.session_state:
+        post_id = st.session_state["confirm_delete_post"]
+        post = get_blog_post(post_id)
+        
+        st.warning(f"⚠️ ¿Estás seguro de que quieres eliminar el post '{post['title'] if post else 'desconocido'}'?")
+        st.caption("Esta acción no se puede deshacer. También se eliminarán todos los comentarios.")
+        
+        col1, col2, col3 = st.columns([1, 1, 2])
+        with col1:
+            if st.button("✅ Sí, eliminar", use_container_width=True):
+                if delete_blog_post(post_id):
+                    st.success("Post eliminado correctamente")
+                    st.session_state.pop("confirm_delete_post", None)
+                    st.rerun()
+                else:
+                    st.error("Error al eliminar el post")
+        with col2:
+            if st.button("❌ Cancelar", use_container_width=True):
+                st.session_state.pop("confirm_delete_post", None)
+                st.rerun()
+        
+        st.divider()
+    
     posts = list_blog_posts()
     
     if admin:

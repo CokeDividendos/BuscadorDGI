@@ -72,15 +72,16 @@ def _migrate_users_from_json() -> None:
             salt_b64 = user_data.get("salt_b64", "")
             hash_b64 = user_data.get("hash_b64", "")
             gpt_api_key = user_data.get("gpt_api_key")
+            perplexity_api_key = user_data.get("perplexity_api_key")
             
             # Skip invalid entries
             if not email or not salt_b64 or not hash_b64:
                 continue
             
             cur.execute("""
-                INSERT OR REPLACE INTO users (email, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (email, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key))
+                INSERT OR REPLACE INTO users (email, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key, perplexity_api_key)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (email, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key, perplexity_api_key))
             migrated_count += 1
         
         conn.commit()
@@ -111,9 +112,18 @@ def ensure_users_file() -> None:
                 iterations TEXT NOT NULL,
                 salt_b64 TEXT NOT NULL,
                 hash_b64 TEXT NOT NULL,
-                gpt_api_key TEXT
+                gpt_api_key TEXT,
+                perplexity_api_key TEXT
             )
         """)
+        
+        # Add perplexity_api_key column if it doesn't exist
+        try:
+            conn.execute("SELECT perplexity_api_key FROM users LIMIT 1")
+        except:
+            conn.execute("ALTER TABLE users ADD COLUMN perplexity_api_key TEXT")
+            conn.commit()
+        
         conn.commit()
         conn.close()
         
@@ -147,6 +157,8 @@ def load_users() -> Dict[str, Dict[str, Any]]:
             }
             if row["gpt_api_key"]:
                 users[email]["gpt_api_key"] = row["gpt_api_key"]
+            if row.get("perplexity_api_key"):
+                users[email]["perplexity_api_key"] = row["perplexity_api_key"]
         
         return users
     except Exception as e:
@@ -178,11 +190,12 @@ def save_users(users: Dict[str, Dict[str, Any]]) -> None:
                 salt_b64 = user_data.get("salt_b64", "")
                 hash_b64 = user_data.get("hash_b64", "")
                 gpt_api_key = user_data.get("gpt_api_key")
+                perplexity_api_key = user_data.get("perplexity_api_key")
                 
                 cur.execute("""
-                    INSERT INTO users (email, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (email_n, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key))
+                    INSERT INTO users (email, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key, perplexity_api_key)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (email_n, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key, perplexity_api_key))
             
             conn.commit()
         except Exception:
@@ -234,17 +247,18 @@ def upsert_user(email: str, password: str, role: str = "user") -> Dict[str, Any]
         conn = get_conn()
         cur = conn.cursor()
         
-        # Insert or update user, preserving gpt_api_key if it exists
+        # Insert or update user, preserving gpt_api_key and perplexity_api_key if they exist
         cur.execute("""
-            INSERT INTO users (email, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key)
-            VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
+            INSERT INTO users (email, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key, perplexity_api_key)
+            VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL)
             ON CONFLICT(email) DO UPDATE SET
                 role = excluded.role,
                 algo = excluded.algo,
                 iterations = excluded.iterations,
                 salt_b64 = excluded.salt_b64,
                 hash_b64 = excluded.hash_b64,
-                gpt_api_key = COALESCE(users.gpt_api_key, excluded.gpt_api_key)
+                gpt_api_key = COALESCE(users.gpt_api_key, excluded.gpt_api_key),
+                perplexity_api_key = COALESCE(users.perplexity_api_key, excluded.perplexity_api_key)
         """, (email_n, role, created_at, meta["algo"], meta["iterations"], meta["salt_b64"], meta["hash_b64"]))
         
         conn.commit()
@@ -280,6 +294,8 @@ def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
         }
         if row["gpt_api_key"]:
             user["gpt_api_key"] = row["gpt_api_key"]
+        if row.get("perplexity_api_key"):
+            user["perplexity_api_key"] = row["perplexity_api_key"]
         
         return user
     except Exception as e:
@@ -319,6 +335,49 @@ def get_user_gpt_api_key(email: str) -> Optional[str]:
     if user:
         return user.get("gpt_api_key")
     return None
+
+
+def update_user_perplexity_api_key(email: str, api_key: str) -> None:
+    """Update the Perplexity API key for a user."""
+    email_n = _norm_email(email)
+    ensure_users_file()
+    
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        
+        # Check if user exists
+        cur.execute("SELECT email FROM users WHERE email = ?", (email_n,))
+        if not cur.fetchone():
+            conn.close()
+            raise ValueError(f"User {email_n} not found")
+        
+        # Update the API key
+        cur.execute("UPDATE users SET perplexity_api_key = ? WHERE email = ?", (api_key, email_n))
+        conn.commit()
+        conn.close()
+    except ValueError:
+        raise
+    except Exception as e:
+        print(f"Error updating Perplexity API key for {email_n}: {e}", file=sys.stderr)
+        raise
+
+
+def get_user_perplexity_api_key(email: str) -> Optional[str]:
+    """Get the Perplexity API key for a user."""
+    email_n = _norm_email(email)
+    ensure_users_file()
+    
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT perplexity_api_key FROM users WHERE email = ?", (email_n,))
+        row = cur.fetchone()
+        conn.close()
+        return row["perplexity_api_key"] if row and row["perplexity_api_key"] else None
+    except Exception as e:
+        print(f"Error getting Perplexity API key for {email_n}: {e}", file=sys.stderr)
+        return None
 
 
 def has_any_user() -> bool:
