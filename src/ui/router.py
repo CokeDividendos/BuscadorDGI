@@ -5,6 +5,7 @@ from src.db import init_db, get_user_gpt_api_key, update_user_gpt_api_key
 from src.auth import require_login, is_admin, logout_button
 from src.pages.analysis import page_analysis
 from src.pages.resumen import page_resumen
+from src.pages.blogs import page_blogs
 from src.pages.admin_users import page_admin_users
 from src.services.cache_store import cache_clear_all
 from src.services.usage_limits import remaining_searches
@@ -112,12 +113,12 @@ def run_app():
         
         st.divider()
 
-        # 3. Main navigation sections (Resumen, Análisis, Admin)
+        # 3. Main navigation sections (Resumen, Análisis, Blogs, Admin)
         if "page_section" not in st.session_state:
             st.session_state["page_section"] = "Resumen"  # Default to Resumen
         
         st.markdown("### Navegación")
-        page_sections = ["Resumen", "Análisis"]
+        page_sections = ["Resumen", "Análisis", "Blogs"]
         if admin:
             page_sections.append("Admin · Usuarios")
 
@@ -195,5 +196,7 @@ def run_app():
         page_resumen()
     elif page_section == "Análisis":
         page_analysis()
+    elif page_section == "Blogs":
+        page_blogs()
     elif page_section == "Admin · Usuarios":
         page_admin_users()

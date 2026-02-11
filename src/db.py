@@ -365,6 +365,21 @@ def get_conn() -> sqlite3.Connection:
         )
         """
     )
+    # Tabla para blog posts
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS blog_posts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            author_email TEXT NOT NULL,
+            published_date TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            images_json TEXT
+        )
+        """
+    )
     conn.commit()
     return conn
 
