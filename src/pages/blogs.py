@@ -236,8 +236,8 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
         for idx, md_data in enumerate(st.session_state['markdown_images_generated']):
             col1, col2 = st.columns([1, 3])
             with col1:
-                # Show preview
-                st.image(md_data['preview'], width=150)
+                # Show preview from base64 string
+                st.image(md_data['preview_base64'], width=150)
             with col2:
                 st.code(md_data['markdown'], language="markdown")
         
@@ -323,10 +323,10 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
                         caption = image_captions.get(file.name, file.name)
                         markdown_line = f"![{caption}]({img_base64})"
                         
-                        # Store preview and markdown
+                        # Store preview as base64 string (serializable) instead of PIL Image object
                         markdown_data.append({
                             'markdown': markdown_line,
-                            'preview': img,
+                            'preview_base64': img_base64,
                             'caption': caption
                         })
                     except Exception as e:
