@@ -1775,7 +1775,7 @@ def _calculate_financial_ratios(balance_df: pd.DataFrame, income_df: pd.DataFram
     total_debt_col = _find_column(balance_df, ["total debt"])
     total_debt = pd.to_numeric(balance_df[total_debt_col], errors="coerce") if total_debt_col else None
     
-    inventory_col = _find_column(balance_df, ["inventory"])
+    inventory_col = _find_column(balance_df, ["inventory", "inventories", "inventarios", "existencias"])
     inventory = pd.to_numeric(balance_df[inventory_col], errors="coerce") if inventory_col else None
     
     receivables_col = _find_column(balance_df, ["accounts receivable", "receivables"])
