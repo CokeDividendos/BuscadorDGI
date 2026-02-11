@@ -11,6 +11,7 @@ import yfinance as yf
 
 from src.auth import is_admin
 from src.db import get_user_gpt_api_key
+from src.services.blog import get_blog_posts_by_ticker
 from src.services.cache_store import cache_get, cache_set
 from src.services.finance_data import (
     get_key_stats,
@@ -563,6 +564,24 @@ def page_resumen() -> None:
         st.info("⚠️ Para ver el resumen generado por GPT, configure su API KEY en el sidebar.")
 
     st.divider()
+    
+    # Show related blog posts
+    related_posts = get_blog_posts_by_ticker(ticker)
+    if related_posts:
+        st.markdown("### 📰 Artículos relacionados")
+        for post in related_posts[:3]:  # Mostrar máximo 3
+            with st.container(border=True):
+                st.markdown(f"**{post['title']}**")
+                # Preview: primeros 100 caracteres
+                preview = post['content'][:100].replace('\n', ' ') + "..."
+                st.caption(preview)
+                
+                if st.button("📖 Leer artículo completo", key=f"read_blog_{post['id']}", use_container_width=True):
+                    st.session_state["page_section"] = "Blogs"
+                    st.session_state["blog_view"] = "detail"
+                    st.session_state["selected_blog_post"] = post['id']
+                    st.rerun()
+        st.divider()
 
     # Charts Section
     st.markdown("## Análisis de Precio")

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import re
 from datetime import datetime
 from io import BytesIO
 from typing import Optional
@@ -9,13 +10,19 @@ from typing import Optional
 import streamlit as st
 from PIL import Image
 
-from src.auth import is_admin
+from src.auth import is_admin, is_logged_in
 from src.services.blog import (
     create_blog_post,
     delete_blog_post,
     get_blog_post,
     list_blog_posts,
     update_blog_post,
+)
+from src.services.blog_comments import (
+    create_comment,
+    delete_comment,
+    get_comments_by_post,
+    count_comments,
 )
 
 
@@ -40,7 +47,15 @@ def _render_blog_post_card(post: dict, show_admin_actions: bool = False) -> None
     """Render a single blog post card."""
     with st.container(border=True):
         st.markdown(f"### {post['title']}")
-        st.caption(f"Publicado por **{post['author_email']}** el {_format_date(post['published_date'])}")
+        
+        # Display ticker if present
+        ticker_badge = f" `{post['ticker']}`" if post.get('ticker') else ""
+        st.caption(f"Publicado por **{post['author_email']}** el {_format_date(post['published_date'])}{ticker_badge}")
+        
+        # Show comment count
+        num_comments = count_comments(post['id'])
+        if num_comments > 0:
+            st.caption(f"💬 {num_comments} comentario{'s' if num_comments != 1 else ''}")
         
         # Show first 200 characters as preview
         preview = post['content'][:200] + "..." if len(post['content']) > 200 else post['content']
@@ -80,23 +95,79 @@ def _render_blog_detail(post_id: int) -> None:
         st.rerun()
     
     st.markdown(f"# {post['title']}")
-    st.caption(f"Publicado por **{post['author_email']}** el {_format_date(post['published_date'])}")
+    
+    # Display ticker if present
+    ticker_badge = f" `{post['ticker']}`" if post.get('ticker') else ""
+    st.caption(f"Publicado por **{post['author_email']}** el {_format_date(post['published_date'])}{ticker_badge}")
     
     if post.get('updated_at') != post.get('created_at'):
         st.caption(f"_Última actualización: {_format_date(post['updated_at'])}_")
     
     st.divider()
     
-    # Render content
-    st.markdown(post['content'])
+    # Render content (with embedded images)
+    st.markdown(post['content'], unsafe_allow_html=True)
     
-    # Render images if any
-    if post.get('images'):
+    # Only show old-style images if they exist and content doesn't have embedded images
+    # This maintains backward compatibility
+    if post.get('images') and 'data:image' not in post['content']:
         st.divider()
         st.markdown("### Imágenes")
         for idx, img_data in enumerate(post['images']):
             if img_data.get('data'):
                 st.image(img_data['data'], caption=img_data.get('caption', ''), use_container_width=True)
+    
+    # Comments section
+    st.divider()
+    st.markdown("## 💬 Comentarios")
+    
+    comments = get_comments_by_post(post_id)
+    comment_count = len(comments)
+    
+    st.caption(f"{comment_count} comentario{'s' if comment_count != 1 else ''}")
+    
+    # Display existing comments
+    if comments:
+        for comment in comments:
+            with st.container(border=True):
+                st.markdown(f"**{comment['author_email']}** · {_format_date(comment['created_at'])}")
+                st.markdown(comment['content'])
+                
+                # Delete button (only for admin or comment author)
+                current_user = st.session_state.get('auth_email', '')
+                if is_admin() or current_user == comment['author_email']:
+                    if st.button("🗑️ Eliminar", key=f"delete_comment_{comment['id']}"):
+                        if delete_comment(comment['id']):
+                            st.success("Comentario eliminado")
+                            st.rerun()
+                        else:
+                            st.error("Error al eliminar comentario")
+    
+    # New comment form (only for logged-in users)
+    if is_logged_in():
+        st.markdown("### ✍️ Escribe un comentario")
+        with st.form(f"new_comment_form_{post_id}"):
+            comment_content = st.text_area(
+                "Tu comentario (soporta Markdown)",
+                height=150,
+                help="Puedes usar formato Markdown: **negrita**, *cursiva*, etc."
+            )
+            
+            submit_comment = st.form_submit_button("💬 Publicar comentario", use_container_width=True)
+            
+            if submit_comment:
+                if not comment_content or not comment_content.strip():
+                    st.error("El comentario no puede estar vacío")
+                else:
+                    author_email = st.session_state.get('auth_email', '')
+                    try:
+                        create_comment(post_id, author_email, comment_content.strip())
+                        st.success("✓ Comentario publicado")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al publicar comentario: {e}")
+    else:
+        st.info("Inicia sesión para comentar")
 
 
 def _render_blog_editor(post_id: Optional[int] = None) -> None:
@@ -116,9 +187,20 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
     if st.button("← Cancelar"):
         st.session_state["blog_view"] = "list"
         st.session_state.pop("editing_blog_post", None)
+        # Clear draft state
+        st.session_state.pop('blog_content_draft', None)
+        st.session_state.pop('blog_editor_mode', None)
         st.rerun()
     
     st.markdown(f"## {'Editar' if is_edit else 'Crear'} artículo")
+    
+    # Initialize session state for content draft
+    # Track the current editor mode to avoid conflicts between create/edit
+    current_mode = f"edit_{post_id}" if is_edit else "create"
+    if st.session_state.get('blog_editor_mode') != current_mode:
+        st.session_state['blog_editor_mode'] = current_mode
+        st.session_state['blog_content_draft'] = post['content'] if post else ""
+        st.session_state['images_inserted'] = False
     
     with st.form("blog_editor_form"):
         title = st.text_input(
@@ -127,14 +209,30 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
             max_chars=200
         )
         
+        # Ticker field with validation before normalization
+        ticker_input = st.text_input(
+            "Ticker asociado (opcional)",
+            value=post.get('ticker', '') if post else "",
+            max_chars=10,
+            help="Símbolo de la empresa (ej: AAPL, MSFT). Se mostrará en las búsquedas de esa empresa."
+        )
+        
+        # Validate ticker format before normalization
+        ticker = ticker_input.strip().upper() if ticker_input else ""
+        ticker_error = None
+        if ticker_input and not re.match(r'^[A-Za-z0-9]{1,10}$', ticker_input.strip()):
+            ticker_error = "El ticker solo debe contener letras y números (máximo 10 caracteres)"
+        
         content = st.text_area(
             "Contenido (soporta Markdown)",
-            value=post['content'] if post else "",
+            value=st.session_state.get('blog_content_draft', ''),
             height=400,
-            help="Puedes usar formato Markdown: **negrita**, *cursiva*, # títulos, etc."
+            help="Puedes usar formato Markdown: **negrita**, *cursiva*, # títulos, etc.",
+            key="blog_content_input"
         )
         
         st.markdown("### Imágenes")
+        st.caption("Sube imágenes y luego haz click en 'Insertar imágenes' para agregarlas al contenido")
         uploaded_files = st.file_uploader(
             "Adjuntar imágenes (opcional)",
             type=["png", "jpg", "jpeg", "gif"],
@@ -168,7 +266,11 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
                 st.error("El contenido es obligatorio.")
                 st.stop()
             
-            # Process images
+            if ticker_error:
+                st.error(ticker_error)
+                st.stop()
+            
+            # Process images (for backward compatibility, still store them)
             images = []
             if uploaded_files:
                 for file in uploaded_files:
@@ -190,12 +292,15 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
                         post_id=post_id,
                         title=title.strip(),
                         content=content.strip(),
-                        images=images
+                        images=images if images else None,
+                        ticker=ticker if ticker else None
                     )
                     if success:
                         st.success("✓ Artículo actualizado correctamente")
                         st.session_state["blog_view"] = "list"
                         st.session_state.pop("editing_blog_post", None)
+                        st.session_state.pop('blog_content_draft', None)
+                        st.session_state.pop('blog_editor_mode', None)
                         st.rerun()
                     else:
                         st.error("Error al actualizar el artículo")
@@ -205,13 +310,41 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
                         title=title.strip(),
                         content=content.strip(),
                         author_email=author_email,
-                        images=images
+                        images=images,
+                        ticker=ticker if ticker else None
                     )
                     st.success(f"✓ Artículo publicado correctamente (ID: {post_id})")
                     st.session_state["blog_view"] = "list"
+                    st.session_state.pop('blog_content_draft', None)
+                    st.session_state.pop('blog_editor_mode', None)
                     st.rerun()
             except Exception as e:
                 st.error(f"Error al guardar el artículo: {e}")
+    
+    # Image preview and insert section (outside the form)
+    if uploaded_files and not st.session_state.get('images_inserted', False):
+        st.markdown("---")
+        st.markdown("**Vista previa de imágenes:**")
+        markdown_images = []
+        for idx, file in enumerate(uploaded_files):
+            try:
+                img = Image.open(file)
+                img_base64 = _image_to_base64(img)
+                caption = image_captions.get(file.name, file.name)
+                markdown_images.append(f"![{caption}]({img_base64})")
+                st.image(img, caption=caption, width=200)
+            except Exception as e:
+                st.warning(f"Error al mostrar vista previa de {file.name}: {e}")
+        
+        if st.button("📎 Insertar imágenes en el contenido", use_container_width=True):
+            # Agregar las imágenes al final del text_area
+            current_content = st.session_state.get('blog_content_draft', '')
+            new_content = current_content + "\n\n" + "\n\n".join(markdown_images)
+            st.session_state['blog_content_draft'] = new_content
+            st.session_state['images_inserted'] = True
+            st.rerun()
+    elif st.session_state.get('images_inserted', False):
+        st.info("✓ Imágenes insertadas en el contenido. Puedes moverlas a la posición deseada en el editor.")
 
 
 def _render_blog_list(admin: bool) -> None:

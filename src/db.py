@@ -380,6 +380,29 @@ def get_conn() -> sqlite3.Connection:
         )
         """
     )
+    
+    # Tabla para comentarios de blog
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS blog_comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            post_id INTEGER NOT NULL,
+            author_email TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (post_id) REFERENCES blog_posts(id) ON DELETE CASCADE
+        )
+    """)
+    
+    # Migración: agregar columna ticker si no existe
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT ticker FROM blog_posts LIMIT 1")
+    except sqlite3.OperationalError:
+        # Column doesn't exist, add it
+        cur.execute("ALTER TABLE blog_posts ADD COLUMN ticker TEXT")
+        conn.commit()
+    
     conn.commit()
     return conn
 
