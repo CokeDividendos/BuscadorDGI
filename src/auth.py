@@ -27,8 +27,11 @@ def logout_button(label: str = "🚪 Cerrar sesión") -> None:
 def _ensure_admin_from_secrets() -> None:
     """
     Check if there's an admin defined in Streamlit secrets.
-    If yes and no users exist yet, auto-create the admin user.
-    This provides a way to bootstrap the admin without relying on ephemeral file storage.
+    Auto-create the admin user if secrets exist and:
+    - No users exist at all, OR
+    - The admin from secrets doesn't exist in the database
+    
+    This ensures the admin always exists even after database resets or corruption.
     
     In .streamlit/secrets.toml, add:
     [admin]
@@ -36,22 +39,51 @@ def _ensure_admin_from_secrets() -> None:
     password = "your-secure-password"
     """
     try:
-        # Only auto-create if no users exist yet
-        if has_any_user():
+        # Check if admin credentials are in secrets
+        if not hasattr(st, "secrets") or "admin" not in st.secrets:
             return
         
-        # Check if admin credentials are in secrets
-        if hasattr(st, "secrets") and "admin" in st.secrets:
-            admin_email = st.secrets["admin"].get("email", "").strip().lower()
-            admin_password = st.secrets["admin"].get("password", "")
-            
-            if admin_email and "@" in admin_email and admin_password and len(admin_password) >= MIN_PASSWORD_LENGTH:
-                # Auto-create admin from secrets
+        admin_email = st.secrets["admin"].get("email", "").strip().lower()
+        admin_password = st.secrets["admin"].get("password", "")
+        
+        if not admin_email or "@" not in admin_email:
+            print(f"[WARN] Invalid admin email in secrets", file=sys.stderr)
+            return
+        
+        if not admin_password or len(admin_password) < MIN_PASSWORD_LENGTH:
+            print(f"[WARN] Invalid admin password in secrets (minimum {MIN_PASSWORD_LENGTH} characters)", file=sys.stderr)
+            return
+        
+        # Check if this specific admin user exists in the database
+        existing_admin = get_user_by_email(admin_email)
+        
+        if existing_admin:
+            # Admin exists, verify role
+            if existing_admin.get("role") == "admin":
+                print(f"[INFO] Admin user from secrets already exists: {admin_email}", file=sys.stderr)
+                return
+            else:
+                # User exists but is not admin - upgrade to admin
+                print(f"[INFO] Upgrading user {admin_email} to admin role", file=sys.stderr)
                 upsert_user(admin_email, admin_password, role="admin")
-                print(f"[INFO] Auto-created admin user from Streamlit secrets: {admin_email}", file=sys.stderr)
+                return
+        
+        # Admin doesn't exist - create it
+        print(f"[INFO] Creating admin user from Streamlit secrets: {admin_email}", file=sys.stderr)
+        upsert_user(admin_email, admin_password, role="admin")
+        
+        # Verify creation succeeded
+        verification = get_user_by_email(admin_email)
+        if verification and verification.get("role") == "admin":
+            print(f"[SUCCESS] Admin user created and verified: {admin_email}", file=sys.stderr)
+        else:
+            print(f"[ERROR] Admin user creation failed for {admin_email}", file=sys.stderr)
+            
     except Exception as e:
-        # Don't fail the app if secrets aren't configured
-        print(f"[DEBUG] Could not auto-create admin from secrets: {e}", file=sys.stderr)
+        # Log the error but don't crash the app
+        print(f"[ERROR] Failed to ensure admin from secrets: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
 
 
 def _centered_card(width_ratio: float = 1.8):

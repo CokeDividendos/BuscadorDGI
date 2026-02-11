@@ -1,7 +1,7 @@
 # src/ui/router.py
 import streamlit as st
 
-from src.db import init_db, get_user_gpt_api_key, update_user_gpt_api_key, get_user_perplexity_api_key, update_user_perplexity_api_key
+from src.db import init_db, get_user_gpt_api_key, update_user_gpt_api_key, get_user_perplexity_api_key, update_user_perplexity_api_key, verify_database_integrity
 from src.auth import require_login, is_admin, logout_button
 from src.pages.analysis import page_analysis
 from src.pages.resumen import page_resumen
