@@ -84,11 +84,12 @@ def _migrate_users_from_json() -> None:
             migrated_count += 1
         
         conn.commit()
-        conn.close()
         
-        # Rename JSON file to .migrated
+        # Rename JSON file to .migrated (after successful migration)
         USERS_PATH.rename(USERS_PATH.with_suffix(".json.migrated"))
         print(f"[INFO] Migrated {migrated_count} users from JSON to SQLite, renamed file to .migrated", file=sys.stderr)
+        
+        conn.close()
         
     except Exception as e:
         print(f"[ERROR] Failed to migrate users from JSON: {e}", file=sys.stderr)
@@ -160,26 +161,35 @@ def save_users(users: Dict[str, Dict[str, Any]]) -> None:
         conn = get_conn()
         cur = conn.cursor()
         
-        # Clear existing users and insert new ones
-        cur.execute("DELETE FROM users")
+        # Use a transaction to ensure atomicity
+        conn.execute("BEGIN TRANSACTION")
         
-        for email, user_data in users.items():
-            email_n = _norm_email(email)
-            role = user_data.get("role", "user")
-            created_at = user_data.get("created_at", _now_iso())
-            algo = user_data.get("algo", "pbkdf2_sha256")
-            iterations = user_data.get("iterations", "200000")
-            salt_b64 = user_data.get("salt_b64", "")
-            hash_b64 = user_data.get("hash_b64", "")
-            gpt_api_key = user_data.get("gpt_api_key")
+        try:
+            # Clear existing users
+            cur.execute("DELETE FROM users")
             
-            cur.execute("""
-                INSERT INTO users (email, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (email_n, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key))
-        
-        conn.commit()
-        conn.close()
+            # Insert all users
+            for email, user_data in users.items():
+                email_n = _norm_email(email)
+                role = user_data.get("role", "user")
+                created_at = user_data.get("created_at", _now_iso())
+                algo = user_data.get("algo", "pbkdf2_sha256")
+                iterations = user_data.get("iterations", "200000")
+                salt_b64 = user_data.get("salt_b64", "")
+                hash_b64 = user_data.get("hash_b64", "")
+                gpt_api_key = user_data.get("gpt_api_key")
+                
+                cur.execute("""
+                    INSERT INTO users (email, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (email_n, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key))
+            
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
     except Exception as e:
         print(f"Error saving users to SQLite: {e}", file=sys.stderr)
         raise
@@ -224,7 +234,7 @@ def upsert_user(email: str, password: str, role: str = "user") -> Dict[str, Any]
         conn = get_conn()
         cur = conn.cursor()
         
-        # Insert or update user
+        # Insert or update user, preserving gpt_api_key if it exists
         cur.execute("""
             INSERT INTO users (email, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key)
             VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
@@ -233,7 +243,8 @@ def upsert_user(email: str, password: str, role: str = "user") -> Dict[str, Any]
                 algo = excluded.algo,
                 iterations = excluded.iterations,
                 salt_b64 = excluded.salt_b64,
-                hash_b64 = excluded.hash_b64
+                hash_b64 = excluded.hash_b64,
+                gpt_api_key = COALESCE(users.gpt_api_key, excluded.gpt_api_key)
         """, (email_n, role, created_at, meta["algo"], meta["iterations"], meta["salt_b64"], meta["hash_b64"]))
         
         conn.commit()
