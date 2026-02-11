@@ -55,7 +55,7 @@ def _migrate_users_from_json() -> None:
             # Users already in SQLite, just rename the JSON file
             conn.close()
             USERS_PATH.rename(USERS_PATH.with_suffix(".json.migrated"))
-            print(f"[INFO] Users already in SQLite, renamed {USERS_PATH} to .migrated", file=sys.stderr)
+            print(f"[INFO] Users already in SQLite (count: {count}), renamed {USERS_PATH} to .migrated", file=sys.stderr)
             return
         
         # Migrate users to SQLite
@@ -72,10 +72,11 @@ def _migrate_users_from_json() -> None:
             salt_b64 = user_data.get("salt_b64", "")
             hash_b64 = user_data.get("hash_b64", "")
             gpt_api_key = user_data.get("gpt_api_key")
-            perplexity_api_key = user_data.get("perplexity_api_key")
+            perplexity_api_key = user_data.get("perplexity_api_key")  # Include perplexity key
             
             # Skip invalid entries
             if not email or not salt_b64 or not hash_b64:
+                print(f"[WARN] Skipping invalid user entry: {email_key}", file=sys.stderr)
                 continue
             
             cur.execute("""
@@ -88,12 +89,14 @@ def _migrate_users_from_json() -> None:
         
         # Rename JSON file to .migrated (after successful migration)
         USERS_PATH.rename(USERS_PATH.with_suffix(".json.migrated"))
-        print(f"[INFO] Migrated {migrated_count} users from JSON to SQLite, renamed file to .migrated", file=sys.stderr)
+        print(f"[SUCCESS] Migrated {migrated_count} users from JSON to SQLite, renamed file to .migrated", file=sys.stderr)
         
         conn.close()
         
     except Exception as e:
         print(f"[ERROR] Failed to migrate users from JSON: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
         # Don't raise - allow the app to continue with empty users
 
 
@@ -103,6 +106,8 @@ def ensure_users_file() -> None:
         
         # Create users table if it doesn't exist
         conn = get_conn()
+        
+        # Create table with all columns including perplexity_api_key
         conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 email TEXT PRIMARY KEY,
@@ -117,12 +122,18 @@ def ensure_users_file() -> None:
             )
         """)
         
-        # Add perplexity_api_key column if it doesn't exist
+        # Migration: Add perplexity_api_key column if it doesn't exist (for existing databases)
         try:
-            conn.execute("SELECT perplexity_api_key FROM users LIMIT 1")
-        except:
-            conn.execute("ALTER TABLE users ADD COLUMN perplexity_api_key TEXT")
+            cur = conn.cursor()
+            cur.execute("SELECT perplexity_api_key FROM users LIMIT 1")
+            print("[INFO] perplexity_api_key column already exists", file=sys.stderr)
+        except sqlite3.OperationalError:
+            # Column doesn't exist, add it
+            print("[INFO] Adding perplexity_api_key column to users table", file=sys.stderr)
+            cur = conn.cursor()
+            cur.execute("ALTER TABLE users ADD COLUMN perplexity_api_key TEXT")
             conn.commit()
+            print("[SUCCESS] perplexity_api_key column added successfully", file=sys.stderr)
         
         conn.commit()
         conn.close()
@@ -131,7 +142,9 @@ def ensure_users_file() -> None:
         _migrate_users_from_json()
         
     except Exception as e:
-        print(f"Error in ensure_users_file: {e}", file=sys.stderr)
+        print(f"[ERROR] Error in ensure_users_file: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
         raise
 
 
@@ -466,16 +479,67 @@ def get_conn() -> sqlite3.Connection:
     return conn
 
 
+def verify_database_integrity() -> bool:
+    """
+    Verify that the database schema is correct and accessible.
+    Returns True if database is healthy, False otherwise.
+    """
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        
+        # Check users table exists
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+        if not cur.fetchone():
+            print("[ERROR] Users table does not exist", file=sys.stderr)
+            conn.close()
+            return False
+        
+        # Check required columns exist
+        cur.execute("PRAGMA table_info(users)")
+        columns = {row["name"] for row in cur.fetchall()}
+        required_columns = {"email", "role", "created_at", "algo", "iterations", "salt_b64", "hash_b64", "gpt_api_key", "perplexity_api_key"}
+        
+        missing_columns = required_columns - columns
+        if missing_columns:
+            print(f"[ERROR] Missing columns in users table: {missing_columns}", file=sys.stderr)
+            conn.close()
+            return False
+        
+        # Try to query users table
+        cur.execute("SELECT COUNT(*) as count FROM users")
+        count = cur.fetchone()["count"]
+        print(f"[INFO] Database integrity check passed. User count: {count}", file=sys.stderr)
+        
+        conn.close()
+        return True
+        
+    except Exception as e:
+        print(f"[ERROR] Database integrity check failed: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        return False
+
+
 def init_db() -> None:
     # Debug: Print paths for troubleshooting on Streamlit Cloud
     print(f"[DEBUG] REPO_ROOT: {REPO_ROOT}", file=sys.stderr)
     print(f"[DEBUG] DATA_DIR: {DATA_DIR}", file=sys.stderr)
-    print(f"[DEBUG] USERS_PATH: {USERS_PATH}", file=sys.stderr)
-    print(f"[DEBUG] USERS_PATH exists: {USERS_PATH.exists()}", file=sys.stderr)
+    print(f"[DEBUG] DB_PATH: {DB_PATH}", file=sys.stderr)
+    print(f"[DEBUG] DB_PATH exists: {DB_PATH.exists()}", file=sys.stderr)
     
     ensure_users_file()
     _ = get_conn()
     
+    # Verify database integrity
+    if not verify_database_integrity():
+        print("[ERROR] Database integrity check failed. Please check logs.", file=sys.stderr)
+    
     # Debug: Print user count after init
-    user_count = len(load_users())
-    print(f"[DEBUG] User count after init: {user_count}", file=sys.stderr)
+    try:
+        users = load_users()
+        user_count = len(users)
+        admin_count = sum(1 for u in users.values() if u.get("role") == "admin")
+        print(f"[DEBUG] User count after init: {user_count} (admins: {admin_count})", file=sys.stderr)
+    except Exception as e:
+        print(f"[ERROR] Failed to load users after init: {e}", file=sys.stderr)
