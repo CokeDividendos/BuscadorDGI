@@ -17,7 +17,8 @@ def create_blog_post(
     title: str,
     content: str,
     author_email: str,
-    images: Optional[List[Dict[str, Any]]] = None
+    images: Optional[List[Dict[str, Any]]] = None,
+    ticker: Optional[str] = None
 ) -> int:
     """
     Create a new blog post.
@@ -27,6 +28,7 @@ def create_blog_post(
         content: Post content (can be markdown)
         author_email: Email of the author
         images: List of image data dictionaries (optional)
+        ticker: Stock ticker symbol (optional)
     
     Returns:
         The ID of the created post
@@ -37,10 +39,13 @@ def create_blog_post(
     now = _now_iso()
     images_json = json.dumps(images or [])
     
+    # Normalize ticker to uppercase and strip whitespace
+    ticker_normalized = ticker.strip().upper() if ticker else None
+    
     cur.execute("""
-        INSERT INTO blog_posts (title, content, author_email, published_date, created_at, updated_at, images_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (title, content, author_email, now, now, now, images_json))
+        INSERT INTO blog_posts (title, content, author_email, published_date, created_at, updated_at, images_json, ticker)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (title, content, author_email, now, now, now, images_json, ticker_normalized))
     
     post_id = cur.lastrowid
     conn.commit()
@@ -77,6 +82,7 @@ def get_blog_post(post_id: int) -> Optional[Dict[str, Any]]:
         "published_date": row["published_date"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
+        "ticker": row.get("ticker"),
         "images": json.loads(row["images_json"]) if row["images_json"] else []
     }
 
@@ -114,6 +120,7 @@ def list_blog_posts(limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
             "published_date": row["published_date"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
+            "ticker": row.get("ticker"),
             "images": json.loads(row["images_json"]) if row["images_json"] else []
         })
     
@@ -124,7 +131,8 @@ def update_blog_post(
     post_id: int,
     title: Optional[str] = None,
     content: Optional[str] = None,
-    images: Optional[List[Dict[str, Any]]] = None
+    images: Optional[List[Dict[str, Any]]] = None,
+    ticker: Optional[str] = None
 ) -> bool:
     """
     Update an existing blog post.
@@ -134,6 +142,7 @@ def update_blog_post(
         title: New title (optional)
         content: New content (optional)
         images: New images list (optional)
+        ticker: Stock ticker symbol (optional)
     
     Returns:
         True if the update was successful, False otherwise
@@ -141,11 +150,15 @@ def update_blog_post(
     conn = get_conn()
     cur = conn.cursor()
     
+    # Normalize ticker to uppercase and strip whitespace
+    ticker_normalized = ticker.strip().upper() if ticker else None
+    
     # Build update query safely using predefined column mappings
     allowed_updates = {
         'title': title,
         'content': content,
-        'images_json': json.dumps(images) if images is not None else None
+        'images_json': json.dumps(images) if images is not None else None,
+        'ticker': ticker_normalized
     }
     
     # Filter out None values
@@ -213,3 +226,37 @@ def count_blog_posts() -> int:
     conn.close()
     
     return count
+
+
+def get_blog_posts_by_ticker(ticker: str) -> List[Dict[str, Any]]:
+    """Get all blog posts associated with a ticker symbol."""
+    conn = get_conn()
+    cur = conn.cursor()
+    
+    # Normalize ticker to uppercase
+    ticker_normalized = ticker.strip().upper()
+    
+    cur.execute("""
+        SELECT * FROM blog_posts 
+        WHERE ticker = ? 
+        ORDER BY published_date DESC
+    """, (ticker_normalized,))
+    
+    rows = cur.fetchall()
+    conn.close()
+    
+    posts = []
+    for row in rows:
+        posts.append({
+            "id": row["id"],
+            "title": row["title"],
+            "content": row["content"],
+            "author_email": row["author_email"],
+            "published_date": row["published_date"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+            "ticker": row.get("ticker"),
+            "images": json.loads(row["images_json"]) if row["images_json"] else []
+        })
+    
+    return posts
