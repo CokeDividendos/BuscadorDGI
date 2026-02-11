@@ -569,6 +569,14 @@ def page_resumen() -> None:
     related_posts = get_blog_posts_by_ticker(ticker)
     if related_posts:
         st.markdown("### 📰 Artículos relacionados")
+        
+        # Helper function to navigate to blog post
+        def _navigate_to_blog_post(post_id: int):
+            """Navigate to blog post detail view."""
+            st.session_state["page_section"] = "Blogs"
+            st.session_state["blog_view"] = "detail"
+            st.session_state["selected_blog_post"] = post_id
+        
         for post in related_posts[:3]:  # Mostrar máximo 3
             with st.container(border=True):
                 st.markdown(f"**{post['title']}**")
@@ -576,11 +584,13 @@ def page_resumen() -> None:
                 preview = post['content'][:100].replace('\n', ' ') + "..."
                 st.caption(preview)
                 
-                if st.button("📖 Leer artículo completo", key=f"read_blog_{post['id']}", use_container_width=True):
-                    st.session_state["page_section"] = "Blogs"
-                    st.session_state["blog_view"] = "detail"
-                    st.session_state["selected_blog_post"] = post['id']
-                    st.rerun()
+                st.button(
+                    "📖 Leer artículo completo",
+                    key=f"read_blog_{post['id']}",
+                    use_container_width=True,
+                    on_click=_navigate_to_blog_post,
+                    args=(post['id'],)
+                )
         st.divider()
 
     # Charts Section

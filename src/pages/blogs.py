@@ -200,7 +200,6 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
     if st.session_state.get('blog_editor_mode') != current_mode:
         st.session_state['blog_editor_mode'] = current_mode
         st.session_state['blog_content_draft'] = post['content'] if post else ""
-        st.session_state['images_inserted'] = False
     
     with st.form("blog_editor_form"):
         title = st.text_input(
@@ -225,22 +224,22 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
         
         content = st.text_area(
             "Contenido (soporta Markdown)",
-            value=st.session_state.get('blog_content_draft', ''),
+            value=st.session_state.get('blog_content_draft', post['content'] if post else ''),
             height=400,
             help="Puedes usar formato Markdown: **negrita**, *cursiva*, # títulos, etc.",
             key="blog_content_input"
         )
         
         st.markdown("### Imágenes")
-        st.caption("Sube imágenes y luego haz click en 'Insertar imágenes' para agregarlas al contenido")
+        st.caption("Sube imágenes para generar el código Markdown que puedes copiar y pegar en el contenido")
         uploaded_files = st.file_uploader(
             "Adjuntar imágenes (opcional)",
             type=["png", "jpg", "jpeg", "gif"],
             accept_multiple_files=True,
-            help="Selecciona una o más imágenes para adjuntar al post"
+            help="Selecciona una o más imágenes. Se generará código Markdown para que lo copies."
         )
         
-        # Image captions
+        # Image captions INSIDE the form
         image_captions = {}
         if uploaded_files:
             st.markdown("**Descripciones de las imágenes:**")
@@ -251,6 +250,7 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
                     max_chars=200
                 )
         
+        # Botón de submit SIEMPRE al final del formulario
         submitted = st.form_submit_button(
             "💾 " + ("Actualizar artículo" if is_edit else "Publicar artículo"),
             use_container_width=True
@@ -321,30 +321,40 @@ def _render_blog_editor(post_id: Optional[int] = None) -> None:
             except Exception as e:
                 st.error(f"Error al guardar el artículo: {e}")
     
-    # Image preview and insert section (outside the form)
-    if uploaded_files and not st.session_state.get('images_inserted', False):
+    # Image preview and Markdown generation (outside the form)
+    if uploaded_files:
         st.markdown("---")
-        st.markdown("**Vista previa de imágenes:**")
+        st.markdown("### 📋 Código Markdown generado para las imágenes")
+        st.caption("Copia este código y pégalo donde quieras que aparezcan las imágenes en tu contenido")
+        
         markdown_images = []
         for idx, file in enumerate(uploaded_files):
             try:
+                # Read file again for preview (file_uploader maintains state)
                 img = Image.open(file)
                 img_base64 = _image_to_base64(img)
-                caption = image_captions.get(file.name, file.name)
-                markdown_images.append(f"![{caption}]({img_base64})")
-                st.image(img, caption=caption, width=200)
+                
+                # Get caption from form submission or default to filename
+                caption = image_captions.get(file.name, file.name) if image_captions else file.name
+                markdown_line = f"![{caption}]({img_base64})"
+                markdown_images.append(markdown_line)
+                
+                # Show preview
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    st.image(img, width=150)
+                with col2:
+                    st.code(markdown_line, language="markdown")
             except Exception as e:
-                st.warning(f"Error al mostrar vista previa de {file.name}: {e}")
+                st.warning(f"Error al procesar {file.name}: {e}")
         
-        if st.button("📎 Insertar imágenes en el contenido", use_container_width=True):
-            # Agregar las imágenes al final del text_area
-            current_content = st.session_state.get('blog_content_draft', '')
-            new_content = current_content + "\n\n" + "\n\n".join(markdown_images)
-            st.session_state['blog_content_draft'] = new_content
-            st.session_state['images_inserted'] = True
-            st.rerun()
-    elif st.session_state.get('images_inserted', False):
-        st.info("✓ Imágenes insertadas en el contenido. Puedes moverlas a la posición deseada en el editor.")
+        # Copiar todo el Markdown junto
+        if markdown_images:
+            st.markdown("**Todo el código junto (listo para copiar):**")
+            all_markdown = "\n\n".join(markdown_images)
+            st.code(all_markdown, language="markdown")
+            
+            st.info("💡 Selecciona el código de arriba, cópialo (Ctrl+C o Cmd+C), y pégalo en el campo de contenido donde quieras que aparezcan las imágenes.")
 
 
 def _render_blog_list(admin: bool) -> None:
