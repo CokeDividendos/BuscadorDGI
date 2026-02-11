@@ -51,7 +51,7 @@ def page_api_keys() -> None:
             help="Obtén tu API Key en: https://platform.openai.com/api-keys"
         )
         
-        col1, col2 = st.columns([3, 1])
+        _, col2 = st.columns([3, 1])
         with col2:
             submit_gpt = st.form_submit_button("💾 Guardar", use_container_width=True)
         
@@ -95,7 +95,7 @@ def page_api_keys() -> None:
             help="Obtén tu API Key en: https://www.perplexity.ai/settings/api"
         )
         
-        col1, col2 = st.columns([3, 1])
+        _, col2 = st.columns([3, 1])
         with col2:
             submit_perplexity = st.form_submit_button("💾 Guardar", use_container_width=True)
         
