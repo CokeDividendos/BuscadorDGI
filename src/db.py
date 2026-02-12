@@ -6,6 +6,7 @@ import json
 import os
 import sqlite3
 import sys
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import pbkdf2_hmac
@@ -17,6 +18,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = REPO_ROOT / "data"
 USERS_PATH = DATA_DIR / "users.json"
 DB_PATH = DATA_DIR / "app.sqlite3"
+
+# Guard flags and locks to ensure one-time initialization (thread-safe)
+_db_init_lock = threading.Lock()
+_db_tables_initialized = False
+_migration_lock = threading.Lock()
+_db_migrations_completed = False
 
 
 # Database configuration - auto-detect environment
@@ -140,39 +147,54 @@ def _migrate_users_from_json() -> None:
 
 
 def ensure_users_file() -> None:
-    try:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
+    global _db_migrations_completed
+    
+    # Fast path: Check without lock first (double-checked locking pattern)
+    if _db_migrations_completed:
+        return
+    
+    # Acquire lock for thread-safe migration
+    with _migration_lock:
+        # Check again inside lock in case another thread completed migrations while we waited
+        if _db_migrations_completed:
+            return
         
-        # Initialize all database tables
-        _init_db_tables()
-        
-        # Migration: Add perplexity_api_key column if it doesn't exist (for existing SQLite databases)
-        if not _is_postgres():
-            try:
-                conn = get_conn()
-                cur = conn.cursor()
-                cur.execute("SELECT perplexity_api_key FROM users LIMIT 1")
-                conn.close()
-                print("[INFO] perplexity_api_key column already exists", file=sys.stderr)
-            except sqlite3.OperationalError:
-                # Column doesn't exist, add it
-                print("[INFO] Adding perplexity_api_key column to users table", file=sys.stderr)
-                conn = get_conn()
-                cur = conn.cursor()
-                cur.execute("ALTER TABLE users ADD COLUMN perplexity_api_key TEXT")
-                conn.commit()
-                conn.close()
-                print("[SUCCESS] perplexity_api_key column added successfully", file=sys.stderr)
-        
-        # Migrate from JSON if exists (SQLite only)
-        if not _is_postgres():
-            _migrate_users_from_json()
-        
-    except Exception as e:
-        print(f"[ERROR] Error in ensure_users_file: {e}", file=sys.stderr)
-        import traceback
-        traceback.print_exc(file=sys.stderr)
-        raise
+        try:
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            
+            # NOTE: Table initialization is now handled by init_db() at app startup
+            # Removed _init_db_tables() call here to fix performance issue
+            
+            # Migration: Add perplexity_api_key column if it doesn't exist (for existing SQLite databases)
+            if not _is_postgres():
+                try:
+                    conn = get_conn()
+                    cur = conn.cursor()
+                    cur.execute("SELECT perplexity_api_key FROM users LIMIT 1")
+                    conn.close()
+                    print("[INFO] perplexity_api_key column already exists", file=sys.stderr)
+                except sqlite3.OperationalError:
+                    # Column doesn't exist, add it
+                    print("[INFO] Adding perplexity_api_key column to users table", file=sys.stderr)
+                    conn = get_conn()
+                    cur = conn.cursor()
+                    cur.execute("ALTER TABLE users ADD COLUMN perplexity_api_key TEXT")
+                    conn.commit()
+                    conn.close()
+                    print("[SUCCESS] perplexity_api_key column added successfully", file=sys.stderr)
+            
+            # Migrate from JSON if exists (SQLite only)
+            if not _is_postgres():
+                _migrate_users_from_json()
+            
+            # Mark migrations as completed
+            _db_migrations_completed = True
+            
+        except Exception as e:
+            print(f"[ERROR] Error in ensure_users_file: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            raise
 
 
 def load_users() -> Dict[str, Dict[str, Any]]:
@@ -483,15 +505,32 @@ def get_conn():
 
 
 def _init_db_tables() -> None:
-    """Initialize all database tables (PostgreSQL or SQLite)."""
-    conn = get_conn()
-    cur = conn.cursor()
+    """Initialize all database tables (PostgreSQL or SQLite).
     
-    is_pg = _is_postgres()
+    This function uses a guard flag and lock to ensure it only runs once per app lifecycle,
+    preventing the performance issue of repeated table creation on every get_conn() call.
+    Thread-safe using a lock to prevent race conditions.
+    """
+    global _db_tables_initialized
     
-    # Auto-increment syntax differs between databases
-    # SQLite: INTEGER PRIMARY KEY AUTOINCREMENT
-    # PostgreSQL: SERIAL PRIMARY KEY or BIGSERIAL PRIMARY KEY
+    # Fast path: Check without lock first (double-checked locking pattern)
+    if _db_tables_initialized:
+        return
+    
+    # Acquire lock for thread-safe initialization
+    with _db_init_lock:
+        # Check again inside lock in case another thread initialized while we waited
+        if _db_tables_initialized:
+            return
+        
+        conn = get_conn()
+        cur = conn.cursor()
+        
+        is_pg = _is_postgres()
+        
+        # Auto-increment syntax differs between databases
+        # SQLite: INTEGER PRIMARY KEY AUTOINCREMENT
+        # PostgreSQL: SERIAL PRIMARY KEY or BIGSERIAL PRIMARY KEY
     autoincrement = "SERIAL PRIMARY KEY" if is_pg else "INTEGER PRIMARY KEY AUTOINCREMENT"
     
     # Users table
@@ -562,6 +601,10 @@ def _init_db_tables() -> None:
     
     conn.commit()
     conn.close()
+    
+    # Mark tables as initialized
+    _db_tables_initialized = True
+    print("[INFO] Database tables initialized successfully", file=sys.stderr)
 
 
 def verify_database_integrity() -> bool:
@@ -632,7 +675,10 @@ def init_db() -> None:
     print(f"[DEBUG] DB_PATH exists: {DB_PATH.exists()}", file=sys.stderr)
     print(f"[DEBUG] Using PostgreSQL: {_is_postgres()}", file=sys.stderr)
     
-    # Initialize database tables and user file
+    # Initialize all database tables (runs once per app lifecycle)
+    _init_db_tables()
+    
+    # Initialize user file and run migrations
     ensure_users_file()
     
     # Verify database integrity
