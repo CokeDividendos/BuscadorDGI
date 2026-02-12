@@ -5,7 +5,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from src.db import get_conn, _get_cursor, _execute_query
+from src.db import get_conn
 
 
 def _now_iso() -> str:
@@ -34,7 +34,7 @@ def create_blog_post(
         The ID of the created post
     """
     conn = get_conn()
-    cur = _get_cursor(conn)
+    cur = conn.cursor()
     
     now = _now_iso()
     images_json = json.dumps(images or [])
@@ -42,7 +42,7 @@ def create_blog_post(
     # Normalize ticker to uppercase and strip whitespace
     ticker_normalized = ticker.strip().upper() if ticker else None
     
-    _execute_query(cur, """
+    cur.execute("""
         INSERT INTO blog_posts (title, content, author_email, published_date, created_at, updated_at, images_json, ticker)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, (title, content, author_email, now, now, now, images_json, ticker_normalized))
@@ -65,9 +65,9 @@ def get_blog_post(post_id: int) -> Optional[Dict[str, Any]]:
         Post data as a dictionary, or None if not found
     """
     conn = get_conn()
-    cur = _get_cursor(conn)
+    cur = conn.cursor()
     
-    _execute_query(cur, "SELECT * FROM blog_posts WHERE id = ?", (post_id,))
+    cur.execute("SELECT * FROM blog_posts WHERE id = ?", (post_id,))
     row = cur.fetchone()
     conn.close()
     
@@ -99,9 +99,9 @@ def list_blog_posts(limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
         List of post dictionaries
     """
     conn = get_conn()
-    cur = _get_cursor(conn)
+    cur = conn.cursor()
     
-    _execute_query(cur, """
+    cur.execute("""
         SELECT * FROM blog_posts
         ORDER BY published_date DESC
         LIMIT ? OFFSET ?
@@ -148,7 +148,7 @@ def update_blog_post(
         True if the update was successful, False otherwise
     """
     conn = get_conn()
-    cur = _get_cursor(conn)
+    cur = conn.cursor()
     
     # Normalize ticker to uppercase and strip whitespace
     ticker_normalized = ticker.strip().upper() if ticker else None
@@ -180,7 +180,7 @@ def update_blog_post(
     params.append(post_id)
     
     query = f"UPDATE blog_posts SET {', '.join(set_clauses)} WHERE id = ?"
-    _execute_query(cur, query, tuple(params))
+    cur.execute(query, params)
     
     success = cur.rowcount > 0
     conn.commit()
@@ -200,9 +200,9 @@ def delete_blog_post(post_id: int) -> bool:
         True if the post was deleted, False otherwise
     """
     conn = get_conn()
-    cur = _get_cursor(conn)
+    cur = conn.cursor()
     
-    _execute_query(cur, "DELETE FROM blog_posts WHERE id = ?", (post_id,))
+    cur.execute("DELETE FROM blog_posts WHERE id = ?", (post_id,))
     
     success = cur.rowcount > 0
     conn.commit()
@@ -219,9 +219,9 @@ def count_blog_posts() -> int:
         Total number of posts
     """
     conn = get_conn()
-    cur = _get_cursor(conn)
+    cur = conn.cursor()
     
-    _execute_query(cur, "SELECT COUNT(*) as count FROM blog_posts", ())
+    cur.execute("SELECT COUNT(*) as count FROM blog_posts")
     count = cur.fetchone()["count"]
     conn.close()
     
@@ -231,12 +231,12 @@ def count_blog_posts() -> int:
 def get_blog_posts_by_ticker(ticker: str) -> List[Dict[str, Any]]:
     """Get all blog posts associated with a ticker symbol."""
     conn = get_conn()
-    cur = _get_cursor(conn)
+    cur = conn.cursor()
     
     # Normalize ticker to uppercase
     ticker_normalized = ticker.strip().upper()
     
-    _execute_query(cur, """
+    cur.execute("""
         SELECT * FROM blog_posts 
         WHERE ticker = ? 
         ORDER BY published_date DESC

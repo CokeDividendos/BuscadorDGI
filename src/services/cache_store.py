@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 import pandas as pd
 
-from src.db import get_conn, _get_cursor, _execute_query
+from src.db import get_conn
 
 
 class CacheJSONEncoder(json.JSONEncoder):
@@ -30,10 +30,27 @@ class CacheJSONEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-def cache_get(key: str) -> Optional[Any]:
+def _ensure_cache_table() -> None:
     conn = get_conn()
-    cur = _get_cursor(conn)
-    _execute_query(cur,
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS kv_cache (
+            key TEXT PRIMARY KEY,
+            value_json TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            ttl_seconds INTEGER
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def cache_get(key: str) -> Optional[Any]:
+    _ensure_cache_table()
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
         "SELECT value_json, created_at, ttl_seconds FROM kv_cache WHERE key = ?",
         (key,),
     )
@@ -58,9 +75,10 @@ def cache_get(key: str) -> Optional[Any]:
 
 
 def cache_set(key: str, value: Any, ttl_seconds: Optional[int] = None) -> None:
+    _ensure_cache_table()
     conn = get_conn()
-    cur = _get_cursor(conn)
-    _execute_query(cur,
+    cur = conn.cursor()
+    cur.execute(
         """
         INSERT INTO kv_cache(key, value_json, created_at, ttl_seconds)
         VALUES (?, ?, ?, ?)
@@ -81,20 +99,21 @@ def cache_set(key: str, value: Any, ttl_seconds: Optional[int] = None) -> None:
 
 
 def cache_delete(key: str) -> None:
+    _ensure_cache_table()
     conn = get_conn()
-    cur = _get_cursor(conn)
-    _execute_query(cur, "DELETE FROM kv_cache WHERE key = ?", (key,))
+    conn.execute("DELETE FROM kv_cache WHERE key = ?", (key,))
     conn.commit()
     conn.close()
 
 
 def cache_clear(prefix: Optional[str] = None) -> None:
+    _ensure_cache_table()
     conn = get_conn()
-    cur = _get_cursor(conn)
+    cur = conn.cursor()
     if prefix:
-        _execute_query(cur, "DELETE FROM kv_cache WHERE key LIKE ?", (f"{prefix}%",))
+        cur.execute("DELETE FROM kv_cache WHERE key LIKE ?", (f"{prefix}%",))
     else:
-        _execute_query(cur, "DELETE FROM kv_cache", ())
+        cur.execute("DELETE FROM kv_cache")
     conn.commit()
     conn.close()
 
