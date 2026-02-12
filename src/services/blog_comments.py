@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
-from src.db import get_conn
+from src.db import get_conn, _get_cursor, _execute_query
 
 
 def _now_iso() -> str:
@@ -15,11 +15,11 @@ def _now_iso() -> str:
 def create_comment(post_id: int, author_email: str, content: str) -> int:
     """Create a new comment on a blog post."""
     conn = get_conn()
-    cur = conn.cursor()
+    cur = _get_cursor(conn)
     
     now = _now_iso()
     
-    cur.execute("""
+    _execute_query(cur, """
         INSERT INTO blog_comments (post_id, author_email, content, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?)
     """, (post_id, author_email, content, now, now))
@@ -34,9 +34,9 @@ def create_comment(post_id: int, author_email: str, content: str) -> int:
 def get_comments_by_post(post_id: int) -> List[Dict[str, Any]]:
     """Get all comments for a blog post, ordered by creation date (oldest first)."""
     conn = get_conn()
-    cur = conn.cursor()
+    cur = _get_cursor(conn)
     
-    cur.execute("""
+    _execute_query(cur, """
         SELECT * FROM blog_comments
         WHERE post_id = ?
         ORDER BY created_at ASC
@@ -62,9 +62,9 @@ def get_comments_by_post(post_id: int) -> List[Dict[str, Any]]:
 def delete_comment(comment_id: int) -> bool:
     """Delete a comment by ID."""
     conn = get_conn()
-    cur = conn.cursor()
+    cur = _get_cursor(conn)
     
-    cur.execute("DELETE FROM blog_comments WHERE id = ?", (comment_id,))
+    _execute_query(cur, "DELETE FROM blog_comments WHERE id = ?", (comment_id,))
     
     success = cur.rowcount > 0
     conn.commit()
@@ -76,9 +76,9 @@ def delete_comment(comment_id: int) -> bool:
 def count_comments(post_id: int) -> int:
     """Count total comments for a blog post."""
     conn = get_conn()
-    cur = conn.cursor()
+    cur = _get_cursor(conn)
     
-    cur.execute("SELECT COUNT(*) as count FROM blog_comments WHERE post_id = ?", (post_id,))
+    _execute_query(cur, "SELECT COUNT(*) as count FROM blog_comments WHERE post_id = ?", (post_id,))
     count = cur.fetchone()["count"]
     
     conn.close()
