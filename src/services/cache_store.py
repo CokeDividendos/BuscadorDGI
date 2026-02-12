@@ -30,13 +30,7 @@ class CacheJSONEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-def _ensure_cache_table() -> None:
-    # Tables are now created in _init_db_tables(), but keep this for compatibility
-    pass
-
-
 def cache_get(key: str) -> Optional[Any]:
-    _ensure_cache_table()
     conn = get_conn()
     cur = _get_cursor(conn)
     _execute_query(cur,
@@ -64,7 +58,6 @@ def cache_get(key: str) -> Optional[Any]:
 
 
 def cache_set(key: str, value: Any, ttl_seconds: Optional[int] = None) -> None:
-    _ensure_cache_table()
     conn = get_conn()
     cur = _get_cursor(conn)
     _execute_query(cur,
@@ -88,7 +81,6 @@ def cache_set(key: str, value: Any, ttl_seconds: Optional[int] = None) -> None:
 
 
 def cache_delete(key: str) -> None:
-    _ensure_cache_table()
     conn = get_conn()
     cur = _get_cursor(conn)
     _execute_query(cur, "DELETE FROM kv_cache WHERE key = ?", (key,))
@@ -97,7 +89,6 @@ def cache_delete(key: str) -> None:
 
 
 def cache_clear(prefix: Optional[str] = None) -> None:
-    _ensure_cache_table()
     conn = get_conn()
     cur = _get_cursor(conn)
     if prefix:

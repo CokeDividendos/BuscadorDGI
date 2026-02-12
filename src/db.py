@@ -325,8 +325,31 @@ def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
         if not row:
             return None
         
-        # Convert to dict (works for both sqlite3.Row and RealDictRow)
-        user = dict(row)
+        # Convert to dict and filter out None values for optional fields
+        user = {
+            "role": row["role"],
+            "created_at": row["created_at"],
+            "algo": row["algo"],
+            "iterations": row["iterations"],
+            "salt_b64": row["salt_b64"],
+            "hash_b64": row["hash_b64"],
+        }
+        
+        # Only include optional fields if they have values
+        # Handle both sqlite3.Row (dict-like) and psycopg2.RealDictRow
+        try:
+            gpt_key = row["gpt_api_key"]
+            if gpt_key:
+                user["gpt_api_key"] = gpt_key
+        except (KeyError, IndexError):
+            pass
+            
+        try:
+            perplexity_key = row["perplexity_api_key"]
+            if perplexity_key:
+                user["perplexity_api_key"] = perplexity_key
+        except (KeyError, IndexError):
+            pass
         
         return user
     except Exception as e:

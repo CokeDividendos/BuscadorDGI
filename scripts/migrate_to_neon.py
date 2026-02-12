@@ -40,15 +40,22 @@ def migrate():
     sqlite_conn.row_factory = sqlite3.Row
     pg_conn = psycopg2.connect(neon_url)
     
-    # Migrate each table
-    tables = ["users", "kv_cache", "blog_posts", "blog_comments"]
+    # Migrate each table (using whitelist for security)
+    ALLOWED_TABLES = ["users", "kv_cache", "blog_posts", "blog_comments"]
+    tables = ALLOWED_TABLES
     
     for table in tables:
         print(f"\n📦 Migrating table: {table}")
         
+        # Validate table name against whitelist
+        if table not in ALLOWED_TABLES:
+            print(f"   ⚠️  Skipping unauthorized table: {table}")
+            continue
+        
         # Get all rows from SQLite
         sqlite_cur = sqlite_conn.cursor()
         try:
+            # Using f-string here is safe because table is validated against whitelist
             sqlite_cur.execute(f"SELECT * FROM {table}")
             rows = sqlite_cur.fetchall()
         except sqlite3.OperationalError as e:
@@ -85,8 +92,12 @@ def migrate():
     print("\n🔧 Updating sequence counters...")
     pg_cur = pg_conn.cursor()
     
-    for table in ["blog_posts", "blog_comments"]:
+    # Tables with auto-increment id columns
+    TABLES_WITH_SEQUENCES = ["blog_posts", "blog_comments"]
+    
+    for table in TABLES_WITH_SEQUENCES:
         try:
+            # Using f-string here is safe because table is from a hardcoded whitelist
             pg_cur.execute(f"""
                 SELECT setval(pg_get_serial_sequence('{table}', 'id'), 
                               COALESCE((SELECT MAX(id) FROM {table}), 1), 
