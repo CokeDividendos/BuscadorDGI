@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import pandas as pd
@@ -381,6 +382,50 @@ def _render_52w_gauge(ticker: str, current_price: float, low_52w: float, high_52
         st.error(f"Error al generar el gráfico de rango 52 semanas: {str(e)}")
 
 
+def _render_gurufocus_charts(ticker: str) -> None:
+    """
+    Display custom Gurufocus charts for specific tickers.
+    Only shows for: SPGI, UNH, NOV, LYB
+    Charts are loaded from: src/assets/{TICKER}1.png, {TICKER}2.png, etc.
+    """
+    # List of tickers with custom charts
+    TICKERS_WITH_CHARTS = ["SPGI", "UNH", "NOV", "LYB"]
+    
+    if ticker not in TICKERS_WITH_CHARTS:
+        return
+    
+    # Path to assets folder
+    assets_path = Path(__file__).parent.parent / "assets"
+    
+    # Check if at least one image exists
+    image_paths = []
+    for i in range(1, 5):
+        img_path = assets_path / f"{ticker}{i}.png"
+        if img_path.exists():
+            image_paths.append(img_path)
+    
+    if not image_paths:
+        # No images found, fail silently
+        return
+    
+    # Display section
+    st.markdown("## 📊 Análisis Gurufocus")
+    st.caption(f"Gráficos personalizados de Gurufocus para {ticker}")
+    
+    # Display images in 2x2 grid
+    col1, col2 = st.columns(2)
+    
+    for idx, img_path in enumerate(image_paths):
+        with col1 if idx % 2 == 0 else col2:
+            try:
+                st.image(str(img_path), use_container_width=True)
+            except Exception as e:
+                # If image fails to load, skip it silently
+                pass
+    
+    st.divider()
+
+
 def page_resumen() -> None:
     """Display the Resumen (Summary) page."""
     DAILY_LIMIT = 3
@@ -675,3 +720,6 @@ def page_resumen() -> None:
         range_data.get("low_52w"),
         range_data.get("high_52w")
     )
+    
+    # Custom Gurufocus charts for specific tickers
+    _render_gurufocus_charts(ticker)
