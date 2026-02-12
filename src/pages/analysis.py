@@ -1407,6 +1407,18 @@ def _plot_per_evolution(ticker: str, income_df: pd.DataFrame, info: Dict[str, An
                 textposition="top right",
             )
         )
+        
+        # Add horizontal line for current P/E ratio (if available from yfinance info)
+        if pe_ratio and isinstance(pe_ratio, (int, float)):
+            fig_combined.add_hline(
+                y=pe_ratio,
+                line_dash="dash",
+                line_color="#ffff00",  # Yellow color for visibility
+                annotation_text=f"PER Actual: {pe_ratio:.2f}",
+                annotation_position="right",
+                yref="y2"  # IMPORTANTE: referencia al eje Y2 porque PER está en el eje secundario
+            )
+        
         fig_combined.update_layout(
             title="Histórico del EPS, Precio y PER",
             xaxis_title="Año",
