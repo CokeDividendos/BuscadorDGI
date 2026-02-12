@@ -1727,6 +1727,49 @@ def _plot_fc_usage(ticker: str, cashflow_df: pd.DataFrame) -> None:
         st.warning(f"No se pudo generar el gráfico de uso del flujo de caja: {e}")
 
 
+# Constants for Gurufocus valuation image suffixes
+GURUFOCUS_D_SUFFIX = " - D.png"
+GURUFOCUS_V_SUFFIX = " - V.png"
+
+
+def _render_gurufocus_valuation_charts(ticker: str) -> None:
+    """
+    Display custom Gurufocus valuation charts for ANY ticker with images.
+    Shows D (Desempeño) and V (Valoración) charts.
+    Charts are loaded from: src/assets/{TICKER} - D.png and {TICKER} - V.png
+    """
+    from pathlib import Path
+    
+    # Path to assets folder
+    assets_path = Path(__file__).parent.parent / "assets"
+    
+    # Look for D and V images
+    d_path = assets_path / f"{ticker}{GURUFOCUS_D_SUFFIX}"
+    v_path = assets_path / f"{ticker}{GURUFOCUS_V_SUFFIX}"
+    
+    # Collect available images
+    image_paths = []
+    if d_path.exists():
+        image_paths.append(("Desempeño", d_path))
+    if v_path.exists():
+        image_paths.append(("Valoración", v_path))
+    
+    if not image_paths:
+        # No valuation images found, fail silently
+        return
+    
+    # Display images
+    st.markdown("### Análisis de Gurufocus")
+    st.caption(f"Gráficos de desempeño y valoración para {ticker}")
+    
+    # Display images vertically (stacked)
+    for caption, img_path in image_paths:
+        try:
+            st.image(str(img_path), caption=caption, use_container_width=True)
+        except Exception:
+            pass
+
+
 # =========================================================
 # Financial Ratios Section (Análisis Razonado)
 # =========================================================
@@ -2269,7 +2312,7 @@ def page_analysis() -> None:
             st.warning("No hay datos financieros suficientes para la valoración por múltiplos.")
         else:
             # Create tabs for each chart
-            sub_tabs = st.tabs(["💰 Evolución de la Deuda", "📊 Evolución del PER", "📈 Evolución EV/EBITDA", "📊 Uso del FC"])
+            sub_tabs = st.tabs(["💰 Evolución de la Deuda", "📊 Evolución del PER", "📈 Evolución EV/EBITDA", "📊 Uso del FC", "📊 Valoración Gurufocus"])
             with sub_tabs[0]:
                 if not balance_df.empty and not cashflow_df.empty:
                     _plot_debt_fcf_evolution(ticker, balance_df, cashflow_df)
@@ -2290,6 +2333,8 @@ def page_analysis() -> None:
                     _plot_fc_usage(ticker, cashflow_df)
                 else:
                     st.warning("No hay datos suficientes de flujo de efectivo para este análisis.")
+            with sub_tabs[4]:
+                _render_gurufocus_valuation_charts(ticker)
     
     elif selected_section == "Pizarra de Valoración":
         st.markdown("## Pizarra de Valoración")
