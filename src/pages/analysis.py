@@ -1762,12 +1762,22 @@ def _render_gurufocus_valuation_charts(ticker: str) -> None:
     st.markdown("### Análisis de Gurufocus")
     st.caption(f"Gráficos de desempeño y valoración para {ticker}")
     
-    # Display images vertically (stacked)
-    for caption, img_path in image_paths:
+    # Display images in 2 columns (grid)
+    if len(image_paths) == 1:
+        # Only one image, center it
         try:
-            st.image(str(img_path), caption=caption, use_container_width=True)
+            st.image(str(image_paths[0][1]), caption=image_paths[0][0], use_container_width=True)
         except Exception:
             pass
+    else:
+        # Two images, side by side
+        col1, col2 = st.columns(2)
+        for idx, (caption, img_path) in enumerate(image_paths):
+            with col1 if idx == 0 else col2:
+                try:
+                    st.image(str(img_path), caption=caption, use_container_width=True)
+                except Exception:
+                    pass
 
 
 # =========================================================
