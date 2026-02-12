@@ -11,11 +11,50 @@ from datetime import datetime, timezone
 from hashlib import pbkdf2_hmac
 from pathlib import Path
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = REPO_ROOT / "data"
 USERS_PATH = DATA_DIR / "users.json"
 DB_PATH = DATA_DIR / "app.sqlite3"
+
+
+# Database configuration - auto-detect environment
+def _get_database_url():
+    """Get database URL from Streamlit secrets (production) or use SQLite (local)."""
+    try:
+        import streamlit as st
+        if "database" in st.secrets and "url" in st.secrets["database"]:
+            return st.secrets["database"]["url"]
+    except (ImportError, FileNotFoundError, KeyError):
+        pass
+    return None
+
+
+def _is_postgres():
+    """Check if using PostgreSQL."""
+    url = _get_database_url()
+    return url is not None and url.startswith("postgresql://")
+
+
+def _execute_query(cursor, query: str, params: tuple = ()):
+    """Execute query with appropriate placeholder syntax for database type."""
+    if _is_postgres():
+        # PostgreSQL uses %s placeholders
+        pg_query = query.replace("?", "%s")
+        cursor.execute(pg_query, params)
+    else:
+        # SQLite uses ? placeholders
+        cursor.execute(query, params)
+
+
+def _get_cursor(conn):
+    """Get appropriate cursor for the database type."""
+    if _is_postgres():
+        import psycopg2.extras
+        return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    else:
+        return conn.cursor()
 
 
 def _now_iso() -> str:
@@ -104,42 +143,30 @@ def ensure_users_file() -> None:
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         
-        # Create users table if it doesn't exist
-        conn = get_conn()
+        # Initialize all database tables
+        _init_db_tables()
         
-        # Create table with all columns including perplexity_api_key
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                email TEXT PRIMARY KEY,
-                role TEXT NOT NULL DEFAULT 'user',
-                created_at TEXT NOT NULL,
-                algo TEXT NOT NULL,
-                iterations TEXT NOT NULL,
-                salt_b64 TEXT NOT NULL,
-                hash_b64 TEXT NOT NULL,
-                gpt_api_key TEXT,
-                perplexity_api_key TEXT
-            )
-        """)
+        # Migration: Add perplexity_api_key column if it doesn't exist (for existing SQLite databases)
+        if not _is_postgres():
+            try:
+                conn = get_conn()
+                cur = conn.cursor()
+                cur.execute("SELECT perplexity_api_key FROM users LIMIT 1")
+                conn.close()
+                print("[INFO] perplexity_api_key column already exists", file=sys.stderr)
+            except sqlite3.OperationalError:
+                # Column doesn't exist, add it
+                print("[INFO] Adding perplexity_api_key column to users table", file=sys.stderr)
+                conn = get_conn()
+                cur = conn.cursor()
+                cur.execute("ALTER TABLE users ADD COLUMN perplexity_api_key TEXT")
+                conn.commit()
+                conn.close()
+                print("[SUCCESS] perplexity_api_key column added successfully", file=sys.stderr)
         
-        # Migration: Add perplexity_api_key column if it doesn't exist (for existing databases)
-        try:
-            cur = conn.cursor()
-            cur.execute("SELECT perplexity_api_key FROM users LIMIT 1")
-            print("[INFO] perplexity_api_key column already exists", file=sys.stderr)
-        except sqlite3.OperationalError:
-            # Column doesn't exist, add it
-            print("[INFO] Adding perplexity_api_key column to users table", file=sys.stderr)
-            cur = conn.cursor()
-            cur.execute("ALTER TABLE users ADD COLUMN perplexity_api_key TEXT")
-            conn.commit()
-            print("[SUCCESS] perplexity_api_key column added successfully", file=sys.stderr)
-        
-        conn.commit()
-        conn.close()
-        
-        # Migrate from JSON if exists
-        _migrate_users_from_json()
+        # Migrate from JSON if exists (SQLite only)
+        if not _is_postgres():
+            _migrate_users_from_json()
         
     except Exception as e:
         print(f"[ERROR] Error in ensure_users_file: {e}", file=sys.stderr)
@@ -152,8 +179,8 @@ def load_users() -> Dict[str, Dict[str, Any]]:
     ensure_users_file()
     try:
         conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM users")
+        cur = _get_cursor(conn)
+        _execute_query(cur, "SELECT * FROM users", ())
         rows = cur.fetchall()
         conn.close()
         
@@ -180,7 +207,7 @@ def load_users() -> Dict[str, Dict[str, Any]]:
         return users
     except Exception as e:
         # Log the error for debugging, but return empty dict to allow app to continue
-        print(f"Error loading users from SQLite: {e}", file=sys.stderr)
+        print(f"Error loading users from database: {e}", file=sys.stderr)
         return {}
 
 
@@ -188,14 +215,11 @@ def save_users(users: Dict[str, Dict[str, Any]]) -> None:
     ensure_users_file()
     try:
         conn = get_conn()
-        cur = conn.cursor()
-        
-        # Use a transaction to ensure atomicity
-        conn.execute("BEGIN TRANSACTION")
+        cur = _get_cursor(conn)
         
         try:
             # Clear existing users
-            cur.execute("DELETE FROM users")
+            _execute_query(cur, "DELETE FROM users", ())
             
             # Insert all users
             for email, user_data in users.items():
@@ -209,7 +233,7 @@ def save_users(users: Dict[str, Dict[str, Any]]) -> None:
                 gpt_api_key = user_data.get("gpt_api_key")
                 perplexity_api_key = user_data.get("perplexity_api_key")
                 
-                cur.execute("""
+                _execute_query(cur, """
                     INSERT INTO users (email, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key, perplexity_api_key)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (email_n, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key, perplexity_api_key))
@@ -221,7 +245,7 @@ def save_users(users: Dict[str, Dict[str, Any]]) -> None:
         finally:
             conn.close()
     except Exception as e:
-        print(f"Error saving users to SQLite: {e}", file=sys.stderr)
+        print(f"Error saving users to database: {e}", file=sys.stderr)
         raise
 
 
@@ -262,10 +286,10 @@ def upsert_user(email: str, password: str, role: str = "user") -> Dict[str, Any]
     
     try:
         conn = get_conn()
-        cur = conn.cursor()
+        cur = _get_cursor(conn)
         
         # Insert or update user, preserving gpt_api_key and perplexity_api_key if they exist
-        cur.execute("""
+        _execute_query(cur, """
             INSERT INTO users (email, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key, perplexity_api_key)
             VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL)
             ON CONFLICT(email) DO UPDATE SET
@@ -293,30 +317,16 @@ def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
     
     try:
         conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM users WHERE email = ?", (email_n,))
+        cur = _get_cursor(conn)
+        _execute_query(cur, "SELECT * FROM users WHERE email = ?", (email_n,))
         row = cur.fetchone()
         conn.close()
         
         if not row:
             return None
         
-        user = {
-            "role": row["role"],
-            "created_at": row["created_at"],
-            "algo": row["algo"],
-            "iterations": row["iterations"],
-            "salt_b64": row["salt_b64"],
-            "hash_b64": row["hash_b64"],
-        }
-        if row["gpt_api_key"]:
-            user["gpt_api_key"] = row["gpt_api_key"]
-        try:
-            if row["perplexity_api_key"]:
-                user["perplexity_api_key"] = row["perplexity_api_key"]
-        except (IndexError, KeyError):
-            # Column doesn't exist yet (shouldn't happen after migration)
-            pass
+        # Convert to dict (works for both sqlite3.Row and RealDictRow)
+        user = dict(row)
         
         return user
     except Exception as e:
@@ -331,16 +341,16 @@ def update_user_gpt_api_key(email: str, api_key: str) -> None:
     
     try:
         conn = get_conn()
-        cur = conn.cursor()
+        cur = _get_cursor(conn)
         
         # Check if user exists
-        cur.execute("SELECT email FROM users WHERE email = ?", (email_n,))
+        _execute_query(cur, "SELECT email FROM users WHERE email = ?", (email_n,))
         if not cur.fetchone():
             conn.close()
             raise ValueError(f"User {email_n} not found")
         
         # Update the API key
-        cur.execute("UPDATE users SET gpt_api_key = ? WHERE email = ?", (api_key, email_n))
+        _execute_query(cur, "UPDATE users SET gpt_api_key = ? WHERE email = ?", (api_key, email_n))
         conn.commit()
         conn.close()
     except ValueError:
@@ -365,16 +375,16 @@ def update_user_perplexity_api_key(email: str, api_key: str) -> None:
     
     try:
         conn = get_conn()
-        cur = conn.cursor()
+        cur = _get_cursor(conn)
         
         # Check if user exists
-        cur.execute("SELECT email FROM users WHERE email = ?", (email_n,))
+        _execute_query(cur, "SELECT email FROM users WHERE email = ?", (email_n,))
         if not cur.fetchone():
             conn.close()
             raise ValueError(f"User {email_n} not found")
         
         # Update the API key
-        cur.execute("UPDATE users SET perplexity_api_key = ? WHERE email = ?", (api_key, email_n))
+        _execute_query(cur, "UPDATE users SET perplexity_api_key = ? WHERE email = ?", (api_key, email_n))
         conn.commit()
         conn.close()
     except ValueError:
@@ -391,8 +401,8 @@ def get_user_perplexity_api_key(email: str) -> Optional[str]:
     
     try:
         conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("SELECT perplexity_api_key FROM users WHERE email = ?", (email_n,))
+        cur = _get_cursor(conn)
+        _execute_query(cur, "SELECT perplexity_api_key FROM users WHERE email = ?", (email_n,))
         row = cur.fetchone()
         conn.close()
         return row["perplexity_api_key"] if row and row["perplexity_api_key"] else None
@@ -405,8 +415,8 @@ def has_any_user() -> bool:
     ensure_users_file()
     try:
         conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) as count FROM users")
+        cur = _get_cursor(conn)
+        _execute_query(cur, "SELECT COUNT(*) as count FROM users", ())
         count = cur.fetchone()["count"]
         conn.close()
         return count > 0
@@ -420,8 +430,8 @@ def has_admin_user() -> bool:
     ensure_users_file()
     try:
         conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) as count FROM users WHERE role = 'admin'")
+        cur = _get_cursor(conn)
+        _execute_query(cur, "SELECT COUNT(*) as count FROM users WHERE role = ?", ('admin',))
         count = cur.fetchone()["count"]
         conn.close()
         return count > 0
@@ -430,41 +440,81 @@ def has_admin_user() -> bool:
         return False
 
 
-def get_conn() -> sqlite3.Connection:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    # Tabla usada por cache_store.py
-    conn.execute(
-        """
+def get_conn():
+    """Get database connection (PostgreSQL in production, SQLite locally)."""
+    if _is_postgres():
+        import psycopg2
+        import psycopg2.extras
+        
+        url = _get_database_url()
+        conn = psycopg2.connect(url)
+        
+        # Use RealDictCursor for dict-like row access (similar to sqlite3.Row)
+        return conn
+    else:
+        # SQLite for local development
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+
+def _init_db_tables() -> None:
+    """Initialize all database tables (PostgreSQL or SQLite)."""
+    conn = get_conn()
+    cur = conn.cursor()
+    
+    is_pg = _is_postgres()
+    
+    # Auto-increment syntax differs between databases
+    # SQLite: INTEGER PRIMARY KEY AUTOINCREMENT
+    # PostgreSQL: SERIAL PRIMARY KEY or BIGSERIAL PRIMARY KEY
+    autoincrement = "SERIAL PRIMARY KEY" if is_pg else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    
+    # Users table
+    cur.execute(f"""
+        CREATE TABLE IF NOT EXISTS users (
+            email TEXT PRIMARY KEY,
+            role TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            algo TEXT NOT NULL,
+            iterations TEXT NOT NULL,
+            salt_b64 TEXT NOT NULL,
+            hash_b64 TEXT NOT NULL,
+            gpt_api_key TEXT,
+            perplexity_api_key TEXT
+        )
+    """)
+    
+    # Cache table (kv_cache) - used by cache_store.py
+    cur.execute(f"""
         CREATE TABLE IF NOT EXISTS kv_cache (
             key TEXT PRIMARY KEY,
             value_json TEXT NOT NULL,
             created_at INTEGER NOT NULL,
             ttl_seconds INTEGER
         )
-        """
-    )
-    # Tabla para blog posts
-    conn.execute(
-        """
+    """)
+    
+    # Blog posts table
+    cur.execute(f"""
         CREATE TABLE IF NOT EXISTS blog_posts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {autoincrement},
             title TEXT NOT NULL,
             content TEXT NOT NULL,
             author_email TEXT NOT NULL,
             published_date TEXT NOT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
-            images_json TEXT
+            images_json TEXT,
+            ticker TEXT
         )
-        """
-    )
+    """)
     
-    # Tabla para comentarios de blog
-    conn.execute("""
+    # Blog comments table
+    cur.execute(f"""
         CREATE TABLE IF NOT EXISTS blog_comments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {autoincrement},
             post_id INTEGER NOT NULL,
             author_email TEXT NOT NULL,
             content TEXT NOT NULL,
@@ -474,17 +524,21 @@ def get_conn() -> sqlite3.Connection:
         )
     """)
     
-    # Migración: agregar columna ticker si no existe
-    cur = conn.cursor()
-    try:
-        cur.execute("SELECT ticker FROM blog_posts LIMIT 1")
-    except sqlite3.OperationalError:
-        # Column doesn't exist, add it
-        cur.execute("ALTER TABLE blog_posts ADD COLUMN ticker TEXT")
-        conn.commit()
+    # Create index for blog post ticker lookup (if not exists)
+    if is_pg:
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_blog_posts_ticker 
+            ON blog_posts(ticker) 
+            WHERE ticker IS NOT NULL
+        """)
+    else:
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_blog_posts_ticker 
+            ON blog_posts(ticker) 
+        """)
     
     conn.commit()
-    return conn
+    conn.close()
 
 
 def verify_database_integrity() -> bool:
@@ -494,29 +548,47 @@ def verify_database_integrity() -> bool:
     """
     try:
         conn = get_conn()
-        cur = conn.cursor()
+        cur = _get_cursor(conn)
         
-        # Check users table exists
-        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
-        if not cur.fetchone():
-            print("[ERROR] Users table does not exist", file=sys.stderr)
-            conn.close()
-            return False
+        is_pg = _is_postgres()
         
-        # Check required columns exist
-        cur.execute("PRAGMA table_info(users)")
-        columns = {row["name"] for row in cur.fetchall()}
-        required_columns = {"email", "role", "created_at", "algo", "iterations", "salt_b64", "hash_b64", "gpt_api_key", "perplexity_api_key"}
+        if is_pg:
+            # PostgreSQL: Check if users table exists
+            _execute_query(cur, """
+                SELECT tablename FROM pg_tables 
+                WHERE schemaname = 'public' AND tablename = ?
+            """, ('users',))
+            if not cur.fetchone():
+                print("[ERROR] Users table does not exist", file=sys.stderr)
+                conn.close()
+                return False
+            
+            # For PostgreSQL, we'll just try to query the table
+            _execute_query(cur, "SELECT COUNT(*) as count FROM users", ())
+            count = cur.fetchone()["count"]
+        else:
+            # SQLite: Check users table exists
+            _execute_query(cur, "SELECT name FROM sqlite_master WHERE type=? AND name=?", ('table', 'users'))
+            if not cur.fetchone():
+                print("[ERROR] Users table does not exist", file=sys.stderr)
+                conn.close()
+                return False
+            
+            # Check required columns exist (SQLite specific)
+            cur.execute("PRAGMA table_info(users)")
+            columns = {row["name"] for row in cur.fetchall()}
+            required_columns = {"email", "role", "created_at", "algo", "iterations", "salt_b64", "hash_b64", "gpt_api_key", "perplexity_api_key"}
+            
+            missing_columns = required_columns - columns
+            if missing_columns:
+                print(f"[ERROR] Missing columns in users table: {missing_columns}", file=sys.stderr)
+                conn.close()
+                return False
+            
+            # Try to query users table
+            _execute_query(cur, "SELECT COUNT(*) as count FROM users", ())
+            count = cur.fetchone()["count"]
         
-        missing_columns = required_columns - columns
-        if missing_columns:
-            print(f"[ERROR] Missing columns in users table: {missing_columns}", file=sys.stderr)
-            conn.close()
-            return False
-        
-        # Try to query users table
-        cur.execute("SELECT COUNT(*) as count FROM users")
-        count = cur.fetchone()["count"]
         print(f"[INFO] Database integrity check passed. User count: {count}", file=sys.stderr)
         
         conn.close()
@@ -535,9 +607,10 @@ def init_db() -> None:
     print(f"[DEBUG] DATA_DIR: {DATA_DIR}", file=sys.stderr)
     print(f"[DEBUG] DB_PATH: {DB_PATH}", file=sys.stderr)
     print(f"[DEBUG] DB_PATH exists: {DB_PATH.exists()}", file=sys.stderr)
+    print(f"[DEBUG] Using PostgreSQL: {_is_postgres()}", file=sys.stderr)
     
+    # Initialize database tables and user file
     ensure_users_file()
-    _ = get_conn()
     
     # Verify database integrity
     if not verify_database_integrity():

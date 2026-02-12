@@ -8,3 +8,4 @@ requests-cache
 yfinance
 openai
 Pillow
+psycopg2-binary==2.9.10
