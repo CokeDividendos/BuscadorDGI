@@ -384,44 +384,48 @@ def _render_52w_gauge(ticker: str, current_price: float, low_52w: float, high_52
 
 def _render_gurufocus_charts(ticker: str) -> None:
     """
-    Display custom Gurufocus charts for specific tickers.
-    Only shows for: SPGI, UNH, NOV, LYB
-    Charts are loaded from: src/assets/{TICKER}1.png, {TICKER}2.png, etc.
+    Display custom Gurufocus business model charts for ANY ticker with images.
+    Shows HMM (How Makes Money) and BPS (Beneficio Por Segmento) charts.
+    Charts are loaded from: src/assets/{TICKER} - HMM.png and {TICKER} - BPS.png
     """
-    # List of tickers with custom charts
-    TICKERS_WITH_CHARTS = ["SPGI", "UNH", "NOV", "LYB"]
-    
-    if ticker not in TICKERS_WITH_CHARTS:
-        return
-    
     # Path to assets folder
     assets_path = Path(__file__).parent.parent / "assets"
     
-    # Check if at least one image exists
+    # Look for HMM and BPS images
+    hmm_path = assets_path / f"{ticker} - HMM.png"
+    bps_path = assets_path / f"{ticker} - BPS.png"
+    
+    # Collect available images
     image_paths = []
-    for i in range(1, 5):
-        img_path = assets_path / f"{ticker}{i}.png"
-        if img_path.exists():
-            image_paths.append(img_path)
+    if hmm_path.exists():
+        image_paths.append(("How Makes Money", hmm_path))
+    if bps_path.exists():
+        image_paths.append(("Beneficio por Segmento", bps_path))
     
     if not image_paths:
-        # No images found, fail silently
+        # No business model images found, fail silently
         return
     
     # Display section
-    st.markdown("## 📊 Análisis Gurufocus")
-    st.caption(f"Gráficos personalizados de Gurufocus para {ticker}")
+    st.markdown("## 📊 Modelo de Negocio (Gurufocus)")
+    st.caption(f"Análisis del modelo de negocio de {ticker}")
     
-    # Display images in 2x2 grid
-    col1, col2 = st.columns(2)
-    
-    for idx, img_path in enumerate(image_paths):
-        with col1 if idx % 2 == 0 else col2:
-            try:
-                st.image(str(img_path), use_container_width=True)
-            except Exception as e:
-                # If image fails to load, skip it silently
-                pass
+    # Display images in 2 columns (or 1 if only 1 image exists)
+    if len(image_paths) == 1:
+        # Only one image, center it
+        try:
+            st.image(str(image_paths[0][1]), caption=image_paths[0][0], use_container_width=True)
+        except Exception:
+            pass
+    else:
+        # Two images, side by side
+        col1, col2 = st.columns(2)
+        for idx, (caption, img_path) in enumerate(image_paths):
+            with col1 if idx == 0 else col2:
+                try:
+                    st.image(str(img_path), caption=caption, use_container_width=True)
+                except Exception:
+                    pass
     
     st.divider()
 
