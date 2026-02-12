@@ -47,6 +47,10 @@ COLOR_TERTIARY = "#01c2ef"    # Cyan - Tertiary chart elements
 COLOR_BACKGROUND = "#141f41"  # Dark blue - Chart background
 COLOR_TEXT = "#ffffff"        # White - All text
 
+# Gurufocus image naming constants
+GURUFOCUS_D_SUFFIX = " - D.png"  # Desempeño (Performance/Valuation)
+GURUFOCUS_V_SUFFIX = " - V.png"  # Valoración (Valuation)
+
 
 # =========================================================
 # Helpers UI / formato
@@ -1738,8 +1742,8 @@ def _render_gurufocus_valuation_charts(ticker: str) -> None:
     assets_path = Path(__file__).parent.parent / "assets"
     
     # Look for D and V images
-    d_path = assets_path / f"{ticker} - D.png"
-    v_path = assets_path / f"{ticker} - V.png"
+    d_path = assets_path / f"{ticker}{GURUFOCUS_D_SUFFIX}"
+    v_path = assets_path / f"{ticker}{GURUFOCUS_V_SUFFIX}"
     
     # Collect available images
     image_paths = []

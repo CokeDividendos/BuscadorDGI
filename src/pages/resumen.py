@@ -40,6 +40,10 @@ COLOR_TERTIARY = "#01c2ef"    # Cyan - Tertiary chart elements
 COLOR_BACKGROUND = "#141f41"  # Dark blue - Chart background
 COLOR_TEXT = "#ffffff"        # White - All text
 
+# Gurufocus image naming constants
+GURUFOCUS_HMM_SUFFIX = " - HMM.png"  # How Makes Money (Business Model)
+GURUFOCUS_BPS_SUFFIX = " - BPS.png"  # Beneficio Por Segmento (Business Model)
+
 
 def _hex_to_rgba(hex_color: str, alpha: float = 1.0) -> str:
     """Convert hex color to rgba string."""
@@ -392,8 +396,8 @@ def _render_gurufocus_charts(ticker: str) -> None:
     assets_path = Path(__file__).parent.parent / "assets"
     
     # Look for HMM and BPS images
-    hmm_path = assets_path / f"{ticker} - HMM.png"
-    bps_path = assets_path / f"{ticker} - BPS.png"
+    hmm_path = assets_path / f"{ticker}{GURUFOCUS_HMM_SUFFIX}"
+    bps_path = assets_path / f"{ticker}{GURUFOCUS_BPS_SUFFIX}"
     
     # Collect available images
     image_paths = []
