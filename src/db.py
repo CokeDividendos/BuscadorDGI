@@ -18,6 +18,9 @@ DATA_DIR = REPO_ROOT / "data"
 USERS_PATH = DATA_DIR / "users.json"
 DB_PATH = DATA_DIR / "app.sqlite3"
 
+# Guard flag to ensure tables are only initialized once per application lifecycle
+_db_tables_initialized = False
+
 
 # Database configuration - auto-detect environment
 def _get_database_url():
@@ -143,8 +146,8 @@ def ensure_users_file() -> None:
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         
-        # Initialize all database tables
-        _init_db_tables()
+        # NOTE: Table initialization is now handled by init_db() at app startup
+        # Removed _init_db_tables() call here to fix performance issue
         
         # Migration: Add perplexity_api_key column if it doesn't exist (for existing SQLite databases)
         if not _is_postgres():
@@ -483,7 +486,17 @@ def get_conn():
 
 
 def _init_db_tables() -> None:
-    """Initialize all database tables (PostgreSQL or SQLite)."""
+    """Initialize all database tables (PostgreSQL or SQLite).
+    
+    This function uses a guard flag to ensure it only runs once per app lifecycle,
+    preventing the performance issue of repeated table creation on every get_conn() call.
+    """
+    global _db_tables_initialized
+    
+    # Guard: Only initialize tables once
+    if _db_tables_initialized:
+        return
+    
     conn = get_conn()
     cur = conn.cursor()
     
@@ -562,6 +575,10 @@ def _init_db_tables() -> None:
     
     conn.commit()
     conn.close()
+    
+    # Mark tables as initialized
+    _db_tables_initialized = True
+    print("[INFO] Database tables initialized successfully", file=sys.stderr)
 
 
 def verify_database_integrity() -> bool:
@@ -632,7 +649,10 @@ def init_db() -> None:
     print(f"[DEBUG] DB_PATH exists: {DB_PATH.exists()}", file=sys.stderr)
     print(f"[DEBUG] Using PostgreSQL: {_is_postgres()}", file=sys.stderr)
     
-    # Initialize database tables and user file
+    # Initialize all database tables (runs once per app lifecycle)
+    _init_db_tables()
+    
+    # Initialize user file and run migrations
     ensure_users_file()
     
     # Verify database integrity
