@@ -20,6 +20,8 @@ DB_PATH = DATA_DIR / "app.sqlite3"
 
 # Guard flag to ensure tables are only initialized once per application lifecycle
 _db_tables_initialized = False
+# Guard flag to ensure migrations run only once per application lifecycle
+_db_migrations_completed = False
 
 
 # Database configuration - auto-detect environment
@@ -143,11 +145,17 @@ def _migrate_users_from_json() -> None:
 
 
 def ensure_users_file() -> None:
+    global _db_migrations_completed
+    
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         
         # NOTE: Table initialization is now handled by init_db() at app startup
         # Removed _init_db_tables() call here to fix performance issue
+        
+        # Guard: Only run migrations once per app lifecycle
+        if _db_migrations_completed:
+            return
         
         # Migration: Add perplexity_api_key column if it doesn't exist (for existing SQLite databases)
         if not _is_postgres():
@@ -170,6 +178,9 @@ def ensure_users_file() -> None:
         # Migrate from JSON if exists (SQLite only)
         if not _is_postgres():
             _migrate_users_from_json()
+        
+        # Mark migrations as completed
+        _db_migrations_completed = True
         
     except Exception as e:
         print(f"[ERROR] Error in ensure_users_file: {e}", file=sys.stderr)
