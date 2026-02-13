@@ -1330,7 +1330,7 @@ def _plot_per_evolution(ticker: str, income_df: pd.DataFrame, info: Dict[str, An
     is_reit_company = is_reit(info)
     
     if is_reit_company:
-        st.markdown("### Histórico del FFO, FFO/Acción y Precio")
+        st.markdown("### Histórico del FFO/Acción, Precio y P/FFO")
     else:
         st.markdown("### Histórico del PER, EPS y Precio")
     
@@ -1338,6 +1338,8 @@ def _plot_per_evolution(ticker: str, income_df: pd.DataFrame, info: Dict[str, An
         if is_reit_company:
             # Lógica para REITs
             # Obtener FFO/acción desde income_df y cashflow_df (ya cargados)
+            # NOTE: cashflow_df is already stored in session_state before this function is called
+            # (see lines ~2457-2459 in the "Valoración por múltiplos" section)
             cashflow_df = st.session_state.get(f"cashflow_df_{ticker}", pd.DataFrame())
             
             ffo = calculate_ffo(income_df, cashflow_df)

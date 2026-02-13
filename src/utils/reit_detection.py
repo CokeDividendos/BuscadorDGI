@@ -128,6 +128,8 @@ def calculate_affo(ffo: pd.Series, balance_df: pd.DataFrame, cashflow_df: pd.Dat
         if not capex_col:
             return None
         
+        # CapEx is typically negative in cash flow statements, so we use abs()
+        # to convert to positive for the subtraction: AFFO = FFO - |CapEx|
         capex = pd.to_numeric(cashflow_df[capex_col], errors="coerce").abs()
         
         # Alinear índices
