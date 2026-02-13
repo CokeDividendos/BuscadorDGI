@@ -23,6 +23,7 @@ from src.services.finance_data import (
 )
 from src.services.logos import logo_candidates
 from src.services.usage_limits import consume_search, remaining_searches
+from src.utils.reit_detection import is_reit, calculate_ffo
 
 # =========================================================
 # Constantes
@@ -1322,120 +1323,247 @@ def _plot_debt_fcf_evolution(ticker: str, balance_df: pd.DataFrame, cashflow_df:
 
 
 def _plot_per_evolution(ticker: str, income_df: pd.DataFrame, info: Dict[str, Any]) -> None:
-    """Plot P/E ratio evolution with EPS and Price"""
+    """Plot P/E ratio evolution with EPS and Price (o FFO para REITs)"""
     import numpy as np
     
-    st.markdown("### Histórico del PER, EPS y Precio")
+    # Detectar si es REIT usando info ya cargado
+    is_reit_company = is_reit(info)
+    
+    if is_reit_company:
+        st.markdown("### Histórico del FFO/Acción, Precio y P/FFO")
+    else:
+        st.markdown("### Histórico del PER, EPS y Precio")
     
     try:
-        # Get current P/E ratio
-        pe_ratio = info.get("trailingPE")
-        if pe_ratio and isinstance(pe_ratio, (int, float)):
-            st.markdown(f"**📌 El PER actual es de {pe_ratio:.2f}x**")
-        
-        # Get EPS
-        eps_col = None
-        for col in income_df.columns:
-            if "basic eps" in str(col).lower():
-                eps_col = col
-                break
-        
-        if not eps_col:
-            st.warning("No se encontró 'Basic EPS'.")
-            return
-        
-        eps_series = pd.to_numeric(income_df[eps_col], errors="coerce")
-        
-        # Get price data
-        t = yf.Ticker(ticker)
-        price_data = t.history(period="max")
-        if price_data.empty:
-            st.warning("No hay datos de precio disponibles.")
-            return
-        
-        price_yearly = price_data.resample("Y").last()["Close"]
-        price_yearly.index = price_yearly.index.year
-        
-        # Create dataframe
-        df_per = pd.DataFrame({"EPS": eps_series, "Precio": price_yearly}).dropna()
-        if df_per.empty:
-            st.warning("No hay datos suficientes para calcular el PER histórico.")
-            return
-        
-        df_per["PER"] = df_per["Precio"] / df_per["EPS"]
-        df_per = df_per.replace([np.inf, -np.inf], np.nan).dropna()
-        
-        if df_per.empty:
-            st.warning("No hay datos suficientes para graficar el PER.")
-            return
-        
-        # Colors
-        color_primary = "#ff6d01"    # Orange
-        color_secondary = "#ff00ff"  # Magenta
-        color_tertiary = "#01c2ef"   # Cyan
-        
-        fig_combined = go.Figure()
-        fig_combined.add_trace(
-            go.Bar(
-                x=df_per.index.astype(str),
-                y=df_per["EPS"],
-                name="EPS",
-                marker_color=color_primary,
-                text=df_per["EPS"].round(2),
-                textposition="outside",
+        if is_reit_company:
+            # Lógica para REITs
+            # Obtener FFO/acción desde income_df y cashflow_df (ya cargados)
+            # NOTE: cashflow_df is already stored in session_state before this function is called
+            # (see lines ~2457-2459 in the "Valoración por múltiplos" section)
+            cashflow_df = st.session_state.get(f"cashflow_df_{ticker}", pd.DataFrame())
+            
+            ffo = calculate_ffo(income_df, cashflow_df)
+            
+            if ffo is None or ffo.empty:
+                st.warning("No hay datos suficientes para calcular FFO.")
+                return
+            
+            # Calcular FFO per share
+            shares_col = None
+            for col in income_df.columns:
+                if "shares outstanding" in str(col).lower() or "diluted average shares" in str(col).lower():
+                    shares_col = col
+                    break
+            
+            if not shares_col:
+                st.warning("No se encontró información de acciones en circulación.")
+                return
+            
+            shares = pd.to_numeric(income_df[shares_col], errors="coerce")
+            common_index = ffo.index.intersection(shares.index)
+            
+            if len(common_index) == 0:
+                st.warning("No hay años coincidentes entre FFO y acciones.")
+                return
+            
+            ffo_per_share = (ffo[common_index] / shares[common_index]).dropna()
+            
+            # Obtener precio actual y calcular P/FFO
+            current_price = info.get("currentPrice")
+            if current_price and isinstance(current_price, (int, float)) and not ffo_per_share.empty:
+                latest_ffo = ffo_per_share.iloc[-1]
+                if latest_ffo > 0:
+                    p_ffo = current_price / latest_ffo
+                    ffo_yield = (latest_ffo / current_price) * 100
+                    st.markdown(f"**📌 El P/FFO actual es de {p_ffo:.2f}x | FFO Yield: {ffo_yield:.2f}%**")
+            
+            # Obtener datos de precio histórico
+            t = yf.Ticker(ticker)
+            price_data = t.history(period="max")
+            if price_data.empty:
+                st.warning("No hay datos de precio disponibles.")
+                return
+            
+            price_yearly = price_data.resample("Y").last()["Close"]
+            price_yearly.index = price_yearly.index.year
+            
+            # Crear dataframe combinado
+            df_combined = pd.DataFrame({"FFO/Acción": ffo_per_share, "Precio": price_yearly}).dropna()
+            if df_combined.empty:
+                st.warning("No hay datos suficientes para graficar.")
+                return
+            
+            df_combined["P/FFO"] = df_combined["Precio"] / df_combined["FFO/Acción"]
+            df_combined = df_combined.replace([np.inf, -np.inf], np.nan).dropna()
+            
+            if df_combined.empty:
+                st.warning("No hay datos válidos después de cálculos.")
+                return
+            
+            # Crear gráfico
+            color_primary = "#ff6d01"
+            color_secondary = "#ff00ff"
+            color_tertiary = "#01c2ef"
+            
+            fig_combined = go.Figure()
+            fig_combined.add_trace(
+                go.Bar(
+                    x=df_combined.index.astype(str),
+                    y=df_combined["FFO/Acción"],
+                    name="FFO/Acción",
+                    marker_color=color_primary,
+                    text=df_combined["FFO/Acción"].round(2),
+                    textposition="outside",
+                )
             )
-        )
-        fig_combined.add_trace(
-            go.Bar(
-                x=df_per.index.astype(str),
-                y=df_per["Precio"],
-                name="Precio",
-                marker_color=color_secondary,
-                text=df_per["Precio"].round(2),
-                textposition="outside",
+            fig_combined.add_trace(
+                go.Bar(
+                    x=df_combined.index.astype(str),
+                    y=df_combined["Precio"],
+                    name="Precio",
+                    marker_color=color_secondary,
+                    text=df_combined["Precio"].round(2),
+                    textposition="outside",
+                )
             )
-        )
-        fig_combined.add_trace(
-            go.Scatter(
-                x=df_per.index.astype(str),
-                y=df_per["PER"],
-                name="PER",
-                mode="lines+markers+text",
-                yaxis="y2",
-                line=dict(color=color_tertiary),
-                text=[f"{v:.2f}" for v in df_per["PER"]],
-                textposition="top right",
+            fig_combined.add_trace(
+                go.Scatter(
+                    x=df_combined.index.astype(str),
+                    y=df_combined["P/FFO"],
+                    name="P/FFO",
+                    mode="lines+markers+text",
+                    yaxis="y2",
+                    line=dict(color=color_tertiary),
+                    text=[f"{v:.2f}" for v in df_combined["P/FFO"]],
+                    textposition="top right",
+                )
             )
-        )
-        
-        # Add horizontal line for current P/E ratio (if available from yfinance info)
-        if pe_ratio and isinstance(pe_ratio, (int, float)):
-            fig_combined.add_hline(
-                y=pe_ratio,
-                line_dash="dash",
-                line_color="#ffff00",  # Yellow color for visibility
-                annotation_text=f"PER Actual: {pe_ratio:.2f}",
-                annotation_position="right",
-                yref="y2"  # IMPORTANTE: referencia al eje Y2 porque PER está en el eje secundario
+            fig_combined.update_layout(
+                title="Histórico del FFO/Acción, Precio y P/FFO",
+                xaxis_title="Año",
+                yaxis=dict(title="FFO/Acción / Precio"),
+                yaxis2=dict(title="P/FFO", overlaying="y", side="right"),
+                barmode="group",
+                height=450,
+                margin=dict(l=30, r=30, t=60, b=30),
+                paper_bgcolor="#141f41",
+                plot_bgcolor="#141f41",
+                font=dict(color="#ffffff"),
             )
-        
-        fig_combined.update_layout(
-            title="Histórico del EPS, Precio y PER",
-            xaxis_title="Año",
-            yaxis=dict(title="EPS / Precio"),
-            yaxis2=dict(title="PER", overlaying="y", side="right"),
-            barmode="group",
-            height=450,
-            margin=dict(l=30, r=30, t=60, b=30),
-            paper_bgcolor="#141f41",
-            plot_bgcolor="#141f41",
-            font=dict(color="#ffffff"),
-        )
-        fig_combined.update_yaxes(showgrid=False, zeroline=False)
-        fig_combined.update_xaxes(showgrid=False, zeroline=False)
-        st.plotly_chart(fig_combined, use_container_width=True, key=f"plotly_chart_per_{ticker}")
+            fig_combined.update_yaxes(showgrid=False, zeroline=False)
+            fig_combined.update_xaxes(showgrid=False, zeroline=False)
+            st.plotly_chart(fig_combined, use_container_width=True, key=f"plotly_chart_ffo_{ticker}")
+            
+        else:
+            # Código original para empresas normales (SIN CAMBIOS)
+            pe_ratio = info.get("trailingPE")
+            if pe_ratio and isinstance(pe_ratio, (int, float)):
+                st.markdown(f"**📌 El PER actual es de {pe_ratio:.2f}x**")
+            
+            # Get EPS
+            eps_col = None
+            for col in income_df.columns:
+                if "basic eps" in str(col).lower():
+                    eps_col = col
+                    break
+            
+            if not eps_col:
+                st.warning("No se encontró 'Basic EPS'.")
+                return
+            
+            eps_series = pd.to_numeric(income_df[eps_col], errors="coerce")
+            
+            # Get price data
+            t = yf.Ticker(ticker)
+            price_data = t.history(period="max")
+            if price_data.empty:
+                st.warning("No hay datos de precio disponibles.")
+                return
+            
+            price_yearly = price_data.resample("Y").last()["Close"]
+            price_yearly.index = price_yearly.index.year
+            
+            # Create dataframe
+            df_per = pd.DataFrame({"EPS": eps_series, "Precio": price_yearly}).dropna()
+            if df_per.empty:
+                st.warning("No hay datos suficientes para calcular el PER histórico.")
+                return
+            
+            df_per["PER"] = df_per["Precio"] / df_per["EPS"]
+            df_per = df_per.replace([np.inf, -np.inf], np.nan).dropna()
+            
+            if df_per.empty:
+                st.warning("No hay datos suficientes para graficar el PER.")
+                return
+            
+            # Colors
+            color_primary = "#ff6d01"    # Orange
+            color_secondary = "#ff00ff"  # Magenta
+            color_tertiary = "#01c2ef"   # Cyan
+            
+            fig_combined = go.Figure()
+            fig_combined.add_trace(
+                go.Bar(
+                    x=df_per.index.astype(str),
+                    y=df_per["EPS"],
+                    name="EPS",
+                    marker_color=color_primary,
+                    text=df_per["EPS"].round(2),
+                    textposition="outside",
+                )
+            )
+            fig_combined.add_trace(
+                go.Bar(
+                    x=df_per.index.astype(str),
+                    y=df_per["Precio"],
+                    name="Precio",
+                    marker_color=color_secondary,
+                    text=df_per["Precio"].round(2),
+                    textposition="outside",
+                )
+            )
+            fig_combined.add_trace(
+                go.Scatter(
+                    x=df_per.index.astype(str),
+                    y=df_per["PER"],
+                    name="PER",
+                    mode="lines+markers+text",
+                    yaxis="y2",
+                    line=dict(color=color_tertiary),
+                    text=[f"{v:.2f}" for v in df_per["PER"]],
+                    textposition="top right",
+                )
+            )
+            
+            # Add horizontal line for current P/E ratio (if available from yfinance info)
+            if pe_ratio and isinstance(pe_ratio, (int, float)):
+                fig_combined.add_hline(
+                    y=pe_ratio,
+                    line_dash="dash",
+                    line_color="#ffff00",  # Yellow color for visibility
+                    annotation_text=f"PER Actual: {pe_ratio:.2f}",
+                    annotation_position="right",
+                    yref="y2"  # IMPORTANTE: referencia al eje Y2 porque PER está en el eje secundario
+                )
+            
+            fig_combined.update_layout(
+                title="Histórico del EPS, Precio y PER",
+                xaxis_title="Año",
+                yaxis=dict(title="EPS / Precio"),
+                yaxis2=dict(title="PER", overlaying="y", side="right"),
+                barmode="group",
+                height=450,
+                margin=dict(l=30, r=30, t=60, b=30),
+                paper_bgcolor="#141f41",
+                plot_bgcolor="#141f41",
+                font=dict(color="#ffffff"),
+            )
+            fig_combined.update_yaxes(showgrid=False, zeroline=False)
+            fig_combined.update_xaxes(showgrid=False, zeroline=False)
+            st.plotly_chart(fig_combined, use_container_width=True, key=f"plotly_chart_per_{ticker}")
     except Exception as e:
-        st.warning(f"No se pudo generar el gráfico PER: {e}")
+        st.warning(f"No se pudo generar el gráfico: {e}")
+
 
 
 def _plot_ev_ebitda_evolution(ticker: str, income_df: pd.DataFrame, balance_df: pd.DataFrame, info: Dict[str, Any]) -> None:
@@ -2326,6 +2454,11 @@ def page_analysis() -> None:
         balance_df = _prepare_financial_df(financial_data["balance_sheet"], YEARS)
         income_df = _prepare_financial_df(financial_data["income_stmt"], YEARS)
         cashflow_df = _prepare_financial_df(financial_data["cashflow"], YEARS)
+        
+        # Store dataframes in session_state for REIT detection (no additional API calls)
+        st.session_state[f"balance_df_{ticker}"] = balance_df
+        st.session_state[f"income_df_{ticker}"] = income_df
+        st.session_state[f"cashflow_df_{ticker}"] = cashflow_df
         
         # Get ticker info for market cap and PE ratio (with rate limit protection)
         info = _load_ticker_info(ticker)

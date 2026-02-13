@@ -47,3 +47,11 @@ data/
 # OS
 .DS_Store
 Thumbs.db
+
+# Test scripts
+manual_test_reit.py
+
+# Pytest
+.pytest_cache/
+
+
