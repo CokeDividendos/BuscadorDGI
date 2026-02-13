@@ -45,7 +45,11 @@ def calculate_ffo(income_df: pd.DataFrame, cashflow_df: pd.DataFrame) -> Optiona
     """
     Calcula FFO (Funds From Operations) desde DataFrames ya cargados.
     
-    Fórmula: FFO = Net Income + Depreciation & Amortization - Gains on Sales
+    Fórmula simplificada: FFO = Net Income + Depreciation & Amortization
+    
+    Nota: Esta es una aproximación. La fórmula completa de FFO también resta 
+    ganancias de ventas de propiedades, pero esta información no siempre está 
+    disponible en los estados financieros estandarizados.
     
     Args:
         income_df: DataFrame de income statement (ya cargado)
