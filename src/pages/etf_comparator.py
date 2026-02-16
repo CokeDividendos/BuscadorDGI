@@ -67,7 +67,7 @@ def _kpi_card(label: str, value: str) -> None:
 # Data fetching functions
 # =========================================================
 @st.cache_data(ttl=DIVIDENDS_CACHE_TTL_SECONDS, show_spinner=False)
-def _load_dividend_data(ticker: str, years: int) -> pd.Series:
+def _load_dividend_data(ticker: str, months: int) -> pd.Series:
     """Load dividend data for a ticker."""
     try:
         t = yf.Ticker(ticker)
@@ -79,37 +79,30 @@ def _load_dividend_data(ticker: str, years: int) -> pd.Series:
         return pd.Series(dtype=float)
 
 
-def _monthly_dividends_last_years(dividends: pd.Series, years: int) -> pd.Series:
-    """Aggregate dividends to monthly amounts for the last N years."""
+def _filter_last_months(dividends: pd.Series, months: int) -> pd.Series:
+    """Filter dividends to show only the last N months of data."""
     if dividends.empty:
         return pd.Series(dtype=float)
     
-    # Resample to monthly
-    monthly = dividends.resample("ME").sum().dropna().astype(float)
+    # Get the last date
+    end_date = dividends.index.max()
     
-    # Filter for complete years
-    current_year = datetime.now().year
-    full_years_data = monthly[monthly.index.year < current_year]
-    if full_years_data.empty:
-        full_years_data = monthly
+    # Calculate start date (N months back)
+    start_date = end_date - pd.DateOffset(months=months)
     
-    if full_years_data.empty:
-        return pd.Series(dtype=float)
+    # Filter data
+    filtered = dividends[dividends.index >= start_date]
     
-    # Get last N years
-    end_year = int(full_years_data.index.year.max())
-    start_year = end_year - (years - 1)
-    out = full_years_data[full_years_data.index.year >= start_year]
-    return out.dropna()
+    return filtered.dropna()
 
 
-def _cagr_from_monthly(monthly: pd.Series) -> Optional[float]:
+def _cagr_from_monthly(monthly_data: pd.Series) -> Optional[float]:
     """Calculate CAGR from monthly dividend series by converting to annual totals."""
-    if monthly.empty or len(monthly) < 2:
+    if monthly_data.empty or len(monthly_data) < 12:  # Al menos 12 meses
         return None
     
     # Convert to annual totals for CAGR calculation
-    annual = monthly.resample("YE").sum().dropna()
+    annual = monthly_data.resample("YE").sum().dropna()
     
     if annual.empty or len(annual) < 2:
         return None
@@ -128,12 +121,12 @@ def _cagr_from_monthly(monthly: pd.Series) -> Optional[float]:
 # =========================================================
 # Chart functions
 # =========================================================
-def _plot_single_etf_dividends(ticker: str, dividends: pd.Series, years: int, chart_key: str) -> Optional[float]:
+def _plot_single_etf_dividends(ticker: str, dividends: pd.Series, months: int, chart_key: str) -> Optional[float]:
     """
     Plot dividend evolution as bar chart for a single ETF.
     Returns the CAGR value.
     """
-    monthly = _monthly_dividends_last_years(dividends, years)
+    monthly = _filter_last_months(dividends, months)
     
     if monthly.empty:
         st.warning(f"No hay dividendos suficientes para {ticker} en el periodo seleccionado.")
@@ -185,12 +178,12 @@ def _plot_single_etf_dividends(ticker: str, dividends: pd.Series, years: int, ch
     return cagr
 
 
-def _plot_comparison_chart(ticker1: str, ticker2: str, dividends1: pd.Series, dividends2: pd.Series, years: int) -> None:
+def _plot_comparison_chart(ticker1: str, ticker2: str, dividends1: pd.Series, dividends2: pd.Series, months: int) -> None:
     """
     Plot comparison line chart showing dividends of both ETFs.
     """
-    monthly1 = _monthly_dividends_last_years(dividends1, years)
-    monthly2 = _monthly_dividends_last_years(dividends2, years)
+    monthly1 = _filter_last_months(dividends1, months)
+    monthly2 = _filter_last_months(dividends2, months)
     
     if monthly1.empty and monthly2.empty:
         st.warning("No hay datos suficientes para comparar ambos ETFs.")
@@ -296,20 +289,20 @@ def page_etf_comparator() -> None:
     # Period selector
     st.markdown("### Seleccionar periodo de análisis")
     period_options = {
-        "1 año": 1,
-        "2 años": 2,
-        "3 años": 3,
-        "5 años": 5,
-        "10 años": 10
+        "12 meses": 12,
+        "24 meses": 24,
+        "36 meses": 36,
+        "48 meses": 48,
+        "60 meses": 60
     }
     
     selected_period_label = st.selectbox(
         "Periodo:",
         options=list(period_options.keys()),
-        index=3,  # Default to 5 years
+        index=3,  # Default to 48 months (4 years)
         label_visibility="collapsed"
     )
-    selected_years = period_options[selected_period_label]
+    selected_months = period_options[selected_period_label]
     
     st.divider()
     
@@ -350,8 +343,8 @@ def page_etf_comparator() -> None:
         etf1 = st.session_state.get("etf1", "").strip().upper()
         if etf1:
             with st.spinner(f"Cargando datos de {etf1}..."):
-                dividends1 = _load_dividend_data(etf1, selected_years)
-                cagr1 = _plot_single_etf_dividends(etf1, dividends1, selected_years, f"etf1_chart_{selected_years}")
+                dividends1 = _load_dividend_data(etf1, selected_months)
+                cagr1 = _plot_single_etf_dividends(etf1, dividends1, selected_months, f"etf1_chart_{selected_months}")
                 
                 # Display CAGR card
                 if cagr1 is not None:
@@ -381,8 +374,8 @@ def page_etf_comparator() -> None:
         etf2 = st.session_state.get("etf2", "").strip().upper()
         if etf2:
             with st.spinner(f"Cargando datos de {etf2}..."):
-                dividends2 = _load_dividend_data(etf2, selected_years)
-                cagr2 = _plot_single_etf_dividends(etf2, dividends2, selected_years, f"etf2_chart_{selected_years}")
+                dividends2 = _load_dividend_data(etf2, selected_months)
+                cagr2 = _plot_single_etf_dividends(etf2, dividends2, selected_months, f"etf2_chart_{selected_months}")
                 
                 # Display CAGR card
                 if cagr2 is not None:
@@ -403,10 +396,10 @@ def page_etf_comparator() -> None:
         with st.spinner("Generando gráfico de comparación..."):
             # Reuse already loaded data if available, otherwise load it
             if dividends1 is None:
-                dividends1 = _load_dividend_data(etf1, selected_years)
+                dividends1 = _load_dividend_data(etf1, selected_months)
             if dividends2 is None:
-                dividends2 = _load_dividend_data(etf2, selected_years)
-            _plot_comparison_chart(etf1, etf2, dividends1, dividends2, selected_years)
+                dividends2 = _load_dividend_data(etf2, selected_months)
+            _plot_comparison_chart(etf1, etf2, dividends1, dividends2, selected_months)
     elif etf1 or etf2:
         st.info("Ingresa ambos tickers para ver la comparación.")
     else:
