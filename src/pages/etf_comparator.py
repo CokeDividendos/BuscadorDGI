@@ -96,13 +96,13 @@ def _filter_last_months(dividends: pd.Series, months: int) -> pd.Series:
     return filtered.dropna()
 
 
-def _cagr_from_monthly(monthly_data: pd.Series) -> Optional[float]:
+def _cagr_from_monthly(dividends: pd.Series) -> Optional[float]:
     """Calculate CAGR from monthly dividend series by converting to annual totals."""
-    if monthly_data.empty or len(monthly_data) < 12:  # Al menos 12 meses
+    if dividends.empty or len(dividends) < 12:  # Al menos 12 meses
         return None
     
     # Convert to annual totals for CAGR calculation
-    annual = monthly_data.resample("YE").sum().dropna()
+    annual = dividends.resample("YE").sum().dropna()
     
     if annual.empty or len(annual) < 2:
         return None
@@ -126,26 +126,26 @@ def _plot_single_etf_dividends(ticker: str, dividends: pd.Series, months: int, c
     Plot dividend evolution as bar chart for a single ETF.
     Returns the CAGR value.
     """
-    monthly = _filter_last_months(dividends, months)
+    filtered = _filter_last_months(dividends, months)
     
-    if monthly.empty:
+    if filtered.empty:
         st.warning(f"No hay dividendos suficientes para {ticker} en el periodo seleccionado.")
         return None
     
     # Calculate CAGR
-    cagr = _cagr_from_monthly(monthly)
+    cagr = _cagr_from_monthly(filtered)
     
     # Format dates for x-axis in Spanish (e.g., "Ene 2024")
-    x_labels = _format_date_spanish(monthly.index)
+    x_labels = _format_date_spanish(filtered.index)
     
     # Create bar chart
     fig = go.Figure()
     fig.add_trace(go.Bar(
         x=x_labels,
-        y=monthly.values,
+        y=filtered.values,
         name="Dividendo mensual",
         marker_color=COLOR_PRIMARY,
-        text=[f"${v:.2f}" for v in monthly.values],
+        text=[f"${v:.2f}" for v in filtered.values],
         textposition="outside"
     ))
     
@@ -182,32 +182,32 @@ def _plot_comparison_chart(ticker1: str, ticker2: str, dividends1: pd.Series, di
     """
     Plot comparison line chart showing dividends of both ETFs.
     """
-    monthly1 = _filter_last_months(dividends1, months)
-    monthly2 = _filter_last_months(dividends2, months)
+    filtered1 = _filter_last_months(dividends1, months)
+    filtered2 = _filter_last_months(dividends2, months)
     
-    if monthly1.empty and monthly2.empty:
+    if filtered1.empty and filtered2.empty:
         st.warning("No hay datos suficientes para comparar ambos ETFs.")
         return
     
     # Create line chart with Spanish date formatting
     fig = go.Figure()
     
-    if not monthly1.empty:
-        x_labels1 = _format_date_spanish(monthly1.index)
+    if not filtered1.empty:
+        x_labels1 = _format_date_spanish(filtered1.index)
         fig.add_trace(go.Scatter(
             x=x_labels1,
-            y=monthly1.values,
+            y=filtered1.values,
             mode='lines+markers',
             name=ticker1,
             line=dict(color=COLOR_PRIMARY, width=3),
             marker=dict(size=8, color=COLOR_PRIMARY)
         ))
     
-    if not monthly2.empty:
-        x_labels2 = _format_date_spanish(monthly2.index)
+    if not filtered2.empty:
+        x_labels2 = _format_date_spanish(filtered2.index)
         fig.add_trace(go.Scatter(
             x=x_labels2,
-            y=monthly2.values,
+            y=filtered2.values,
             mode='lines+markers',
             name=ticker2,
             line=dict(color=COLOR_TERTIARY, width=3),
