@@ -24,10 +24,19 @@ COLOR_TERTIARY = "#01c2ef"    # Cyan - Tertiary chart elements
 COLOR_BACKGROUND = "#141f41"  # Dark blue - Chart background
 COLOR_TEXT = "#ffffff"        # White - All text
 
+# Spanish month names for date formatting
+SPANISH_MONTHS = {
+    1: "Ene", 2: "Feb", 3: "Mar", 4: "Abr", 5: "May", 6: "Jun",
+    7: "Jul", 8: "Ago", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dic"
+}
+
 
 # =========================================================
 # Helpers
 # =========================================================
+def _format_date_spanish(date_index: pd.DatetimeIndex) -> list[str]:
+    """Format dates in Spanish (MMM YYYY format)."""
+    return [f"{SPANISH_MONTHS[d.month]} {d.year}" for d in date_index]
 def _get_user_email() -> str:
     for key in ["auth_email", "user_email", "email", "username", "user", "logged_email"]:
         v = st.session_state.get(key)
@@ -70,35 +79,41 @@ def _load_dividend_data(ticker: str, years: int) -> pd.Series:
         return pd.Series(dtype=float)
 
 
-def _annual_dividends_last_years(dividends: pd.Series, years: int) -> pd.Series:
-    """Aggregate dividends to annual amounts for the last N years."""
+def _monthly_dividends_last_years(dividends: pd.Series, years: int) -> pd.Series:
+    """Aggregate dividends to monthly amounts for the last N years."""
     if dividends.empty:
         return pd.Series(dtype=float)
     
-    # Resample to annual
-    ann = dividends.resample("Y").sum().dropna().astype(float)
-    ann.index = ann.index.year
+    # Resample to monthly
+    monthly = dividends.resample("ME").sum().dropna().astype(float)
     
     # Filter for complete years
     current_year = datetime.now().year
-    full_years = ann[ann.index < current_year]
-    if full_years.empty:
-        full_years = ann
+    full_years_data = monthly[monthly.index.year < current_year]
+    if full_years_data.empty:
+        full_years_data = monthly
     
-    if full_years.empty:
+    if full_years_data.empty:
         return pd.Series(dtype=float)
     
     # Get last N years
-    end = int(full_years.index.max())
-    start = end - (years - 1)
-    out = full_years.loc[start:end] if start <= end else full_years
+    end_year = int(full_years_data.index.year.max())
+    start_year = end_year - (years - 1)
+    out = full_years_data[full_years_data.index.year >= start_year]
     return out.dropna()
 
 
-def _cagr_from_annual(annual: pd.Series) -> Optional[float]:
-    """Calculate CAGR from annual dividend series."""
+def _cagr_from_monthly(monthly: pd.Series) -> Optional[float]:
+    """Calculate CAGR from monthly dividend series by converting to annual totals."""
+    if monthly.empty or len(monthly) < 2:
+        return None
+    
+    # Convert to annual totals for CAGR calculation
+    annual = monthly.resample("YE").sum().dropna()
+    
     if annual.empty or len(annual) < 2:
         return None
+    
     first_val = float(annual.iloc[0])
     last_val = float(annual.iloc[-1])
     if first_val <= 0 or last_val <= 0:
@@ -118,30 +133,33 @@ def _plot_single_etf_dividends(ticker: str, dividends: pd.Series, years: int, ch
     Plot dividend evolution as bar chart for a single ETF.
     Returns the CAGR value.
     """
-    annual = _annual_dividends_last_years(dividends, years)
+    monthly = _monthly_dividends_last_years(dividends, years)
     
-    if annual.empty:
+    if monthly.empty:
         st.warning(f"No hay dividendos suficientes para {ticker} en el periodo seleccionado.")
         return None
     
     # Calculate CAGR
-    cagr = _cagr_from_annual(annual)
+    cagr = _cagr_from_monthly(monthly)
+    
+    # Format dates for x-axis in Spanish (e.g., "Ene 2024")
+    x_labels = _format_date_spanish(monthly.index)
     
     # Create bar chart
     fig = go.Figure()
     fig.add_trace(go.Bar(
-        x=annual.index.astype(str),
-        y=annual.values,
-        name="Dividendo anual",
+        x=x_labels,
+        y=monthly.values,
+        name="Dividendo mensual",
         marker_color=COLOR_PRIMARY,
-        text=[f"${v:.2f}" for v in annual.values],
+        text=[f"${v:.2f}" for v in monthly.values],
         textposition="outside"
     ))
     
     fig.update_layout(
         title=f"Evolución del dividendo - {ticker}",
-        xaxis_title="Año",
-        yaxis_title="Dividendo anual ($)",
+        xaxis_title="Mes",
+        yaxis_title="Dividendo mensual ($)",
         height=400,
         paper_bgcolor=COLOR_BACKGROUND,
         plot_bgcolor=COLOR_BACKGROUND,
@@ -150,7 +168,8 @@ def _plot_single_etf_dividends(ticker: str, dividends: pd.Series, years: int, ch
         xaxis=dict(
             gridcolor="rgba(255,255,255,0.1)",
             showgrid=True,
-            color=COLOR_TEXT
+            color=COLOR_TEXT,
+            tickangle=-45
         ),
         yaxis=dict(
             gridcolor="rgba(255,255,255,0.1)",
@@ -158,7 +177,7 @@ def _plot_single_etf_dividends(ticker: str, dividends: pd.Series, years: int, ch
             color=COLOR_TEXT
         ),
         showlegend=False,
-        margin=dict(l=60, r=40, t=60, b=60)
+        margin=dict(l=60, r=40, t=60, b=80)
     )
     
     st.plotly_chart(fig, use_container_width=True, key=chart_key)
@@ -170,30 +189,32 @@ def _plot_comparison_chart(ticker1: str, ticker2: str, dividends1: pd.Series, di
     """
     Plot comparison line chart showing dividends of both ETFs.
     """
-    annual1 = _annual_dividends_last_years(dividends1, years)
-    annual2 = _annual_dividends_last_years(dividends2, years)
+    monthly1 = _monthly_dividends_last_years(dividends1, years)
+    monthly2 = _monthly_dividends_last_years(dividends2, years)
     
-    if annual1.empty and annual2.empty:
+    if monthly1.empty and monthly2.empty:
         st.warning("No hay datos suficientes para comparar ambos ETFs.")
         return
     
-    # Create line chart
+    # Create line chart with Spanish date formatting
     fig = go.Figure()
     
-    if not annual1.empty:
+    if not monthly1.empty:
+        x_labels1 = _format_date_spanish(monthly1.index)
         fig.add_trace(go.Scatter(
-            x=annual1.index.astype(str),
-            y=annual1.values,
+            x=x_labels1,
+            y=monthly1.values,
             mode='lines+markers',
             name=ticker1,
             line=dict(color=COLOR_PRIMARY, width=3),
             marker=dict(size=8, color=COLOR_PRIMARY)
         ))
     
-    if not annual2.empty:
+    if not monthly2.empty:
+        x_labels2 = _format_date_spanish(monthly2.index)
         fig.add_trace(go.Scatter(
-            x=annual2.index.astype(str),
-            y=annual2.values,
+            x=x_labels2,
+            y=monthly2.values,
             mode='lines+markers',
             name=ticker2,
             line=dict(color=COLOR_TERTIARY, width=3),
@@ -202,8 +223,8 @@ def _plot_comparison_chart(ticker1: str, ticker2: str, dividends1: pd.Series, di
     
     fig.update_layout(
         title=f"Comparación de dividendos: {ticker1} vs {ticker2}",
-        xaxis_title="Año",
-        yaxis_title="Dividendo anual ($)",
+        xaxis_title="Mes",
+        yaxis_title="Dividendo mensual ($)",
         height=500,
         paper_bgcolor=COLOR_BACKGROUND,
         plot_bgcolor=COLOR_BACKGROUND,
@@ -212,7 +233,8 @@ def _plot_comparison_chart(ticker1: str, ticker2: str, dividends1: pd.Series, di
         xaxis=dict(
             gridcolor="rgba(255,255,255,0.1)",
             showgrid=True,
-            color=COLOR_TEXT
+            color=COLOR_TEXT,
+            tickangle=-45
         ),
         yaxis=dict(
             gridcolor="rgba(255,255,255,0.1)",
@@ -228,7 +250,7 @@ def _plot_comparison_chart(ticker1: str, ticker2: str, dividends1: pd.Series, di
             bgcolor="rgba(0,0,0,0)",
             font=dict(color=COLOR_TEXT)
         ),
-        margin=dict(l=60, r=40, t=80, b=60)
+        margin=dict(l=60, r=40, t=80, b=80)
     )
     
     st.plotly_chart(fig, use_container_width=True, key=f"comparison_{ticker1}_{ticker2}")
