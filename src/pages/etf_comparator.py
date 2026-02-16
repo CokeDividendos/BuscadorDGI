@@ -96,24 +96,42 @@ def _filter_last_months(dividends: pd.Series, months: int) -> pd.Series:
     return filtered.dropna()
 
 
-def _cagr_from_monthly(dividends: pd.Series) -> Optional[float]:
-    """Calculate CAGR from monthly dividend series by converting to annual totals."""
-    if dividends.empty or len(dividends) < 12:  # At least 12 months
+def _cagr_from_filtered(dividends: pd.Series) -> Optional[float]:
+    """
+    Calculate CAGR from dividend series using ONLY complete calendar years.
+    This ensures accurate CAGR calculation regardless of the month range selected.
+    """
+    if dividends.empty or len(dividends) < 12:
         return None
     
-    # Convert to annual totals for CAGR calculation
-    annual = dividends.resample("YE").sum().dropna()
+    # Get only data from complete calendar years
+    # Exclude current year if it's not complete
+    current_year = datetime.now().year
+    current_month = datetime.now().month
+    
+    # Filter to only include complete years
+    complete_years_data = dividends[dividends.index.year < current_year]
+    
+    if complete_years_data.empty:
+        # If no complete years, we can't calculate CAGR reliably
+        return None
+    
+    # Aggregate to annual totals
+    annual = complete_years_data.resample("YE").sum().dropna()
     
     if annual.empty or len(annual) < 2:
         return None
     
     first_val = float(annual.iloc[0])
     last_val = float(annual.iloc[-1])
+    
     if first_val <= 0 or last_val <= 0:
         return None
+    
     n_years = len(annual) - 1
     if n_years <= 0:
         return None
+    
     cagr = (pow(last_val / first_val, 1.0 / n_years) - 1) * 100
     return cagr
 
@@ -133,7 +151,7 @@ def _plot_single_etf_dividends(ticker: str, dividends: pd.Series, months: int, c
         return None
     
     # Calculate CAGR
-    cagr = _cagr_from_monthly(filtered)
+    cagr = _cagr_from_filtered(filtered)
     
     # Format dates for x-axis in Spanish (e.g., "Ene 2024")
     x_labels = _format_date_spanish(filtered.index)
@@ -181,6 +199,7 @@ def _plot_single_etf_dividends(ticker: str, dividends: pd.Series, months: int, c
 def _plot_comparison_chart(ticker1: str, ticker2: str, dividends1: pd.Series, dividends2: pd.Series, months: int) -> None:
     """
     Plot comparison line chart showing dividends of both ETFs.
+    Uses actual datetime values for proper alignment.
     """
     filtered1 = _filter_last_months(dividends1, months)
     filtered2 = _filter_last_months(dividends2, months)
@@ -189,13 +208,12 @@ def _plot_comparison_chart(ticker1: str, ticker2: str, dividends1: pd.Series, di
         st.warning("No hay datos suficientes para comparar ambos ETFs.")
         return
     
-    # Create line chart with Spanish date formatting
+    # Create line chart using DATETIME values (not formatted strings)
     fig = go.Figure()
     
     if not filtered1.empty:
-        x_labels1 = _format_date_spanish(filtered1.index)
         fig.add_trace(go.Scatter(
-            x=x_labels1,
+            x=filtered1.index,  # Use datetime index directly
             y=filtered1.values,
             mode='lines+markers',
             name=ticker1,
@@ -204,9 +222,8 @@ def _plot_comparison_chart(ticker1: str, ticker2: str, dividends1: pd.Series, di
         ))
     
     if not filtered2.empty:
-        x_labels2 = _format_date_spanish(filtered2.index)
         fig.add_trace(go.Scatter(
-            x=x_labels2,
+            x=filtered2.index,  # Use datetime index directly
             y=filtered2.values,
             mode='lines+markers',
             name=ticker2,
@@ -216,7 +233,7 @@ def _plot_comparison_chart(ticker1: str, ticker2: str, dividends1: pd.Series, di
     
     fig.update_layout(
         title=f"Comparación de dividendos: {ticker1} vs {ticker2}",
-        xaxis_title="Mes",
+        xaxis_title="Fecha",
         yaxis_title="Dividendo mensual ($)",
         height=500,
         paper_bgcolor=COLOR_BACKGROUND,
@@ -227,7 +244,8 @@ def _plot_comparison_chart(ticker1: str, ticker2: str, dividends1: pd.Series, di
             gridcolor="rgba(255,255,255,0.1)",
             showgrid=True,
             color=COLOR_TEXT,
-            tickangle=-45
+            tickangle=-45,
+            type='date'  # Ensure datetime type
         ),
         yaxis=dict(
             gridcolor="rgba(255,255,255,0.1)",
