@@ -98,7 +98,7 @@ def _filter_last_months(dividends: pd.Series, months: int) -> pd.Series:
 
 def _cagr_from_monthly(dividends: pd.Series) -> Optional[float]:
     """Calculate CAGR from monthly dividend series by converting to annual totals."""
-    if dividends.empty or len(dividends) < 12:  # Al menos 12 meses
+    if dividends.empty or len(dividends) < 12:  # At least 12 months
         return None
     
     # Convert to annual totals for CAGR calculation
