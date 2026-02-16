@@ -76,7 +76,7 @@ def _monthly_dividends_last_years(dividends: pd.Series, years: int) -> pd.Series
         return pd.Series(dtype=float)
     
     # Resample to monthly
-    monthly = dividends.resample("M").sum().dropna().astype(float)
+    monthly = dividends.resample("ME").sum().dropna().astype(float)
     
     # Filter for complete years
     current_year = datetime.now().year
@@ -100,7 +100,7 @@ def _cagr_from_monthly(monthly: pd.Series) -> Optional[float]:
         return None
     
     # Convert to annual totals for CAGR calculation
-    annual = monthly.resample("Y").sum().dropna()
+    annual = monthly.resample("YE").sum().dropna()
     
     if annual.empty or len(annual) < 2:
         return None
