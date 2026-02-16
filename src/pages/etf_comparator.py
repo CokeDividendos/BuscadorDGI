@@ -107,7 +107,6 @@ def _cagr_from_filtered(dividends: pd.Series) -> Optional[float]:
     # Get only data from complete calendar years
     # Exclude current year if it's not complete
     current_year = datetime.now().year
-    current_month = datetime.now().month
     
     # Filter to only include complete years
     complete_years_data = dividends[dividends.index.year < current_year]
