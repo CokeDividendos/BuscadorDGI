@@ -20,7 +20,6 @@ DIVIDENDS_CACHE_TTL_SECONDS = 60 * 60 * 24 * 30  # 30 días
 
 # Color scheme constants
 COLOR_PRIMARY = "#ff6d01"     # Orange - Primary chart elements
-COLOR_SECONDARY = "#ff00ff"   # Magenta - Secondary chart elements
 COLOR_TERTIARY = "#01c2ef"    # Cyan - Tertiary chart elements
 COLOR_BACKGROUND = "#141f41"  # Dark blue - Chart background
 COLOR_TEXT = "#ffffff"        # White - All text
@@ -305,6 +304,10 @@ def page_etf_comparator() -> None:
     if "etf2" not in st.session_state:
         st.session_state["etf2"] = ""
     
+    # Store loaded dividend data to avoid redundant API calls
+    dividends1 = None
+    dividends2 = None
+    
     # ETF 1
     with col1:
         st.markdown("### ETF 1")
@@ -367,7 +370,7 @@ def page_etf_comparator() -> None:
         else:
             st.info("Ingresa un ticker para ETF 2")
     
-    # Comparison chart
+    # Comparison chart - reuse loaded data
     st.divider()
     st.markdown("### Comparación de ambos ETFs")
     
@@ -376,8 +379,11 @@ def page_etf_comparator() -> None:
     
     if etf1 and etf2:
         with st.spinner("Generando gráfico de comparación..."):
-            dividends1 = _load_dividend_data(etf1, selected_years)
-            dividends2 = _load_dividend_data(etf2, selected_years)
+            # Reuse already loaded data if available, otherwise load it
+            if dividends1 is None:
+                dividends1 = _load_dividend_data(etf1, selected_years)
+            if dividends2 is None:
+                dividends2 = _load_dividend_data(etf2, selected_years)
             _plot_comparison_chart(etf1, etf2, dividends1, dividends2, selected_years)
     elif etf1 or etf2:
         st.info("Ingresa ambos tickers para ver la comparación.")
