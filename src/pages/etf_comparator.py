@@ -24,10 +24,19 @@ COLOR_TERTIARY = "#01c2ef"    # Cyan - Tertiary chart elements
 COLOR_BACKGROUND = "#141f41"  # Dark blue - Chart background
 COLOR_TEXT = "#ffffff"        # White - All text
 
+# Spanish month names for date formatting
+SPANISH_MONTHS = {
+    1: "Ene", 2: "Feb", 3: "Mar", 4: "Abr", 5: "May", 6: "Jun",
+    7: "Jul", 8: "Ago", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dic"
+}
+
 
 # =========================================================
 # Helpers
 # =========================================================
+def _format_date_spanish(date_index: pd.DatetimeIndex) -> list[str]:
+    """Format dates in Spanish (MMM YYYY format)."""
+    return [f"{SPANISH_MONTHS[d.month]} {d.year}" for d in date_index]
 def _get_user_email() -> str:
     for key in ["auth_email", "user_email", "email", "username", "user", "logged_email"]:
         v = st.session_state.get(key)
@@ -133,8 +142,8 @@ def _plot_single_etf_dividends(ticker: str, dividends: pd.Series, years: int, ch
     # Calculate CAGR
     cagr = _cagr_from_monthly(monthly)
     
-    # Format dates for x-axis as "MMM YYYY" (e.g., "Ene 2024")
-    x_labels = monthly.index.strftime('%b %Y')
+    # Format dates for x-axis in Spanish (e.g., "Ene 2024")
+    x_labels = _format_date_spanish(monthly.index)
     
     # Create bar chart
     fig = go.Figure()
@@ -187,12 +196,12 @@ def _plot_comparison_chart(ticker1: str, ticker2: str, dividends1: pd.Series, di
         st.warning("No hay datos suficientes para comparar ambos ETFs.")
         return
     
-    # Format dates for x-axis as "MMM YYYY"
+    # Format dates for x-axis in Spanish
     # Create line chart
     fig = go.Figure()
     
     if not monthly1.empty:
-        x_labels1 = monthly1.index.strftime('%b %Y')
+        x_labels1 = _format_date_spanish(monthly1.index)
         fig.add_trace(go.Scatter(
             x=x_labels1,
             y=monthly1.values,
@@ -203,7 +212,7 @@ def _plot_comparison_chart(ticker1: str, ticker2: str, dividends1: pd.Series, di
         ))
     
     if not monthly2.empty:
-        x_labels2 = monthly2.index.strftime('%b %Y')
+        x_labels2 = _format_date_spanish(monthly2.index)
         fig.add_trace(go.Scatter(
             x=x_labels2,
             y=monthly2.values,
