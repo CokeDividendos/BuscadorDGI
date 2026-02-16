@@ -196,8 +196,7 @@ def _plot_comparison_chart(ticker1: str, ticker2: str, dividends1: pd.Series, di
         st.warning("No hay datos suficientes para comparar ambos ETFs.")
         return
     
-    # Format dates for x-axis in Spanish
-    # Create line chart
+    # Create line chart with Spanish date formatting
     fig = go.Figure()
     
     if not monthly1.empty:
