@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+import pandas as pd
 import streamlit as st
 
 from src.auth import is_admin
@@ -243,7 +244,6 @@ def page_resumen() -> None:
                         
                         # Display the table with clickable rows
                         # Create a formatted DataFrame for display
-                        import pandas as pd
                         display_df = ratios_transposed.copy()
                         
                         # Format values to 2 decimal places
