@@ -12,11 +12,13 @@ import yfinance as yf
 
 from src.auth import is_admin
 from src.services.cache_store import cache_get, cache_set
+from src.services.usage_limits import consume_search
 
 # =========================================================
 # Constantes
 # =========================================================
 DIVIDENDS_CACHE_TTL_SECONDS = 60 * 60 * 24 * 30  # 30 días
+DAILY_LIMIT = 3
 
 # Color scheme constants
 COLOR_PRIMARY = "#ff6d01"     # Orange - Primary chart elements
@@ -272,6 +274,10 @@ def _plot_comparison_chart(ticker1: str, ticker2: str, dividends1: pd.Series, di
 def page_etf_comparator() -> None:
     """Display the ETF Comparator page."""
     
+    # Get user info for search limits
+    user_email = _get_user_email()
+    admin = is_admin()
+    
     # CSS
     st.markdown(
         """
@@ -410,6 +416,23 @@ def page_etf_comparator() -> None:
     etf2 = st.session_state.get("etf2", "").strip().upper()
     
     if etf1 and etf2:
+        # Track last compared ETFs to only consume counter on NEW comparisons
+        last_comparison = st.session_state.get("last_etf_comparison", None)
+        current_comparison = f"{etf1}_{etf2}"
+        is_new_comparison = (current_comparison != last_comparison)
+        
+        # Consume search limit - ONLY on new comparison (both ETFs entered)
+        if (not admin) and user_email and is_new_comparison:
+            ok, _ = consume_search(user_email, DAILY_LIMIT, cost=1)
+            if not ok:
+                st.error("🚫 Búsquedas diarias alcanzadas. Vuelve mañana.")
+                return
+            # Update last comparison after successful consumption
+            st.session_state["last_etf_comparison"] = current_comparison
+        elif is_new_comparison:
+            # For admin or other cases, just track the comparison without consuming
+            st.session_state["last_etf_comparison"] = current_comparison
+        
         with st.spinner("Generando gráfico de comparación..."):
             # Reuse already loaded data if available, otherwise load it
             if dividends1 is None:
