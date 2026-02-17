@@ -2286,7 +2286,10 @@ def page_analysis() -> None:
     # Display content based on selected section
     selected_section = st.session_state.get("analysis_section", "Dividendos")
     
-    # Treat "Resumen" as the default overview section (Dividendos)
+    # "Resumen" subsection is the entry point (with search) under "Buscador".
+    # Display Dividendos as the default content when in Resumen mode.
+    # This maintains backward compatibility: "Resumen" replaces the old "Análisis" page,
+    # which defaulted to showing Dividendos section.
     if selected_section == "Resumen":
         selected_section = "Dividendos"
     
