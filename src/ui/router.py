@@ -132,7 +132,7 @@ def run_app():
         if page_section == "Buscador":
             st.markdown("### Secciones de datos")
             data_sections = [
-                "Resumen",  # Anteriormente "Análisis"
+                "Resumen",  # anteriormente "Análisis"
                 "Dividendos",
                 "Balance",
                 "EERR",
