@@ -503,7 +503,7 @@ def page_resumen() -> None:
         unsafe_allow_html=True,
     )
 
-    # Ticker validation (search input is now in Resumen section)
+    # Ticker validation (search input is now in 'Resumen' sidebar section, which calls page_analysis)
     if "ticker" not in st.session_state:
         st.info("Por favor, busque un ticker en la sección 'Resumen' primero.")
         return
