@@ -2225,19 +2225,49 @@ def page_analysis() -> None:
         unsafe_allow_html=True,
     )
 
-    # Note: Sidebar sections are now handled in router.py
-    # No sidebar logic needed here anymore
-    # Ticker search and company header are now in Resumen page only
+    # Buscador (Enter activa) - MOVED FROM page_resumen
+    c_left, c_mid, c_right = st.columns([1, 2, 1])
+    with c_mid:
+        st.markdown('<div class="search-middle">', unsafe_allow_html=True)
+        
+        def _submit_search():
+            val = (st.session_state.get("ticker_main") or "").strip().upper()
+            if val:
+                st.session_state["ticker"] = val
 
-    # Check if ticker has been searched in Resumen page
+        st.text_input(
+            "Ticker (ej: AAPL, MSFT, KO)",
+            key="ticker_main",
+            label_visibility="visible",
+            placeholder="Buscar ticker y presiona Enter (ej: AAPL, MSFT, KO)",
+            on_change=_submit_search,
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+
     if "ticker" not in st.session_state:
-        st.info("Por favor, busque un ticker en la sección 'Resumen' primero.")
+        st.info("Escribe un ticker y presiona Enter para cargar datos.")
         return
 
     ticker = (st.session_state.get("ticker") or "").strip().upper()
     if not ticker:
-        st.error("Ticker vacío. Por favor, busque un ticker en la sección 'Resumen'.")
+        st.error("Ticker vacío.")
         return
+
+    # Track last searched ticker to only consume counter on NEW ticker searches
+    last_ticker = st.session_state.get("last_searched_ticker", None)
+    is_new_ticker = (ticker != last_ticker)
+    
+    # Consumo límite - ONLY on new ticker entry
+    if (not admin) and user_email and is_new_ticker:
+        ok, rem_after = consume_search(user_email, DAILY_LIMIT, cost=1)
+        if not ok:
+            st.error("🚫 Búsquedas diarias alcanzadas. Vuelve mañana.")
+            return
+        # Update last searched ticker after successful consumption
+        st.session_state["last_searched_ticker"] = ticker
+    elif is_new_ticker:
+        # For admin or other cases, just track the ticker without consuming
+        st.session_state["last_searched_ticker"] = ticker
     
     # Carga datos - This uses cache, so repeated calls are efficient
     price = get_price_data(ticker) or {}
