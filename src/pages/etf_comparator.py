@@ -12,7 +12,7 @@ import yfinance as yf
 
 from src.auth import is_admin
 from src.services.cache_store import cache_get, cache_set
-from src.services.usage_limits import consume_search, remaining_searches
+from src.services.usage_limits import consume_search
 
 # =========================================================
 # Constantes
@@ -423,7 +423,7 @@ def page_etf_comparator() -> None:
         
         # Consume search limit - ONLY on new comparison (both ETFs entered)
         if (not admin) and user_email and is_new_comparison:
-            ok, rem_after = consume_search(user_email, DAILY_LIMIT, cost=1)
+            ok, _ = consume_search(user_email, DAILY_LIMIT, cost=1)
             if not ok:
                 st.error("🚫 Búsquedas diarias alcanzadas. Vuelve mañana.")
                 return
