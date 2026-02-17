@@ -15,11 +15,14 @@ import yfinance as yf
 # IMPORTAR sólo is_admin desde auth — _get_user_email se define localmente
 from src.auth import is_admin
 from src.services.cache_store import cache_clear_all, cache_get, cache_set
+from src.db import get_user_gpt_api_key, get_user_perplexity_api_key
+from src.services.blog import get_blog_posts_by_ticker
 from src.services.finance_data import (
     get_key_stats,
     get_price_data,
     get_profile_data,
     get_dividend_kpis,
+    get_52w_range,
 )
 from src.services.logos import logo_candidates
 from src.services.usage_limits import consume_search, remaining_searches
@@ -2159,6 +2162,367 @@ def _render_interactive_valuation_board(ticker: str, logo_url: str) -> None:
 
 
 
+def _generate_gpt_summary(ticker: str, api_key: str) -> str:
+    """Generate a financial summary using GPT API with caching (3 months)."""
+    if not api_key:
+        return "⚠️ No se ha configurado una API KEY de GPT. Por favor, ingrese su API KEY en el sidebar."
+    
+    # Sanitize ticker input to prevent prompt injection
+    # Stock tickers typically consist of uppercase letters and numbers only
+    # Dots are common in some international tickers (e.g., BRK.B)
+    sanitized_ticker = "".join(c for c in ticker if c.isalnum() or c == ".").upper()[:20]
+    if not sanitized_ticker or not sanitized_ticker.replace(".", "").isalnum():
+        return "⚠️ Ticker inválido."
+    
+    # Check cache first
+    cache_key = f"gpt_summary_{sanitized_ticker}"
+    cached_summary = cache_get(cache_key)
+    if cached_summary:
+        return cached_summary
+    
+    try:
+        import openai
+        client = openai.OpenAI(api_key=api_key)
+        
+        # Use sanitized ticker in prompt
+        prompt = f"Haz un resumen financiero de la empresa según el ticker ingresado {sanitized_ticker}, señalando a qué se dedica, cómo gana dinero y aspectos en los que destaca, el que debe ser escueto y resumido."
+        
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "Eres un analista financiero experto que proporciona resúmenes concisos y precisos sobre empresas."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=300,
+            temperature=0.7
+        )
+        
+        summary = response.choices[0].message.content.strip()
+        
+        # Cache the summary for 3 months
+        cache_set(cache_key, summary, ttl_seconds=60 * 60 * 24 * 90)  # 3 months
+        
+        return summary
+    except ImportError:
+        return "⚠️ La librería openai no está instalada. Por favor, instálela para usar esta funcionalidad."
+    except Exception as e:
+        return f"⚠️ Error al generar el resumen: {str(e)}"
+
+
+def _generate_perplexity_news_analysis(ticker: str, company_name: str, api_key: str) -> str:
+    """Generate news analysis using Perplexity API."""
+    if not api_key:
+        return ""
+    
+    # Sanitize inputs to prevent prompt injection
+    # Ticker: only alphanumeric and dots (e.g., BRK.B)
+    sanitized_ticker = "".join(c for c in ticker if c.isalnum() or c == ".").upper()[:20]
+    # Company name: allow alphanumeric, spaces, commas, and periods only
+    sanitized_company = "".join(c for c in company_name if c.isalnum() or c in " .,").strip()[:100]
+    
+    if not sanitized_ticker or not sanitized_ticker.replace(".", "").isalnum():
+        return ""
+    
+    # Check cache first (6 hours)
+    cache_key = f"perplexity_news_{sanitized_ticker}"
+    cached = cache_get(cache_key)
+    if cached:
+        return cached
+    
+    try:
+        from openai import OpenAI
+        
+        client = OpenAI(
+            api_key=api_key,
+            base_url="https://api.perplexity.ai"
+        )
+        
+        # Use sanitized inputs in prompt
+        prompt = f"""Proporciona un análisis conciso de las noticias financieras más relevantes sobre {sanitized_ticker} ({sanitized_company}). 
+
+Incluye:
+- Eventos importantes del último mes
+- Cambios significativos en valoración o perspectivas
+- Anuncios corporativos relevantes
+- Sentimiento general del mercado
+
+Cita las fuentes principales."""
+        
+        response = client.chat.completions.create(
+            model="llama-3.1-sonar-large-128k-online",
+            messages=[
+                {"role": "system", "content": "Eres un analista financiero experto que proporciona análisis de noticias concisos y bien fundamentados."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=500,
+            temperature=0.3
+        )
+        
+        analysis = response.choices[0].message.content.strip()
+        
+        # Cache for 6 hours
+        cache_set(cache_key, analysis, ttl_seconds=60 * 60 * 6)
+        
+        return analysis
+    except Exception as e:
+        return f"⚠️ Error al generar análisis de noticias: {str(e)}"
+
+
+def _plot_price_variation_5y(ticker: str) -> None:
+    """Plot 5-year price variation chart with caching (24 hours)."""
+    # Check cache first
+    cache_key = f"price_chart_data_{ticker}"
+    cached_data = cache_get(cache_key)
+    
+    if cached_data:
+        # Reconstruct DataFrame with proper metadata using 'tight' orientation
+        hist = pd.DataFrame.from_dict(cached_data, orient='tight')
+    else:
+        try:
+            t = yf.Ticker(ticker)
+            hist = t.history(period="5y", interval="1d")
+            
+            if hist.empty:
+                st.warning("No hay datos de precio disponibles para los últimos 5 años.")
+                return
+            
+            # Cache the data for 24 hours using 'tight' orientation to preserve structure
+            cache_data = hist.to_dict(orient='tight')
+            cache_set(cache_key, cache_data, ttl_seconds=60 * 60 * 24)  # 24 hours
+        except Exception as e:
+            st.error(f"Error al generar el gráfico de precio: {str(e)}")
+            return
+    
+    try:
+        fig = go.Figure()
+        fig.add_trace(
+            go.Scatter(
+                x=hist.index,
+                y=hist['Close'],
+                mode='lines',
+                name='Precio',
+                line=dict(color="#ff6d01", width=2),
+            )
+        )
+        
+        fig.update_layout(
+            title=f"Variación del precio — {ticker} (5 años)",
+            xaxis_title="Fecha",
+            yaxis_title="Precio ($)",
+            height=400,
+            margin=dict(l=20, r=20, t=40, b=30),
+            paper_bgcolor="#141f41",
+            plot_bgcolor="#141f41",
+            font=dict(color="#ffffff"),
+            showlegend=False,
+        )
+        fig.update_yaxes(showgrid=False, zeroline=False)
+        fig.update_xaxes(showgrid=False, zeroline=False)
+        
+        st.plotly_chart(fig, use_container_width=True, key=f"price_5y_{ticker}")
+    except Exception as e:
+        st.error(f"Error al generar el gráfico de precio: {str(e)}")
+
+
+def _plot_drawdown(ticker: str) -> None:
+    """Plot drawdown chart with caching (24 hours)."""
+    # Check cache first
+    cache_key = f"drawdown_chart_data_{ticker}"
+    cached_data = cache_get(cache_key)
+    
+    if cached_data:
+        # Reconstruct DataFrame with proper metadata using 'tight' orientation
+        hist = pd.DataFrame.from_dict(cached_data, orient='tight')
+    else:
+        try:
+            t = yf.Ticker(ticker)
+            hist = t.history(period="5y", interval="1d")
+            
+            if hist.empty:
+                st.warning("No hay datos disponibles para calcular el drawdown.")
+                return
+            
+            # Cache the data for 24 hours using 'tight' orientation to preserve structure
+            cache_data = hist.to_dict(orient='tight')
+            cache_set(cache_key, cache_data, ttl_seconds=60 * 60 * 24)  # 24 hours
+        except Exception as e:
+            st.error(f"Error al generar el gráfico de drawdown: {str(e)}")
+            return
+    
+    try:
+        # Calculate drawdown
+        close = hist['Close']
+        running_max = close.cummax()
+        drawdown = ((close - running_max) / running_max) * 100
+        
+        fig = go.Figure()
+        fig.add_trace(
+            go.Scatter(
+                x=drawdown.index,
+                y=drawdown,
+                mode='lines',
+                name='Drawdown',
+                line=dict(color="#ff00ff", width=2),
+                fill='tozeroy',
+                fillcolor='rgba(255, 0, 255, 0.3)',
+            )
+        )
+        
+        fig.update_layout(
+            title=f"Drawdown — {ticker} (5 años)",
+            xaxis_title="Fecha",
+            yaxis_title="Drawdown (%)",
+            height=400,
+            margin=dict(l=20, r=20, t=40, b=30),
+            paper_bgcolor="#141f41",
+            plot_bgcolor="#141f41",
+            font=dict(color="#ffffff"),
+            showlegend=False,
+        )
+        fig.update_yaxes(showgrid=False, zeroline=False)
+        fig.update_xaxes(showgrid=False, zeroline=False)
+        
+        st.plotly_chart(fig, use_container_width=True, key=f"drawdown_{ticker}")
+    except Exception as e:
+        st.error(f"Error al generar el gráfico de drawdown: {str(e)}")
+
+
+def _hex_to_rgba(hex_color: str, alpha: float = 1.0) -> str:
+    """Convert hex color to rgba string."""
+    hex_color = hex_color.lstrip('#')
+    r, g, b = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    return f'rgba({r}, {g}, {b}, {alpha})'
+
+
+def _render_52w_gauge(ticker: str, current_price: float, low_52w: float, high_52w: float) -> None:
+    """
+    Render 52-week range gauge chart.
+    Shows current price position within the 52-week range.
+    """
+    try:
+        # Validate data
+        if low_52w is None or high_52w is None or current_price is None:
+            st.info("No hay datos suficientes para mostrar el rango de 52 semanas.")
+            return
+        
+        # Avoid division by zero
+        if high_52w == low_52w:
+            st.info("El rango de 52 semanas es muy estrecho para mostrar el gráfico.")
+            return
+        
+        # Calculate position percentage
+        range_52w = high_52w - low_52w
+        position_pct = ((current_price - low_52w) / range_52w) * 100
+        
+        # Create gauge chart
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=current_price,
+            title={'text': f"Rango 52 Semanas — {ticker}", 'font': {'size': 20, 'color': "#ffffff"}},
+            number={'prefix': "$", 'font': {'size': 28, 'color': "#ffffff"}},
+            gauge={
+                'axis': {
+                    'range': [low_52w, high_52w],
+                    'tickwidth': 1,
+                    'tickcolor': "#ffffff",
+                    'tickfont': {'color': "#ffffff", 'size': 12}
+                },
+                'bar': {'color': "#ff6d01", 'thickness': 0.75},
+                'bgcolor': "#141f41",
+                'borderwidth': 2,
+                'bordercolor': "#ffffff",
+                'steps': [
+                    {'range': [low_52w, low_52w + range_52w * 0.33], 'color': _hex_to_rgba("#ff00ff", 0.3)},
+                    {'range': [low_52w + range_52w * 0.33, low_52w + range_52w * 0.67], 'color': _hex_to_rgba("#01c2ef", 0.3)},
+                    {'range': [low_52w + range_52w * 0.67, high_52w], 'color': _hex_to_rgba("#ff6d01", 0.3)},
+                ],
+                'threshold': {
+                    'line': {'color': "#01c2ef", 'width': 4},
+                    'thickness': 0.75,
+                    'value': current_price
+                }
+            }
+        ))
+        
+        fig.update_layout(
+            height=300,
+            margin=dict(l=20, r=20, t=60, b=20),
+            paper_bgcolor="#141f41",
+            font=dict(color="#ffffff"),
+        )
+        
+        st.plotly_chart(fig, use_container_width=True, key=f"52w_gauge_{ticker}")
+        
+        # Display text summary below gauge
+        st.markdown(
+            f"""
+            <div style='text-align: center; color: #ffffff; margin-top: -10px;'>
+                <strong>52W Low:</strong> ${low_52w:,.2f} | 
+                <strong>52W High:</strong> ${high_52w:,.2f} | 
+                <strong>Actual:</strong> ${current_price:,.2f}<br>
+                <strong>Posición:</strong> {position_pct:.1f}% del rango
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    except Exception as e:
+        st.error(f"Error al generar el gráfico de rango 52 semanas: {str(e)}")
+
+
+def _render_gurufocus_charts(ticker: str) -> None:
+    """
+    Display custom Gurufocus business model charts for ANY ticker with images.
+    Shows HMM (How Makes Money) and BPS (Beneficio Por Segmento) charts.
+    Charts are loaded from: src/assets/{TICKER} - HMM.png and {TICKER} - BPS.png
+    """
+    from pathlib import Path
+    
+    # Constants for Gurufocus image suffixes
+    GURUFOCUS_HMM_SUFFIX = " - HMM.png"
+    GURUFOCUS_BPS_SUFFIX = " - BPS.png"
+    
+    # Path to assets folder
+    assets_path = Path(__file__).parent.parent / "assets"
+    
+    # Look for HMM and BPS images
+    hmm_path = assets_path / f"{ticker}{GURUFOCUS_HMM_SUFFIX}"
+    bps_path = assets_path / f"{ticker}{GURUFOCUS_BPS_SUFFIX}"
+    
+    # Collect available images
+    image_paths = []
+    if hmm_path.exists():
+        image_paths.append(("How Makes Money", hmm_path))
+    if bps_path.exists():
+        image_paths.append(("Beneficio por Segmento", bps_path))
+    
+    if not image_paths:
+        # No business model images found, fail silently
+        return
+    
+    # Display section
+    st.markdown("## 📊 Modelo de Negocio (Gurufocus)")
+    st.caption(f"Análisis del modelo de negocio de {ticker}")
+    
+    # Display images in 2 columns (or 1 if only 1 image exists)
+    if len(image_paths) == 1:
+        # Only one image, center it
+        try:
+            st.image(str(image_paths[0][1]), caption=image_paths[0][0], use_container_width=True)
+        except Exception:
+            pass
+    else:
+        # Two images, side by side
+        col1, col2 = st.columns(2)
+        for idx, (caption, img_path) in enumerate(image_paths):
+            with col1 if idx == 0 else col2:
+                try:
+                    st.image(str(img_path), caption=caption, use_container_width=True)
+                except Exception:
+                    pass
+    
+    st.divider()
+
+
 # =========================================================
 # Página principal
 # =========================================================
@@ -2279,212 +2643,181 @@ def page_analysis() -> None:
     # Company name for display in titles
     company_name = raw.get("longName") or raw.get("shortName") or profile.get("shortName") or ticker
 
-    # Display a simple header with the ticker
-    st.markdown(f"## {ticker} — {company_name}")
+    # Additional data for header display
+    last_price = price.get("last_price")
+    currency = price.get("currency") or ""
+    delta_txt, pct_val = _fmt_delta(price.get("net_change"), price.get("pct_change"))
+
+    website = (profile.get("website") or raw.get("website") or "") if isinstance(profile, dict) else ""
+    logos = logo_candidates(website) if website else []
+    logo_url = next((u for u in logos if isinstance(u, str) and u.startswith(("http://", "https://"))), "")
+
+    # Header: logo left
+    left, right = st.columns([1.15, 0.85], gap="large")
+    with left:
+        c_logo, c_text = st.columns([0.12, 0.88], gap="small", vertical_alignment="center")
+        with c_logo:
+            if logo_url:
+                st.markdown(f'<div class="logo-circle"><img src="{logo_url}" /></div>', unsafe_allow_html=True)
+        with c_text:
+            st.markdown(f"### {ticker} — {company_name}")
+            st.markdown(f"## {_fmt_price(last_price, currency)}")
+            if delta_txt:
+                color = "#01c2ef" if (pct_val is not None and pct_val >= 0) else "#ff00ff"
+                st.markdown(f"<div style='margin-top:-6px; color:{color}; font-weight:600'>{delta_txt}</div>", unsafe_allow_html=True)
+
+    # ---------- KPIs (reordenados: 4 arriba + 4 abajo) ----------
+    with right:
+        st.markdown("### KPIs clave")
+        
+        # Contenedor único con sombra para todos los KPIs
+        st.markdown('<div class="kpis-container">', unsafe_allow_html=True)
+        
+        try:
+            # Fila superior: 4 KPIs generales
+            top_cols = st.columns(4, gap="large")
+            with top_cols[0]:
+                _kpi_card("Beta", _fmt_kpi(stats.get("beta")))
+            with top_cols[1]:
+                pe = stats.get("pe_ttm")
+                pe_txt = (_fmt_kpi(pe) + "x") if isinstance(pe, (int, float)) else "N/D"
+                _kpi_card("PER (TTM)", pe_txt)
+            with top_cols[2]:
+                _kpi_card("EPS (TTM)", _fmt_kpi(stats.get("eps_ttm")))
+            with top_cols[3]:
+                _kpi_card("Target 1Y", _fmt_kpi(stats.get("target_1y")))
+
+            # Fila inferior: 4 KPIs relacionados con dividendos (incluye PayOut)
+            bottom_cols = st.columns(4, gap="large")
+
+            div_yield = _divk_get(divk, "div_yield", "dividend_yield", "dividendYield", "dividend_yield_pct")
+            fwd_div_yield = _divk_get(divk, "fwd_div_yield", "forward_div_yield", "forward_dividend_yield")
+            annual_div = _divk_get(divk, "annual_dividend", "annual_div", "annualDividend")
+            payout = _divk_get(divk, "payout_ratio", "payout", "payoutRatio")
+
+            with bottom_cols[0]:
+                val = "N/D"
+                if isinstance(div_yield, (int, float)):
+                    val = _fmt_kpi(div_yield, suffix="%", decimals=2)
+                elif div_yield:
+                    val = _fmt_kpi(div_yield)
+                _kpi_card("Dividend Yield", val)
+
+            with bottom_cols[1]:
+                val = "N/D"
+                if isinstance(fwd_div_yield, (int, float)):
+                    val = _fmt_kpi(fwd_div_yield, suffix="%", decimals=2)
+                elif fwd_div_yield:
+                    val = _fmt_kpi(fwd_div_yield)
+                _kpi_card("Fwd Div Yield", val)
+
+            with bottom_cols[2]:
+                val = "N/D"
+                if isinstance(annual_div, (int, float)):
+                    val = _fmt_kpi(annual_div, decimals=2)
+                elif annual_div:
+                    val = _fmt_kpi(annual_div)
+                _kpi_card("Div. anual ($)", val)
+
+            with bottom_cols[3]:
+                val = "N/D"
+                if isinstance(payout, (int, float)):
+                    val = _fmt_kpi(payout, suffix="%", decimals=0)
+                elif payout:
+                    val = _fmt_kpi(payout)
+                _kpi_card("PayOut Ratio", val)
+        finally:
+            # Cerrar contenedor de KPIs (siempre se ejecuta)
+            st.markdown('</div>', unsafe_allow_html=True)
+
     st.divider()
 
-    # Display content based on selected section
-    selected_section = st.session_state.get("analysis_section", "Dividendos")
+    # GPT Summary Section
+    st.markdown("## Resumen Financiero")
     
-    # "Resumen" subsection is the entry point (with search) under "Buscador".
-    # Display Dividendos as the default content when in Resumen mode.
-    # This maintains backward compatibility: "Resumen" replaces the old "Análisis" page,
-    # which defaulted to showing Dividendos section.
-    if selected_section == "Resumen":
-        selected_section = "Dividendos"
-    
-    if selected_section == "Dividendos":
-        inputs = _load_dividend_inputs(ticker, YEARS)
-        price_daily = inputs["price_daily"]
-        dividends = inputs["dividends"]
-        cashflow = inputs["cashflow"]
+    api_key = get_user_gpt_api_key(user_email)
+    if api_key:
+        # Use session state to store the summary for the current ticker
+        # This ensures the summary persists when switching modules
+        # Note: session_summary_key (gpt_summary_display_) is separate from cache_key (gpt_summary_)
+        # - cache_key: shared across all users, persists 3 months in SQLite database (via cache_store)
+        # - session_summary_key: per-user session, avoids re-generating on module switch
+        session_summary_key = f"gpt_summary_display_{ticker}"
+        
+        # Only generate if not in session state or ticker changed
+        if session_summary_key not in st.session_state:
+            with st.spinner("Generando resumen con GPT..."):
+                summary = _generate_gpt_summary(ticker, api_key)
+                st.session_state[session_summary_key] = summary
+        
+        # Display the summary from session state
+        st.markdown(st.session_state[session_summary_key])
+    else:
+        st.info("⚠️ Para ver el resumen generado por GPT, configure su API KEY en el sidebar.")
 
-        st.markdown("## Valoración por dividendo")
-        sub_tabs = st.tabs(["📈 Evolución del dividendo", "🛡️ Seguridad del dividendo", "📌 Geraldine Weiss"])
-        with sub_tabs[0]:
-            _plot_dividend_evolution(ticker, price_daily, dividends)
-        with sub_tabs[1]:
-            _plot_dividend_safety(ticker, cashflow)
-        with sub_tabs[2]:
-            # Don't pass annual_div since it's not available in this simplified view
-            _plot_geraldine_weiss(ticker, price_daily, dividends)
+    st.divider()
     
-    elif selected_section == "Balance":
-        st.markdown("## Balance")
-        financial_data = _load_financial_statements(ticker)
-        balance_df = _prepare_financial_df(financial_data["balance_sheet"], YEARS)
+    # Perplexity News Analysis (after GPT summary, before related posts)
+    perplexity_key = get_user_perplexity_api_key(user_email)
+    if perplexity_key:
+        st.markdown("### 📰 Análisis de Noticias Recientes")
         
-        if balance_df.empty:
-            st.warning("No hay datos de balance disponibles para este ticker.")
-        else:
-            col1, col2 = st.columns(2)
-            with col1:
-                _plot_assets_evolution(ticker, balance_df)
-                _plot_debt_evolution(ticker, balance_df)
-            with col2:
-                _plot_liabilities_evolution(ticker, balance_df)
-                _plot_equity_evolution(ticker, balance_df)
+        session_news_key = f"perplexity_news_display_{ticker}"
+        if session_news_key not in st.session_state:
+            with st.spinner("Analizando noticias recientes con Perplexity..."):
+                news = _generate_perplexity_news_analysis(ticker, company_name, perplexity_key)
+                st.session_state[session_news_key] = news
+        
+        st.markdown(st.session_state[session_news_key])
+        st.divider()
     
-    elif selected_section == "EERR":
-        st.markdown("## Estado de Resultados")
-        financial_data = _load_financial_statements(ticker)
-        income_df = _prepare_financial_df(financial_data["income_stmt"], YEARS)
+    # Show related blog posts
+    related_posts = get_blog_posts_by_ticker(ticker)
+    if related_posts:
+        st.markdown("### 📰 Artículos relacionados")
         
-        if income_df.empty:
-            st.warning("No hay datos de estado de resultados disponibles para este ticker.")
-        else:
-            col1, col2 = st.columns(2)
-            with col1:
-                _plot_revenue_evolution(ticker, income_df)
-                _plot_eps_evolution(ticker, income_df)
-            with col2:
-                _plot_margins_evolution(ticker, income_df)
-                _plot_shares_outstanding(ticker, income_df)
-    
-    elif selected_section == "EFE":
-        st.markdown("## Estado de Flujo de Efectivo")
-        financial_data = _load_financial_statements(ticker)
-        cashflow_df = _prepare_financial_df(financial_data["cashflow"], YEARS)
+        # Helper function to navigate to blog post
+        def _navigate_to_blog_post(post_id: int):
+            """Navigate to blog post detail view."""
+            st.session_state["page_section"] = "Blogs"
+            st.session_state["blog_view"] = "detail"
+            st.session_state["selected_blog_post"] = post_id
         
-        if cashflow_df.empty:
-            st.warning("No hay datos de flujo de efectivo disponibles para este ticker.")
-        else:
-            col1, col2 = st.columns(2)
-            with col1:
-                _plot_cashflow_vs_capex(ticker, cashflow_df)
-                _plot_debt_repayment(ticker, cashflow_df)
-            with col2:
-                _plot_debt_issuance(ticker, cashflow_df)
-                _plot_share_buybacks(ticker, cashflow_df)
-    
-    elif selected_section == "Valoración por múltiplos":
-        st.markdown("## Valoración por múltiplos")
-        financial_data = _load_financial_statements(ticker)
-        balance_df = _prepare_financial_df(financial_data["balance_sheet"], YEARS)
-        income_df = _prepare_financial_df(financial_data["income_stmt"], YEARS)
-        cashflow_df = _prepare_financial_df(financial_data["cashflow"], YEARS)
-        
-        # Get ticker info for market cap and PE ratio (with rate limit protection)
-        info = _load_ticker_info(ticker)
-        
-        if balance_df.empty and income_df.empty and cashflow_df.empty:
-            st.warning("No hay datos financieros suficientes para la valoración por múltiplos.")
-        else:
-            # Create tabs for each chart
-            sub_tabs = st.tabs(["💰 Evolución de la Deuda", "📊 Evolución del PER", "📈 Evolución EV/EBITDA", "📊 Uso del FC", "📊 Valoración Gurufocus"])
-            with sub_tabs[0]:
-                if not balance_df.empty and not cashflow_df.empty:
-                    _plot_debt_fcf_evolution(ticker, balance_df, cashflow_df)
-                else:
-                    st.warning("No hay datos suficientes de balance y flujo de efectivo para este análisis.")
-            with sub_tabs[1]:
-                if not income_df.empty:
-                    _plot_per_evolution(ticker, income_df, info)
-                else:
-                    st.warning("No hay datos suficientes de estado de resultados para este análisis.")
-            with sub_tabs[2]:
-                if not income_df.empty and not balance_df.empty:
-                    _plot_ev_ebitda_evolution(ticker, income_df, balance_df, info)
-                else:
-                    st.warning("No hay datos suficientes para este análisis.")
-            with sub_tabs[3]:
-                if not cashflow_df.empty:
-                    _plot_fc_usage(ticker, cashflow_df)
-                else:
-                    st.warning("No hay datos suficientes de flujo de efectivo para este análisis.")
-            with sub_tabs[4]:
-                _render_gurufocus_valuation_charts(ticker)
-    
-    elif selected_section == "Pizarra de Valoración":
-        st.markdown("## Pizarra de Valoración")
-        
-        # Get the company website to fetch logo
-        website = (profile.get("website") or raw.get("website") or "") if isinstance(profile, dict) else ""
-        logos = logo_candidates(website) if website else []
-        logo_url = next((u for u in logos if isinstance(u, str) and u.startswith(("http://", "https://"))), "")
-        
-        if not logo_url:
-            st.warning("No se pudo obtener el logo de la empresa. La funcionalidad de la pizarra requiere un logo válido.")
-        else:
-            _render_interactive_valuation_board(ticker, logo_url)
-    
-    elif selected_section == "Análisis Razonado":
-        st.markdown("## Análisis Razonado")
-        financial_data = _load_financial_statements(ticker)
-        balance_df = _prepare_financial_df(financial_data["balance_sheet"], YEARS)
-        income_df = _prepare_financial_df(financial_data["income_stmt"], YEARS)
-        cashflow_df = _prepare_financial_df(financial_data["cashflow"], YEARS)
-        
-        if balance_df.empty and income_df.empty:
-            st.warning("No hay datos financieros suficientes para el análisis razonado.")
-        else:
-            ratios = _calculate_financial_ratios(balance_df, income_df, cashflow_df, ticker)
-            
-            if ratios.empty:
-                st.info("No se pudieron calcular ratios financieros con los datos disponibles.")
-            else:
-                # Display ratios in a two-column layout: table on left, chart on right
-                ratio_cols = list(ratios.columns)
+        for post in related_posts[:3]:  # Mostrar máximo 3
+            with st.container(border=True):
+                st.markdown(f"**{post['title']}**")
+                # Preview: primeros 100 caracteres
+                preview = post['content'][:100].replace('\n', ' ') + "..."
+                st.caption(preview)
                 
-                # Check if we have any ratios to display
-                if not ratio_cols:
-                    st.info("No se pudieron calcular ratios financieros con los datos disponibles.")
-                else:
-                    # Transpose ratios DataFrame for better table display
-                    # Rows will be metrics, columns will be years
-                    ratios_transposed = ratios.T
-                    
-                    # Initialize selected metric in session state if not exists
-                    session_key = f"selected_ratio_{ticker}"
-                    if session_key not in st.session_state or st.session_state[session_key] not in ratio_cols:
-                        st.session_state[session_key] = ratio_cols[0]
-                    
-                    # Create two columns: left for table, right for chart
-                    col_table, col_chart = st.columns([1, 1])
-                    
-                    with col_table:
-                        st.markdown("### Métricas Financieras")
-                        
-                        # Display the table with clickable rows
-                        # Create a formatted DataFrame for display
-                        display_df = ratios_transposed.copy()
-                        
-                        # Format values to 2 decimal places
-                        try:
-                            # Use map() for pandas >= 2.1, applymap() for older versions
-                            display_df = display_df.map(lambda x: f"{x:.2f}" if pd.notna(x) else "N/D")
-                        except AttributeError:
-                            # Fallback to applymap for older pandas versions
-                            display_df = display_df.applymap(lambda x: f"{x:.2f}" if pd.notna(x) else "N/D")
-                        
-                        # Display the dataframe
-                        st.dataframe(
-                            display_df,
-                            use_container_width=True,
-                            height=400
-                        )
-                        
-                        # Add dropdown (selectbox) for metric selection
-                        st.markdown("**Seleccione una métrica para visualizar:**")
-                        
-                        # Calculate default index for selectbox
-                        default_index = ratio_cols.index(st.session_state[session_key])
-                        
-                        selected_metric = st.selectbox(
-                            "Métrica",
-                            ratio_cols,
-                            index=default_index,
-                            key=f"ratio_selector_{ticker}",
-                            label_visibility="collapsed"
-                        )
-                        
-                        # Update session state
-                        st.session_state[session_key] = selected_metric
-                    
-                    with col_chart:
-                        st.markdown("### Gráfico de Evolución")
-                        
-                        # Plot the selected ratio
-                        selected_ratio_name = st.session_state[session_key]
-                        selected_ratio_data = ratios[selected_ratio_name]
-                        _plot_ratio_evolution(ticker, selected_ratio_name, selected_ratio_data)
+                st.button(
+                    "📖 Leer artículo completo",
+                    key=f"read_blog_{post['id']}",
+                    use_container_width=True,
+                    on_click=_navigate_to_blog_post,
+                    args=(post['id'],)
+                )
+        st.divider()
+
+    # Charts Section
+    st.markdown("## Análisis de Precio")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        _plot_price_variation_5y(ticker)
+    
+    with col2:
+        _plot_drawdown(ticker)
+    
+    # 52-Week Range Gauge
+    st.markdown("### Rango 52 Semanas")
+    range_data = get_52w_range(ticker)
+    _render_52w_gauge(
+        ticker,
+        range_data.get("current_price"),
+        range_data.get("low_52w"),
+        range_data.get("high_52w")
+    )
+    
+    # Custom Gurufocus charts for specific tickers
+    _render_gurufocus_charts(ticker)
