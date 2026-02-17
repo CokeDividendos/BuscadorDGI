@@ -2168,9 +2168,10 @@ def _generate_gpt_summary(ticker: str, api_key: str) -> str:
         return "⚠️ No se ha configurado una API KEY de GPT. Por favor, ingrese su API KEY en el sidebar."
     
     # Sanitize ticker input to prevent prompt injection
-    # Only allow alphanumeric characters, dots, and hyphens (common in tickers)
-    sanitized_ticker = "".join(c for c in ticker if c.isalnum() or c in ".-").upper()[:20]
-    if not sanitized_ticker:
+    # Stock tickers typically consist of uppercase letters and numbers only
+    # Dots are common in some international tickers (e.g., BRK.B)
+    sanitized_ticker = "".join(c for c in ticker if c.isalnum() or c == ".").upper()[:20]
+    if not sanitized_ticker or not sanitized_ticker.replace(".", "").isalnum():
         return "⚠️ Ticker inválido."
     
     # Check cache first
@@ -2214,12 +2215,12 @@ def _generate_perplexity_news_analysis(ticker: str, company_name: str, api_key: 
         return ""
     
     # Sanitize inputs to prevent prompt injection
-    # Only allow alphanumeric characters, dots, and hyphens for ticker
-    sanitized_ticker = "".join(c for c in ticker if c.isalnum() or c in ".-").upper()[:20]
-    # For company name, allow more characters but still sanitize
-    sanitized_company = "".join(c for c in company_name if c.isalnum() or c in " .,&-()").strip()[:100]
+    # Ticker: only alphanumeric and dots (e.g., BRK.B)
+    sanitized_ticker = "".join(c for c in ticker if c.isalnum() or c == ".").upper()[:20]
+    # Company name: allow alphanumeric, spaces, commas, and periods only
+    sanitized_company = "".join(c for c in company_name if c.isalnum() or c in " .,").strip()[:100]
     
-    if not sanitized_ticker:
+    if not sanitized_ticker or not sanitized_ticker.replace(".", "").isalnum():
         return ""
     
     # Check cache first (6 hours)
