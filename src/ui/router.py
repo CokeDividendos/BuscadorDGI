@@ -9,6 +9,7 @@ from src.pages.blogs import page_blogs
 from src.pages.api_keys import page_api_keys
 from src.pages.admin_users import page_admin_users
 from src.pages.etf_comparator import page_etf_comparator
+from src.pages.dividend_simulator import page_dividend_simulator
 from src.services.cache_store import cache_clear_all
 from src.services.usage_limits import remaining_searches
 
@@ -99,7 +100,7 @@ def run_app():
         st.markdown("### Navegación")
         
         # Build page sections list
-        page_sections = ["Buscador", "Comparador ETF", "Blogs", "🔑 API Keys"]
+        page_sections = ["Buscador", "Comparador ETF", "Simulador de Dividendos", "Blogs", "🔑 API Keys"]
         if admin:
             page_sections.append("Admin · Usuarios")
 
@@ -187,6 +188,8 @@ def run_app():
             
     elif page_section == "Comparador ETF":
         page_etf_comparator()
+    elif page_section == "Simulador de Dividendos":
+        page_dividend_simulator()
     elif page_section == "Blogs":
         page_blogs()
     elif page_section == "🔑 API Keys":
