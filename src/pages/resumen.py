@@ -52,14 +52,14 @@ from src.pages.analysis import (
 def page_resumen() -> None:
     """Display analysis sections based on sidebar selection."""
     
-    # Ticker validation (search input is now in Buscador > Resumen section)
+    # Ticker validation (search input is now in Buscador > Resumen section, which calls page_analysis)
     if "ticker" not in st.session_state:
-        st.info("Por favor, busque un ticker en la sección 'Buscador > Resumen' primero.")
+        st.info("Por favor, busque un ticker usando el buscador primero.")
         return
 
     ticker = (st.session_state.get("ticker") or "").strip().upper()
     if not ticker:
-        st.error("Ticker vacío. Por favor, busque un ticker en la sección 'Buscador > Resumen'.")
+        st.error("Ticker vacío. Por favor, busque un ticker usando el buscador.")
         return
     
     # Get user info
