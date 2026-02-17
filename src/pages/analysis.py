@@ -2167,8 +2167,14 @@ def _generate_gpt_summary(ticker: str, api_key: str) -> str:
     if not api_key:
         return "⚠️ No se ha configurado una API KEY de GPT. Por favor, ingrese su API KEY en el sidebar."
     
+    # Sanitize ticker input to prevent prompt injection
+    # Only allow alphanumeric characters, dots, and hyphens (common in tickers)
+    sanitized_ticker = "".join(c for c in ticker if c.isalnum() or c in ".-").upper()[:20]
+    if not sanitized_ticker:
+        return "⚠️ Ticker inválido."
+    
     # Check cache first
-    cache_key = f"gpt_summary_{ticker}"
+    cache_key = f"gpt_summary_{sanitized_ticker}"
     cached_summary = cache_get(cache_key)
     if cached_summary:
         return cached_summary
@@ -2177,7 +2183,8 @@ def _generate_gpt_summary(ticker: str, api_key: str) -> str:
         import openai
         client = openai.OpenAI(api_key=api_key)
         
-        prompt = f"Haz un resumen financiero de la empresa según el ticker ingresado {ticker}, señalando a qué se dedica, cómo gana dinero y aspectos en los que destaca, el que debe ser escueto y resumido."
+        # Use sanitized ticker in prompt
+        prompt = f"Haz un resumen financiero de la empresa según el ticker ingresado {sanitized_ticker}, señalando a qué se dedica, cómo gana dinero y aspectos en los que destaca, el que debe ser escueto y resumido."
         
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
@@ -2206,8 +2213,17 @@ def _generate_perplexity_news_analysis(ticker: str, company_name: str, api_key: 
     if not api_key:
         return ""
     
+    # Sanitize inputs to prevent prompt injection
+    # Only allow alphanumeric characters, dots, and hyphens for ticker
+    sanitized_ticker = "".join(c for c in ticker if c.isalnum() or c in ".-").upper()[:20]
+    # For company name, allow more characters but still sanitize
+    sanitized_company = "".join(c for c in company_name if c.isalnum() or c in " .,&-()").strip()[:100]
+    
+    if not sanitized_ticker:
+        return ""
+    
     # Check cache first (6 hours)
-    cache_key = f"perplexity_news_{ticker}"
+    cache_key = f"perplexity_news_{sanitized_ticker}"
     cached = cache_get(cache_key)
     if cached:
         return cached
@@ -2220,7 +2236,8 @@ def _generate_perplexity_news_analysis(ticker: str, company_name: str, api_key: 
             base_url="https://api.perplexity.ai"
         )
         
-        prompt = f"""Proporciona un análisis conciso de las noticias financieras más relevantes sobre {ticker} ({company_name}). 
+        # Use sanitized inputs in prompt
+        prompt = f"""Proporciona un análisis conciso de las noticias financieras más relevantes sobre {sanitized_ticker} ({sanitized_company}). 
 
 Incluye:
 - Eventos importantes del último mes

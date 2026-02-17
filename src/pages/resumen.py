@@ -8,10 +8,10 @@ import streamlit as st
 
 from src.auth import is_admin
 from src.services.finance_data import (
+    get_dividend_kpis,
+    get_key_stats,
     get_price_data,
     get_profile_data,
-    get_key_stats,
-    get_dividend_kpis,
 )
 from src.services.logos import logo_candidates
 
@@ -83,10 +83,9 @@ def page_resumen() -> None:
     # Display content based on selected section
     selected_section = st.session_state.get("analysis_section", "Dividendos")
     
-    # "Resumen" subsection is the entry point (with search) under "Buscador".
-    # Display Dividendos as the default content when in Resumen mode.
-    # This maintains backward compatibility: "Resumen" replaces the old "Análisis" page,
-    # which defaulted to showing Dividendos section.
+    # SPECIAL CASE: "Resumen" subsection is the entry point (with search) under "Buscador".
+    # When user is on "Resumen", we default to showing Dividendos content.
+    # This maintains backward compatibility with the old "Análisis" page structure.
     if selected_section == "Resumen":
         selected_section = "Dividendos"
     
