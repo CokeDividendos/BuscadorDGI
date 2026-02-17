@@ -94,17 +94,17 @@ def run_app():
         
         # 2. Main navigation sections
         if "page_section" not in st.session_state:
-            st.session_state["page_section"] = "Resumen"  # Default to Resumen
+            st.session_state["page_section"] = "Buscador"  # Default to Buscador
         
         st.markdown("### Navegación")
         
         # Build page sections list
-        page_sections = ["Resumen", "Análisis", "Comparador ETF", "Blogs", "🔑 API Keys"]
+        page_sections = ["Buscador", "Comparador ETF", "Blogs", "🔑 API Keys"]
         if admin:
             page_sections.append("Admin · Usuarios")
 
         # Get current index for page selection
-        current_page = st.session_state.get("page_section", "Resumen")
+        current_page = st.session_state.get("page_section", "Buscador")
         try:
             current_idx = page_sections.index(current_page) if current_page in page_sections else 0
         except ValueError:
@@ -123,15 +123,16 @@ def run_app():
         
         st.divider()
 
-        # 4. Data sections (Dividendos, Balance, etc.) - Only in Análisis page
+        # 4. Data sections (Dividendos, Balance, etc.) - Only in Buscador page
         # Initialize analysis section state if not exists (for page_analysis)
         if "analysis_section" not in st.session_state:
-            st.session_state["analysis_section"] = "Dividendos"
+            st.session_state["analysis_section"] = "Resumen"
         
-        # Show data sections only when in Análisis page
-        if page_section == "Análisis":
+        # Show data sections only when in Buscador page (formerly Resumen)
+        if page_section == "Buscador":
             st.markdown("### Secciones de datos")
             data_sections = [
+                "Resumen",  # Anteriormente "Análisis"
                 "Dividendos",
                 "Balance",
                 "EERR",
@@ -142,9 +143,9 @@ def run_app():
             ]
             
             # Get the current analysis section, validate it's in the list
-            current_analysis_section = st.session_state.get("analysis_section", "Dividendos")
+            current_analysis_section = st.session_state.get("analysis_section", "Resumen")
             if current_analysis_section not in data_sections:
-                current_analysis_section = "Dividendos"
+                current_analysis_section = "Resumen"
             
             selected_data_section = st.radio(
                 "Seleccione una sección de datos:",
@@ -173,10 +174,17 @@ def run_app():
                 st.rerun()
 
     # Route to the appropriate page
-    if page_section == "Resumen":
-        page_resumen()
-    elif page_section == "Análisis":
-        page_analysis()
+    if page_section == "Buscador":
+        # When in Buscador, render the appropriate subsection
+        selected_data_section = st.session_state.get("analysis_section", "Resumen")
+        
+        if selected_data_section == "Resumen":
+            # This is the former "Análisis" page
+            page_analysis()
+        else:
+            # All other data sections (Dividendos, Balance, etc.) are rendered by page_resumen
+            page_resumen()
+            
     elif page_section == "Comparador ETF":
         page_etf_comparator()
     elif page_section == "Blogs":
