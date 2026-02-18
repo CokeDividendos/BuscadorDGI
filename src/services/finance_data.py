@@ -8,6 +8,12 @@ import numpy as np
 from src.services.cache_store import cache_get, cache_set
 from src.services.yf_client import install_http_cache, yf_call
 
+# Constants for dividend frequency detection (in days)
+MONTHLY_THRESHOLD_DAYS = 40      # < 40 days between payments = monthly
+QUARTERLY_THRESHOLD_DAYS = 120   # < 120 days between payments = quarterly  
+SEMIANNUAL_THRESHOLD_DAYS = 270  # < 270 days between payments = semi-annual
+# >= 270 days between payments = annual
+
 class FinanceDataError(RuntimeError):
     pass
 
@@ -180,6 +186,77 @@ def get_key_stats(ticker: str) -> dict:
 
     return _cache_get_or_set(key, ttl, _load)
 
+def _calculate_annual_dividend(divs) -> float | None:
+    """
+    Calculate trailing 12-month dividend sum with improved accuracy.
+    
+    Strategy:
+    1. Use EXACTLY the last 12 calendar months (not 365 days)
+    2. If less than 12 months of history, extrapolate based on detected frequency
+    3. Detect payment frequency automatically (monthly, quarterly, semi-annual, annual)
+    
+    Args:
+        divs: Pandas Series with dividend history (index = dates, values = dividend amounts)
+    
+    Returns:
+        Annual dividend amount or None if cannot be calculated
+    """
+    if divs is None or len(divs) == 0:
+        return None
+    
+    try:
+        import pandas as pd
+        
+        # Get last payment date
+        last_date = divs.index.max()
+        
+        # Calculate date exactly 12 months ago
+        start_date = last_date - pd.DateOffset(months=12)
+        
+        # Get dividends from the last 12 calendar months
+        # Note: Using > instead of >= to avoid edge case where 5 quarterly payments
+        # fall within window (e.g., if payment happens exactly on 12-month boundary)
+        div_12m = divs[divs.index > start_date]
+        
+        if len(div_12m) >= 4:
+            # We have at least 4 payments in 12 months, use actual sum
+            return float(div_12m.sum())
+        
+        # Less than 12 months of data - extrapolate based on frequency
+        if len(divs) < 2:
+            # Only 1 payment - can't determine frequency reliably
+            return None
+        
+        # Detect payment frequency from time between payments
+        time_diffs = divs.index.to_series().diff().dropna()
+        avg_days_between = time_diffs.dt.days.median()
+        
+        # Classify frequency based on threshold constants
+        if avg_days_between < MONTHLY_THRESHOLD_DAYS:
+            # Monthly (avg ~30 days)
+            payments_per_year = 12
+        elif avg_days_between < QUARTERLY_THRESHOLD_DAYS:
+            # Quarterly (avg ~90 days)
+            payments_per_year = 4
+        elif avg_days_between < SEMIANNUAL_THRESHOLD_DAYS:
+            # Semi-annual (avg ~180 days)
+            payments_per_year = 2
+        else:
+            # Annual (avg ~365 days)
+            payments_per_year = 1
+        
+        # Use last payment as reference
+        last_payment = float(divs.iloc[-1])
+        
+        # Extrapolate annual dividend
+        annual_dividend = last_payment * payments_per_year
+        
+        return annual_dividend
+        
+    except Exception:
+        return None
+
+
 def get_dividend_kpis(ticker: str) -> dict:
     """
     KPIs de dividendos. Cache 24h. Solo yfinance.
@@ -222,16 +299,17 @@ def get_dividend_kpis(ticker: str) -> dict:
 
         if divs is not None and len(divs) > 0:
             try:
-                # trailing 12m
-                last_dt = divs.index.max()
-                cutoff = last_dt - __import__("pandas").Timedelta(days=365)
-                div_12m = divs[divs.index >= cutoff]
-                annual = float(div_12m.sum()) if len(div_12m) else float(divs.tail(4).sum())
+                # Calculate trailing 12-month dividend with improved accuracy
+                annual = _calculate_annual_dividend(divs)
 
-                # forward anual (heurística simple)
-                last_div = float(divs.iloc[-1])
-                freq = max(1, min(12, int(len(div_12m)) if len(div_12m) else 4))
-                forward_annual = last_div * freq
+                # Forward dividend: use last payment * detected frequency
+                if annual is not None:
+                    # Use annual as forward (already calculated correctly)
+                    forward_annual = annual
+                else:
+                    # Fallback: use last payment * 4 (assume quarterly)
+                    last_div = float(divs.iloc[-1])
+                    forward_annual = last_div * 4
 
                 if isinstance(last_price, (int, float)) and last_price:
                     div_yield = (annual / last_price) * 100 if annual is not None else None

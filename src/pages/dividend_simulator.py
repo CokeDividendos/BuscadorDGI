@@ -78,6 +78,70 @@ def _get_annual_dividend_from_ticker(ticker: str) -> Optional[float]:
         return None
 
 
+def _calculate_kpis(df: pd.DataFrame, inversion_inicial: float, aportes_mensuales: float, 
+                    inflacion_anual: float, anos_simulacion: int) -> dict:
+    """
+    Calculate all KPIs from simulation results.
+    
+    Args:
+        df: DataFrame with simulation results
+        inversion_inicial: Initial investment amount
+        aportes_mensuales: Monthly contribution amount
+        inflacion_anual: Annual inflation rate (as percentage)
+        anos_simulacion: Number of years simulated
+    
+    Returns:
+        dict with keys:
+        - capital_total: Final portfolio value
+        - aportes_totales: Total contributions
+        - dividendos_totales: Total dividends collected
+        - rentabilidad_total: Total return % (capital growth)
+        - dividendo_mensual_final: Monthly dividend at end
+        - costo_vida_final: Cost of living at end (inflation-adjusted)
+        - ano_cobertura: Year when dividends cover cost of living
+    """
+    # Capital Total (último valor del portafolio)
+    capital_total = df["Valor del Portafolio"].iloc[-1]
+    
+    # Aportes Totales
+    aportes_totales = inversion_inicial + (aportes_mensuales * 12 * anos_simulacion)
+    
+    # Total Dividendos Cobrados (suma de todos los dividendos generados)
+    dividendos_totales = df["Dividendos del Mes"].sum()
+    
+    # Rentabilidad Total % (same as capital growth %)
+    # Note: In this simulation, dividends are automatically reinvested into shares,
+    # so capital_total already includes the full value of all reinvested dividends.
+    # Thus, this calculation represents true total return including dividend growth.
+    rentabilidad_total = ((capital_total - aportes_totales) / aportes_totales) * 100 if aportes_totales > 0 else 0
+    
+    # Dividendo Mensual Final
+    dividendo_mensual_final = df["Dividendo Mensual Generado"].iloc[-1]
+    
+    # Costo de Vida Final (ajustado por inflación)
+    costo_vida_final_mensual = df["Costo de Vida Ajustado"].iloc[-1]
+    
+    # Año de Cobertura
+    # Find first year where monthly dividend covers monthly cost of living
+    # Check December values (end of each year)
+    df_year_end = df[df["Mes"] == 12].copy()
+    anos_con_cobertura = df_year_end[df_year_end["% Cobertura"] >= 100]
+    if not anos_con_cobertura.empty:
+        ano_cobertura = int(anos_con_cobertura["Año"].iloc[0])
+    else:
+        ano_cobertura = None
+    
+    return {
+        "capital_total": capital_total,
+        "aportes_totales": aportes_totales,
+        "dividendos_totales": dividendos_totales,
+        "rentabilidad_total": rentabilidad_total,
+        "dividendo_mensual_final": dividendo_mensual_final,
+        "costo_vida_final": costo_vida_final_mensual,
+        "ano_cobertura": ano_cobertura,
+    }
+
+
 def _simulate_dividends(
     inversion_inicial: float,
     aportes_mensuales: float,
@@ -359,41 +423,66 @@ def page_dividend_simulator():
         # Display summary KPIs
         st.markdown("### 📈 Resultados de la Simulación")
         
-        final_row = df.iloc[-1]
-        kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
+        # Calculate KPIs
+        kpis = _calculate_kpis(
+            df=df,
+            inversion_inicial=inversion_inicial,
+            aportes_mensuales=aportes_mensuales,
+            inflacion_anual=inflacion_anual,
+            anos_simulacion=anos_simulacion
+        )
         
-        with kpi_col1:
+        # SECCIÓN PRINCIPAL: 4 KPIs grandes con formato metric
+        st.markdown("#### 💰 Resumen Financiero")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
             st.metric(
-                "Valor Final del Portafolio",
-                f"${final_row['Valor del Portafolio']:,.2f}",
-                delta=f"+${final_row['Valor del Portafolio'] - inversion_inicial:,.2f}"
+                "Capital Total",
+                f"${kpis['capital_total']:,.2f}",
+                delta=f"+{kpis['rentabilidad_total']:.2f}%",
+                delta_color="normal"
             )
         
-        with kpi_col2:
+        with col2:
             st.metric(
-                "Acciones Totales",
-                f"{final_row['Q. Acciones Totales']:,.2f}",
-                delta=f"+{final_row['Q. Acciones Totales'] - final_row['Q. Acciones (Inversión Inicial)']:,.2f}"
+                "Aportes Totales",
+                f"${kpis['aportes_totales']:,.2f}"
             )
         
-        with kpi_col3:
+        with col3:
             st.metric(
-                "Dividendo Mensual Final",
-                f"${final_row['Dividendo Mensual Generado']:,.2f}",
-                delta=f"{final_row['% Cobertura']:.1f}% cobertura"
+                "Total Dividendos Cobrados",
+                f"${kpis['dividendos_totales']:,.2f}"
             )
         
-        with kpi_col4:
-            inversion_total = inversion_inicial + (aportes_mensuales * 12 * anos_simulacion)
-            ganancia = final_row['Valor del Portafolio'] - inversion_total
-            roi = (ganancia / inversion_total * 100) if inversion_total > 0 else 0
+        with col4:
             st.metric(
-                "ROI Total",
-                f"{roi:.1f}%",
-                delta=f"Ganancia: ${ganancia:,.2f}"
+                "Rentabilidad Total",
+                f"{kpis['rentabilidad_total']:.2f}%"
             )
         
-        st.markdown("---")
+        # SECCIÓN SECUNDARIA: KPIs adicionales más pequeños
+        st.markdown("#### 📊 Detalles Adicionales")
+        col5, col6, col7 = st.columns(3)
+        
+        with col5:
+            st.markdown(f"**Dividendo Mensual Final:** ${kpis['dividendo_mensual_final']:,.2f}")
+            st.caption("Dividendo mensual que recibirás en el último año")
+        
+        with col6:
+            st.markdown(f"**Costo de Vida Final:** ${kpis['costo_vida_final']:,.2f}/mes")
+            st.caption("Costo de vida mensual ajustado por inflación")
+        
+        with col7:
+            if kpis['ano_cobertura'] is not None:
+                st.markdown(f"**Año de Cobertura:** Año {kpis['ano_cobertura']}")
+                st.caption("Año en que los dividendos cubren tus gastos")
+            else:
+                st.markdown(f"**Año de Cobertura:** No alcanzado")
+                st.caption("Los dividendos no cubrirán los gastos en este período")
+        
+        st.divider()
         
         # Charts
         st.markdown("### 📊 Gráficos de Evolución")
