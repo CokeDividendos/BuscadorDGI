@@ -474,7 +474,7 @@ def page_dividend_simulator():
         
         # SECCIÓN PRINCIPAL: 4 KPIs grandes con formato metric
         st.markdown("#### 💰 Resumen Financiero")
-        col1, col2, col3, col4, col15, col16 = st.columns(6)
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             st.metric(
@@ -501,6 +501,10 @@ def page_dividend_simulator():
                 "Año de Cobertura",
                 kpis['ano_cobertura']['text']
             )
+        
+        # SECCIÓN SECUNDARIA: KPIs adicionales con tooltips
+        
+        col5, col6 = st.columns(2)
         
         with col5:
             st.metric(
