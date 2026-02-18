@@ -503,7 +503,7 @@ def page_dividend_simulator():
             )
         
         # SECCIÓN SECUNDARIA: KPIs adicionales con tooltips
-        st.markdown("#### 📊 Detalles Adicionales")
+        
         col5, col6 = st.columns(2)
         
         with col5:
