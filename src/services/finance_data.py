@@ -8,6 +8,12 @@ import numpy as np
 from src.services.cache_store import cache_get, cache_set
 from src.services.yf_client import install_http_cache, yf_call
 
+# Constants for dividend frequency detection (in days)
+MONTHLY_THRESHOLD_DAYS = 40      # < 40 days between payments = monthly
+QUARTERLY_THRESHOLD_DAYS = 120   # < 120 days between payments = quarterly  
+SEMIANNUAL_THRESHOLD_DAYS = 270  # < 270 days between payments = semi-annual
+# >= 270 days between payments = annual
+
 class FinanceDataError(RuntimeError):
     pass
 
@@ -223,14 +229,14 @@ def _calculate_annual_dividend(divs) -> float | None:
         time_diffs = divs.index.to_series().diff().dropna()
         avg_days_between = time_diffs.dt.days.median()
         
-        # Classify frequency
-        if avg_days_between < 40:
+        # Classify frequency based on threshold constants
+        if avg_days_between < MONTHLY_THRESHOLD_DAYS:
             # Monthly (avg ~30 days)
             payments_per_year = 12
-        elif avg_days_between < 120:
+        elif avg_days_between < QUARTERLY_THRESHOLD_DAYS:
             # Quarterly (avg ~90 days)
             payments_per_year = 4
-        elif avg_days_between < 270:
+        elif avg_days_between < SEMIANNUAL_THRESHOLD_DAYS:
             # Semi-annual (avg ~180 days)
             payments_per_year = 2
         else:

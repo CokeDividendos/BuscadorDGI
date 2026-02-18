@@ -120,9 +120,9 @@ def _calculate_kpis(df: pd.DataFrame, inversion_inicial: float, aportes_mensuale
     
     # Año de Cobertura
     # Find first year where monthly dividend covers monthly cost of living
-    # Group by year and check December values (end of year)
-    df_annual = df[df["Mes"] == 12].copy()
-    anos_con_cobertura = df_annual[df_annual["% Cobertura"] >= 100]
+    # Check December values (end of each year)
+    df_year_end = df[df["Mes"] == 12].copy()
+    anos_con_cobertura = df_year_end[df_year_end["% Cobertura"] >= 100]
     if not anos_con_cobertura.empty:
         ano_cobertura = int(anos_con_cobertura["Año"].iloc[0])
     else:
