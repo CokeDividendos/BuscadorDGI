@@ -214,6 +214,8 @@ def _calculate_annual_dividend(divs) -> float | None:
         start_date = last_date - pd.DateOffset(months=12)
         
         # Get dividends from the last 12 calendar months
+        # Note: Using > instead of >= to avoid edge case where 5 quarterly payments
+        # fall within window (e.g., if payment happens exactly on 12-month boundary)
         div_12m = divs[divs.index > start_date]
         
         if len(div_12m) >= 4:

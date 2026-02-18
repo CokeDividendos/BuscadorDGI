@@ -110,6 +110,9 @@ def _calculate_kpis(df: pd.DataFrame, inversion_inicial: float, aportes_mensuale
     dividendos_totales = df["Dividendos del Mes"].sum()
     
     # Rentabilidad Total % (same as capital growth %)
+    # Note: In this simulation, dividends are automatically reinvested into shares,
+    # so capital_total already includes the full value of all reinvested dividends.
+    # Thus, this calculation represents true total return including dividend growth.
     rentabilidad_total = ((capital_total - aportes_totales) / aportes_totales) * 100 if aportes_totales > 0 else 0
     
     # Dividendo Mensual Final
