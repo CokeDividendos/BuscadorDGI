@@ -95,11 +95,10 @@ def _calculate_kpis(df: pd.DataFrame, inversion_inicial: float, aportes_mensuale
         - capital_total: Final portfolio value
         - aportes_totales: Total contributions
         - dividendos_totales: Total dividends collected
-        - rentabilidad_total: Total return %
+        - rentabilidad_total: Total return % (capital growth)
         - dividendo_mensual_final: Monthly dividend at end
         - costo_vida_final: Cost of living at end (inflation-adjusted)
         - ano_cobertura: Year when dividends cover cost of living
-        - crecimiento_capital: Capital growth %
     """
     # Capital Total (último valor del portafolio)
     capital_total = df["Valor del Portafolio"].iloc[-1]
@@ -110,11 +109,8 @@ def _calculate_kpis(df: pd.DataFrame, inversion_inicial: float, aportes_mensuale
     # Total Dividendos Cobrados (suma de todos los dividendos generados)
     dividendos_totales = df["Dividendos del Mes"].sum()
     
-    # Rentabilidad Total %
+    # Rentabilidad Total % (same as capital growth %)
     rentabilidad_total = ((capital_total - aportes_totales) / aportes_totales) * 100 if aportes_totales > 0 else 0
-    
-    # Crecimiento del Capital %
-    crecimiento_capital = ((capital_total - aportes_totales) / aportes_totales) * 100 if aportes_totales > 0 else 0
     
     # Dividendo Mensual Final
     dividendo_mensual_final = df["Dividendo Mensual Generado"].iloc[-1]
@@ -140,7 +136,6 @@ def _calculate_kpis(df: pd.DataFrame, inversion_inicial: float, aportes_mensuale
         "dividendo_mensual_final": dividendo_mensual_final,
         "costo_vida_final": costo_vida_final_mensual,
         "ano_cobertura": ano_cobertura,
-        "crecimiento_capital": crecimiento_capital,
     }
 
 
@@ -442,7 +437,7 @@ def page_dividend_simulator():
             st.metric(
                 "Capital Total",
                 f"${kpis['capital_total']:,.2f}",
-                delta=f"+{kpis['crecimiento_capital']:.2f}%",
+                delta=f"+{kpis['rentabilidad_total']:.2f}%",
                 delta_color="normal"
             )
         
