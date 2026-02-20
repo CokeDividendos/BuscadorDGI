@@ -12,198 +12,6 @@ from hashlib import pbkdf2_hmac
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-try:
-    import psycopg2
-    import psycopg2.extras
-    _PSYCOPG2_AVAILABLE = True
-except ImportError:
-    _PSYCOPG2_AVAILABLE = False
-
-
-class _PgCursor:
-    """Wraps a psycopg2 RealDictCursor to match the sqlite3.Cursor interface."""
-
-    def __init__(self, pg_cur):
-        self._cur = pg_cur
-        self._lastrowid = None
-
-    def execute(self, sql: str, params=None):
-        # Skip SQLite transaction control (psycopg2 manages transactions automatically)
-        stripped_upper = sql.strip().upper()
-        if stripped_upper in (
-            "BEGIN", "BEGIN TRANSACTION", "BEGIN DEFERRED",
-            "BEGIN IMMEDIATE", "BEGIN EXCLUSIVE",
-        ):
-            return self
-
-        # Translate ? placeholders to %s for PostgreSQL
-        sql = sql.replace("?", "%s")
-
-        # Detect if we need RETURNING id for lastrowid support
-        needs_returning = (
-            stripped_upper.startswith("INSERT")
-            and "RETURNING" not in stripped_upper
-            and any(t in sql.lower() for t in ("blog_posts", "blog_comments"))
-        )
-        if needs_returning:
-            sql = sql.rstrip().rstrip(";") + " RETURNING id"
-
-        if params is not None:
-            self._cur.execute(sql, list(params) if isinstance(params, tuple) else params)
-        else:
-            self._cur.execute(sql)
-
-        if needs_returning:
-            row = self._cur.fetchone()
-            self._lastrowid = row["id"] if row else None
-        else:
-            self._lastrowid = None
-
-        return self
-
-    @property
-    def lastrowid(self):
-        return self._lastrowid
-
-    @property
-    def rowcount(self):
-        return self._cur.rowcount
-
-    def fetchone(self):
-        return self._cur.fetchone()
-
-    def fetchall(self):
-        return self._cur.fetchall()
-
-    def close(self):
-        self._cur.close()
-
-    def __iter__(self):
-        return iter(self._cur)
-
-
-class _PgConnection:
-    """Wraps a psycopg2 connection to match the sqlite3.Connection interface."""
-
-    def __init__(self, pg_conn):
-        self._conn = pg_conn
-
-    def cursor(self):
-        return _PgCursor(self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor))
-
-    def execute(self, sql: str, params=None):
-        cur = self.cursor()
-        cur.execute(sql, params)
-        return cur
-
-    def commit(self):
-        self._conn.commit()
-
-    def rollback(self):
-        self._conn.rollback()
-
-    def close(self):
-        self._conn.close()
-
-
-_PG_TABLES_SQL = """
-    CREATE TABLE IF NOT EXISTS users (
-        email TEXT PRIMARY KEY,
-        role TEXT NOT NULL DEFAULT 'user',
-        created_at TEXT NOT NULL,
-        algo TEXT NOT NULL,
-        iterations TEXT NOT NULL,
-        salt_b64 TEXT NOT NULL,
-        hash_b64 TEXT NOT NULL,
-        gpt_api_key TEXT,
-        perplexity_api_key TEXT
-    );
-    CREATE TABLE IF NOT EXISTS kv_cache (
-        key TEXT PRIMARY KEY,
-        value_json TEXT NOT NULL,
-        created_at BIGINT NOT NULL,
-        ttl_seconds INTEGER
-    );
-    CREATE TABLE IF NOT EXISTS blog_posts (
-        id SERIAL PRIMARY KEY,
-        title TEXT NOT NULL,
-        content TEXT NOT NULL,
-        author_email TEXT NOT NULL,
-        published_date TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        images_json TEXT,
-        ticker TEXT
-    );
-    CREATE TABLE IF NOT EXISTS blog_comments (
-        id SERIAL PRIMARY KEY,
-        post_id INTEGER NOT NULL REFERENCES blog_posts(id) ON DELETE CASCADE,
-        author_email TEXT NOT NULL,
-        content TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-    );
-"""
-
-
-def _get_pg_conn(database_url: str) -> _PgConnection:
-    """Connect to PostgreSQL (Neon) and ensure the schema exists."""
-    pg_conn = psycopg2.connect(database_url)
-    with pg_conn.cursor() as cur:
-        cur.execute(_PG_TABLES_SQL)
-    pg_conn.commit()
-    return _PgConnection(pg_conn)
-
-
-def _get_sqlite_conn() -> sqlite3.Connection:
-    """Connect to SQLite (local development fallback)."""
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS kv_cache (
-            key TEXT PRIMARY KEY,
-            value_json TEXT NOT NULL,
-            created_at INTEGER NOT NULL,
-            ttl_seconds INTEGER
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS blog_posts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            content TEXT NOT NULL,
-            author_email TEXT NOT NULL,
-            published_date TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            images_json TEXT
-        )
-        """
-    )
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS blog_comments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            post_id INTEGER NOT NULL,
-            author_email TEXT NOT NULL,
-            content TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            FOREIGN KEY (post_id) REFERENCES blog_posts(id) ON DELETE CASCADE
-        )
-    """)
-    cur = conn.cursor()
-    try:
-        cur.execute("SELECT ticker FROM blog_posts LIMIT 1")
-    except sqlite3.OperationalError:
-        cur.execute("ALTER TABLE blog_posts ADD COLUMN ticker TEXT")
-        conn.commit()
-    conn.commit()
-    return conn
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = REPO_ROOT / "data"
 USERS_PATH = DATA_DIR / "users.json"
@@ -272,17 +80,8 @@ def _migrate_users_from_json() -> None:
                 continue
             
             cur.execute("""
-                INSERT INTO users (email, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key, perplexity_api_key)
+                INSERT OR REPLACE INTO users (email, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key, perplexity_api_key)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(email) DO UPDATE SET
-                    role=excluded.role,
-                    created_at=excluded.created_at,
-                    algo=excluded.algo,
-                    iterations=excluded.iterations,
-                    salt_b64=excluded.salt_b64,
-                    hash_b64=excluded.hash_b64,
-                    gpt_api_key=excluded.gpt_api_key,
-                    perplexity_api_key=excluded.perplexity_api_key
             """, (email, role, created_at, algo, iterations, salt_b64, hash_b64, gpt_api_key, perplexity_api_key))
             migrated_count += 1
         
@@ -631,23 +430,61 @@ def has_admin_user() -> bool:
         return False
 
 
-def get_conn():
-    """
-    Return a database connection.
-
-    - If st.secrets has [neon][database_url], connect to PostgreSQL (Neon).
-    - Otherwise, fall back to SQLite for local development.
-    """
+def get_conn() -> sqlite3.Connection:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    # Tabla usada por cache_store.py
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS kv_cache (
+            key TEXT PRIMARY KEY,
+            value_json TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            ttl_seconds INTEGER
+        )
+        """
+    )
+    # Tabla para blog posts
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS blog_posts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            author_email TEXT NOT NULL,
+            published_date TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            images_json TEXT
+        )
+        """
+    )
+    
+    # Tabla para comentarios de blog
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS blog_comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            post_id INTEGER NOT NULL,
+            author_email TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (post_id) REFERENCES blog_posts(id) ON DELETE CASCADE
+        )
+    """)
+    
+    # Migración: agregar columna ticker si no existe
+    cur = conn.cursor()
     try:
-        import streamlit as st
-        db_url = st.secrets["neon"]["database_url"]
-    except Exception:
-        # Neon not configured (no streamlit, missing key, etc.) – use SQLite fallback
-        return _get_sqlite_conn()
-
-    if db_url and _PSYCOPG2_AVAILABLE:
-        return _get_pg_conn(db_url)
-    return _get_sqlite_conn()
+        cur.execute("SELECT ticker FROM blog_posts LIMIT 1")
+    except sqlite3.OperationalError:
+        # Column doesn't exist, add it
+        cur.execute("ALTER TABLE blog_posts ADD COLUMN ticker TEXT")
+        conn.commit()
+    
+    conn.commit()
+    return conn
 
 
 def verify_database_integrity() -> bool:
@@ -658,16 +495,8 @@ def verify_database_integrity() -> bool:
     try:
         conn = get_conn()
         cur = conn.cursor()
-
-        if isinstance(conn, _PgConnection):
-            # PostgreSQL mode: simple connectivity and table check
-            cur.execute("SELECT COUNT(*) as count FROM users")
-            count = cur.fetchone()["count"]
-            print(f"[INFO] Database integrity check passed (PostgreSQL). User count: {count}", file=sys.stderr)
-            conn.close()
-            return True
-
-        # SQLite mode: check for table existence and required columns
+        
+        # Check users table exists
         cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
         if not cur.fetchone():
             print("[ERROR] Users table does not exist", file=sys.stderr)
