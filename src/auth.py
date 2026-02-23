@@ -30,9 +30,9 @@ def _ensure_admin_from_secrets() -> None:
     Auto-create the admin user if secrets exist and:
     - No users exist at all, OR
     - The admin from secrets doesn't exist in the database
-    
+
     This ensures the admin always exists even after database resets or corruption.
-    
+
     In .streamlit/secrets.toml, add:
     [admin]
     email = "admin@example.com"
@@ -42,21 +42,21 @@ def _ensure_admin_from_secrets() -> None:
         # Check if admin credentials are in secrets
         if not hasattr(st, "secrets") or "admin" not in st.secrets:
             return
-        
+
         admin_email = st.secrets["admin"].get("email", "").strip().lower()
         admin_password = st.secrets["admin"].get("password", "")
-        
+
         if not admin_email or "@" not in admin_email:
             print(f"[WARN] Invalid admin email in secrets", file=sys.stderr)
             return
-        
+
         if not admin_password or len(admin_password) < MIN_PASSWORD_LENGTH:
             print(f"[WARN] Invalid admin password in secrets (minimum {MIN_PASSWORD_LENGTH} characters)", file=sys.stderr)
             return
-        
+
         # Check if this specific admin user exists in the database
         existing_admin = get_user_by_email(admin_email)
-        
+
         if existing_admin:
             # Admin exists, verify role
             if existing_admin.get("role") == "admin":
@@ -67,23 +67,77 @@ def _ensure_admin_from_secrets() -> None:
                 print(f"[INFO] Upgrading user {admin_email} to admin role", file=sys.stderr)
                 upsert_user(admin_email, admin_password, role="admin")
                 return
-        
+
         # Admin doesn't exist - create it
         print(f"[INFO] Creating admin user from Streamlit secrets: {admin_email}", file=sys.stderr)
         upsert_user(admin_email, admin_password, role="admin")
-        
+
         # Verify creation succeeded
         verification = get_user_by_email(admin_email)
         if verification and verification.get("role") == "admin":
             print(f"[SUCCESS] Admin user created and verified: {admin_email}", file=sys.stderr)
         else:
             print(f"[ERROR] Admin user creation failed for {admin_email}", file=sys.stderr)
-            
+
     except Exception as e:
         # Log the error but don't crash the app
         print(f"[ERROR] Failed to ensure admin from secrets: {e}", file=sys.stderr)
         import traceback
         traceback.print_exc(file=sys.stderr)
+
+
+def _ensure_users_from_secrets() -> None:
+    """
+    Importa usuarios definidos en st.secrets['users'].
+    Formato esperado en Streamlit Secrets (TOML):
+    [[users]]
+    email = "user@example.com"
+    password = "PlainTextPassword"
+    role = "user"
+
+    Esta función creará/actualizará usuarios en la BD usando upsert_user.
+
+    Nota: st.secrets es read-only desde la app en ejecución: la app no puede
+    escribir en Secrets. El admin debe pegar manualmente el bloque TOML en
+    Settings → Secrets en Streamlit Cloud para persistir usuarios entre reinicios.
+    """
+    try:
+        if not hasattr(st, "secrets"):
+            return
+        users_cfg = st.secrets.get("users", [])
+        if not users_cfg:
+            return
+        # Esperamos una lista de dicts
+        if not isinstance(users_cfg, list):
+            # si alguien puso un dict, ignorar para evitar errores
+            return
+
+        for entry in users_cfg:
+            try:
+                email = (entry.get("email") or "").strip().lower()
+                pwd = entry.get("password")
+                role = (entry.get("role") or "user").strip().lower()
+                if not email or not pwd:
+                    # saltar entradas inválidas
+                    continue
+
+                existing = get_user_by_email(email)
+                if not existing:
+                    # upsert_user realiza hashing internamente
+                    upsert_user(email, pwd, role=role)
+                    print(f"[INFO] Usuario creado desde secrets: {email}", file=sys.stderr)
+                else:
+                    # Si existe pero rol distinto, actualizar rol (y password si el admin lo quiere)
+                    if existing.get("role") != role:
+                        upsert_user(email, pwd, role=role)
+                        print(f"[INFO] Usuario existente actualizado desde secrets: {email}", file=sys.stderr)
+                    # Si prefieres no sobrescribir password para usuarios existentes,
+                    # podrías omitir upsert_user cuando existing and keep password unchanged.
+            except Exception as e:
+                # No exponer contraseña en logs; mostrar solo el email
+                print(f"[WARN] No se pudo aplicar entry de secrets para {entry.get('email','<sin-email>')}: {e}", file=sys.stderr)
+    except Exception as e:
+        print(f"[ERROR] Error en _ensure_users_from_secrets: {e}", file=sys.stderr)
 
 
 def _centered_card(width_ratio: float = 1.8):
@@ -158,22 +212,25 @@ def _setup_screen() -> None:
             return
 
         upsert_user(email, pwd, role="admin")
-        
+
         # Verify the user was created successfully
         if has_any_user():
             st.success("Admin creado. Ahora inicia sesión.")
         else:
             st.error("Error: No se pudo verificar la creación del admin. Revisa los logs.")
             return
-        
+
         st.rerun()
 
 
 def require_login() -> bool:
     ensure_users_file()
-    
+
     # Check if admin credentials are in Streamlit secrets and auto-create if needed
     _ensure_admin_from_secrets()
+
+    # Importar usuarios definidos en Streamlit Secrets (bootstrap temporal)
+    _ensure_users_from_secrets()
 
     if is_logged_in():
         return True
@@ -240,9 +297,9 @@ def require_login() -> bool:
             st.error("Credenciales incorrectas.")
             return False
 
+        # Set session and return True (no rerun to avoid duplicate prompts)
         st.session_state["auth_ok"] = True
         st.session_state["auth_email"] = email
         st.session_state["auth_role"] = u.get("role", "user")
         st.session_state["is_admin"] = (u.get("role") == "admin")
-        st.rerun()
         return True
