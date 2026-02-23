@@ -34,8 +34,31 @@ def page_admin_users() -> None:
             return
 
         upsert_user(email, pwd, role=role)
-        st.success("Usuario guardado correctamente.")
-        st.rerun()
+        st.success("Usuario guardado correctamente en la base de datos.")
+        st.divider()
+
+        # --- Mostrar snippet para añadir a Streamlit Secrets (manual copy/paste) ---
+        st.markdown("#### Guardar en Streamlit Secrets (opcional, para persistencia entre reinicios)")
+        st.info(
+            "No es posible que la app escriba automáticamente en Streamlit Secrets. "
+            "Copia el siguiente bloque y pégalo en Settings → Secrets de tu app en Streamlit Cloud."
+        )
+
+        # Generar snippet TOML con la sección [[users]]
+        toml_snippet = f'''[[users]]
+email = "{email}"
+password = "{pwd}"
+role = "{role}"
+'''
+        st.code(toml_snippet, language="toml")
+        st.caption("Si ya tienes otros users definidos en Secrets, añade este bloque al final (cada usuario necesita su [[users]]).")
+
+        st.markdown("**Instrucciones rápidas:**\n1) Abre Settings → Secrets en Streamlit Cloud; 2) Pega o añade el bloque anterior al final del archivo; 3) Guarda los Secrets.\n\nDespués de guardar, puedes recargar la app para que los usuarios definidos en Secrets se importen automáticamente.")
+        # Botón para recargar la app una vez el admin haya copiado y pegado el snippet en Secrets
+        if st.button("Ya pegué en Secrets. Recargar app ahora"):
+            st.experimental_rerun()
+
+        st.divider()
 
     st.divider()
 
