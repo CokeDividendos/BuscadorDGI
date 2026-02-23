@@ -297,9 +297,8 @@ def require_login() -> bool:
             st.error("Credenciales incorrectas.")
             return False
 
-        # Set session and return True (no rerun to avoid duplicate prompts)
         st.session_state["auth_ok"] = True
         st.session_state["auth_email"] = email
         st.session_state["auth_role"] = u.get("role", "user")
         st.session_state["is_admin"] = (u.get("role") == "admin")
-        return True
+        st.rerun()
