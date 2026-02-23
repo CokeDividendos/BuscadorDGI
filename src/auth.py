@@ -3,14 +3,7 @@ from __future__ import annotations
 
 import sys
 import streamlit as st
-from src.db import (
-    ensure_users_file,
-    has_admin_user,
-    has_any_user,
-    upsert_user,
-    get_user_by_email,
-    verify_password,
-)
+from src.db import ensure_users_file, has_admin_user, has_any_user, upsert_user, get_user_by_email, verify_password
 
 # Password requirements
 MIN_PASSWORD_LENGTH = 6
@@ -37,9 +30,9 @@ def _ensure_admin_from_secrets() -> None:
     Auto-create the admin user if secrets exist and:
     - No users exist at all, OR
     - The admin from secrets doesn't exist in the database
-
+    
     This ensures the admin always exists even after database resets or corruption.
-
+    
     In .streamlit/secrets.toml, add:
     [admin]
     email = "admin@example.com"
@@ -49,21 +42,21 @@ def _ensure_admin_from_secrets() -> None:
         # Check if admin credentials are in secrets
         if not hasattr(st, "secrets") or "admin" not in st.secrets:
             return
-
+        
         admin_email = st.secrets["admin"].get("email", "").strip().lower()
         admin_password = st.secrets["admin"].get("password", "")
-
+        
         if not admin_email or "@" not in admin_email:
             print(f"[WARN] Invalid admin email in secrets", file=sys.stderr)
             return
-
+        
         if not admin_password or len(admin_password) < MIN_PASSWORD_LENGTH:
             print(f"[WARN] Invalid admin password in secrets (minimum {MIN_PASSWORD_LENGTH} characters)", file=sys.stderr)
             return
-
+        
         # Check if this specific admin user exists in the database
         existing_admin = get_user_by_email(admin_email)
-
+        
         if existing_admin:
             # Admin exists, verify role
             if existing_admin.get("role") == "admin":
@@ -74,77 +67,23 @@ def _ensure_admin_from_secrets() -> None:
                 print(f"[INFO] Upgrading user {admin_email} to admin role", file=sys.stderr)
                 upsert_user(admin_email, admin_password, role="admin")
                 return
-
+        
         # Admin doesn't exist - create it
         print(f"[INFO] Creating admin user from Streamlit secrets: {admin_email}", file=sys.stderr)
         upsert_user(admin_email, admin_password, role="admin")
-
+        
         # Verify creation succeeded
         verification = get_user_by_email(admin_email)
         if verification and verification.get("role") == "admin":
             print(f"[SUCCESS] Admin user created and verified: {admin_email}", file=sys.stderr)
         else:
             print(f"[ERROR] Admin user creation failed for {admin_email}", file=sys.stderr)
-
+            
     except Exception as e:
         # Log the error but don't crash the app
         print(f"[ERROR] Failed to ensure admin from secrets: {e}", file=sys.stderr)
         import traceback
         traceback.print_exc(file=sys.stderr)
-
-
-def _ensure_users_from_secrets() -> None:
-    """
-    Importa usuarios definidos en st.secrets['users'].
-    Formato esperado en Streamlit Secrets (TOML):
-    [[users]]
-    email = "user@example.com"
-    password = "PlainTextPassword"
-    role = "user"
-
-    Esta función creará/actualizará usuarios en la BD usando upsert_user.
-
-    Nota de seguridad: st.secrets es _read-only_ desde la app en ejecución:
-    la app no puede escribir en Secrets; el admin debe pegar manualmente el bloque
-    TOML en Settings → Secrets en Streamlit Cloud. Esta función solo lee e importa.
-    """
-    try:
-        if not hasattr(st, "secrets"):
-            return
-        users_cfg = st.secrets.get("users", [])
-        if not users_cfg:
-            return
-        # Esperamos una lista de dicts
-        if not isinstance(users_cfg, list):
-            # si alguien puso un dict, ignorar para evitar errores
-            return
-
-        for entry in users_cfg:
-            try:
-                email = (entry.get("email") or "").strip().lower()
-                pwd = entry.get("password")
-                role = (entry.get("role") or "user").strip().lower()
-                if not email or not pwd:
-                    # saltar entradas inválidas
-                    continue
-
-                existing = get_user_by_email(email)
-                if not existing:
-                    # upsert_user realiza hashing internamente
-                    upsert_user(email, pwd, role=role)
-                    print(f"[INFO] Usuario creado desde secrets: {email}", file=sys.stderr)
-                else:
-                    # Si existe pero rol distinto, actualizar rol (y password si el admin lo quiere)
-                    if existing.get("role") != role:
-                        upsert_user(email, pwd, role=role)
-                        print(f"[INFO] Usuario existente actualizado desde secrets: {email}", file=sys.stderr)
-                    # Si prefieres no sobrescribir password para usuarios existentes,
-                    # podrías omitir upsert_user cuando existing and keep password unchanged.
-            except Exception as e:
-                # No exponer contraseña en logs; mostrar solo el email
-                print(f"[WARN] No se pudo aplicar entry de secrets para {entry.get('email','<sin-email>')}: {e}", file=sys.stderr)
-    except Exception as e:
-        print(f"[ERROR] Error en _ensure_users_from_secrets: {e}", file=sys.stderr)
 
 
 def _centered_card(width_ratio: float = 1.8):
@@ -219,25 +158,22 @@ def _setup_screen() -> None:
             return
 
         upsert_user(email, pwd, role="admin")
-
+        
         # Verify the user was created successfully
         if has_any_user():
             st.success("Admin creado. Ahora inicia sesión.")
         else:
             st.error("Error: No se pudo verificar la creación del admin. Revisa los logs.")
             return
-
+        
         st.rerun()
 
 
 def require_login() -> bool:
     ensure_users_file()
-
+    
     # Check if admin credentials are in Streamlit secrets and auto-create if needed
     _ensure_admin_from_secrets()
-
-    # Importar usuarios definidos en Streamlit Secrets (bootstrap temporal)
-    _ensure_users_from_secrets()
 
     if is_logged_in():
         return True
@@ -266,9 +202,7 @@ def require_login() -> bool:
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4) inset !important;
             background-color: #2a3a5a !important;
         }
-        /* Slightly larger title icon */
-        .login-title-icon { font-size: 1.1rem; margin-right: 8px; vertical-align: middle; }
-        /* Orange submit buttons in setup form with white text */
+        /* Orange submit buttons in login form with white text */
         div[data-testid="stForm"] button[kind="primaryFormSubmit"],
         div[data-testid="stForm"] button[kind="secondaryFormSubmit"] {
             background-color: #ff6d01 !important;
@@ -280,6 +214,10 @@ def require_login() -> bool:
             background-color: #e66101 !important;
             color: white !important;
         }
+        /* Center the login title */
+        .login-title-centered {
+            text-align: center;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -287,31 +225,24 @@ def require_login() -> bool:
 
     st.write("")
     with _centered_card(3.5):
-        st.markdown("## 🔐 Iniciar sesión")
+        st.markdown('<h2 class="login-title-centered">🔐 Iniciar sesión</h2>', unsafe_allow_html=True)
+
         with st.form("login_form"):
             email = st.text_input("Email").strip().lower()
             pwd = st.text_input("Contraseña", type="password")
-            ok = st.form_submit_button("Entrar", use_container_width=True)
+            submit = st.form_submit_button("Entrar", use_container_width=True)
 
-        if not ok:
+        if not submit:
             return False
 
-        if not email or "@" not in email:
-            st.error("Email inválido.")
+        u = get_user_by_email(email)
+        if not u or not verify_password(pwd, u):
+            st.error("Credenciales incorrectas.")
             return False
 
-        user = get_user_by_email(email)
-        if not user:
-            st.error("Usuario no encontrado.")
-            return False
-
-        if not verify_password(pwd, user):
-            st.error("Contraseña incorrecta.")
-            return False
-
-        # Mark session state
         st.session_state["auth_ok"] = True
         st.session_state["auth_email"] = email
-        st.session_state["auth_role"] = user.get("role", "user")
-        st.success("Autenticación OK.")
+        st.session_state["auth_role"] = u.get("role", "user")
+        st.session_state["is_admin"] = (u.get("role") == "admin")
+        st.rerun()
         return True
