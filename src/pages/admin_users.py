@@ -34,26 +34,7 @@ def page_admin_users() -> None:
             return
 
         upsert_user(email, pwd, role=role)
-        st.success("Usuario guardado correctamente en la base de datos.")
-        st.divider()
-
-        # --- Mostrar snippet para añadir a Streamlit Secrets (manual copy/paste) ---
-        st.markdown("#### Guardar en Streamlit Secrets (opcional, para persistencia entre reinicios)")
-        st.info(
-            "No es posible que la app escriba automáticamente en Streamlit Secrets. "
-            "Copia el siguiente bloque y pégalo en Settings → Secrets de tu app en Streamlit Cloud."
-        )
-
-        toml_snippet = f'''[[users]]
-email = "{email}"
-password = "{pwd}"
-role = "{role}"
-'''
-        st.code(toml_snippet, language="toml")
-        st.caption("Si ya tienes otros users definidos en Secrets, añade este bloque al final (cada usuario necesita su [[users]]).")
-        st.markdown("**Instrucciones rápidas:** Settings → Secrets → pega/edita el contenido → Save. Luego reinicia la app si quieres forzar la importación inmediata.")
-        st.divider()
-
+        st.success("Usuario guardado correctamente.")
         st.rerun()
 
     st.divider()
