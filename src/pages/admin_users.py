@@ -53,9 +53,16 @@ role = "{role}"
         st.code(toml_snippet, language="toml")
         st.caption("Si ya tienes otros users definidos en Secrets, añade este bloque al final (cada usuario necesita su [[users]]).")
 
-        st.markdown("**Instrucciones rápidas:**\n1) Abre Settings → Secrets en Streamlit Cloud; 2) Pega o añade el bloque anterior al final del archivo; 3) Guarda los Secrets.\n\nDespués de guardar, puedes recargar la app para que los usuarios definidos en Secrets se importen automáticamente.")
+        st.markdown(
+            "**Instrucciones rápidas:**\n\n"
+            "1) Abre Settings → Secrets en Streamlit Cloud; \n"
+            "2) Pega o añade el bloque anterior al final del archivo; \n"
+            "3) Guarda los Secrets; \n"
+            "4) Vuelve aquí y pulsa el botón 'He pegado el bloque en Secrets y quiero recargar la app' para forzar recarga/importación."
+        )
+
         # Botón para recargar la app una vez el admin haya copiado y pegado el snippet en Secrets
-        if st.button("Ya pegué en Secrets. Recargar app ahora"):
+        if st.button("He pegado el bloque en Secrets y quiero recargar la app"):
             st.experimental_rerun()
 
         st.divider()
