@@ -100,7 +100,7 @@ def run_app():
         st.markdown("### Navegación")
         
         # Build page sections list
-        page_sections = ["Buscador", "Comparador ETF", "Simulador de Dividendos", "Blogs", "🔑 API Keys"]
+        page_sections = ["Buscador", "Buscador CL 🇨🇱", "Comparador ETF", "Simulador de Dividendos", "Blogs", "🔑 API Keys"]
         if admin:
             page_sections.append("Admin · Usuarios")
 
