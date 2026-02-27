@@ -97,8 +97,6 @@ def run_app():
         if "page_section" not in st.session_state:
             st.session_state["page_section"] = "Buscador"  # Default to Buscador
         
-        st.markdown("### Navegación")
-        
         # Build page sections list
         page_sections = ["Buscador", "Buscador CL", "Comparador ETF", "Simulador de Dividendos", "Blogs", "🔑 API Keys"]
         if admin:
@@ -113,7 +111,7 @@ def run_app():
 
         # Menú navegación principal como lista vertical (st.radio)
         page_section = st.radio(
-            "Navegación",
+            "### Navegación",
             page_sections,
             index=current_idx,
             key="page_section_radio"
