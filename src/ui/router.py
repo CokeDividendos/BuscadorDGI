@@ -113,7 +113,6 @@ def run_app():
 
         # Menú navegación principal como lista vertical (st.radio)
         page_section = st.radio(
-            "Navegación",
             page_sections,
             index=current_idx,
             key="page_section_radio"
