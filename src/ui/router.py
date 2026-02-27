@@ -100,7 +100,7 @@ def run_app():
         st.markdown("### Navegación")
         
         # Build page sections list
-        page_sections = ["Buscador", "Buscador CL 🇨🇱", "Comparador ETF", "Simulador de Dividendos", "Blogs", "🔑 API Keys"]
+        page_sections = ["Buscador", "Buscador CL", "Comparador ETF", "Simulador de Dividendos", "Blogs", "🔑 API Keys"]
         if admin:
             page_sections.append("Admin · Usuarios")
 
@@ -131,7 +131,7 @@ def run_app():
             st.session_state["analysis_section"] = "Resumen"
         
         # Show data sections only when in Buscador page (formerly shown in Análisis page)
-        if page_section in ["Buscador", "Buscador CL 🇨🇱"]:
+        if page_section in ["Buscador", "Buscador CL"]:
             st.markdown("### Secciones de datos")
             data_sections = [
                 "Resumen",  # anteriormente "Análisis"
