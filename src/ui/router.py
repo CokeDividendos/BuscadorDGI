@@ -111,16 +111,13 @@ def run_app():
         except ValueError:
             current_idx = 0
 
-        # Menú navegación principal sólo como nombres, sin radio ni puntos
-        page_section = st.selectbox(
-            "",
+        # Menú navegación principal como lista vertical (st.radio)
+        page_section = st.radio(
+            "Navegación",
             page_sections,
             index=current_idx,
-            key="page_section_selectbox"
+            key="page_section_radio"
         )
-
-        st.session_state["page_section"] = page_section
-        st.divider()
         
         # Update page section in session state
         st.session_state["page_section"] = page_section
@@ -151,12 +148,11 @@ def run_app():
             if current_analysis_section not in data_sections:
                 current_analysis_section = "Resumen"
             
-            selected_data_section = st.radio(
+            selected_data_section = st.selectbox(
                 "Seleccione una sección de datos:",
                 data_sections,
                 index=data_sections.index(current_analysis_section),
-                key="data_section_selector",
-                label_visibility="collapsed"
+                key="data_section_selector"
             )
             
             st.session_state["analysis_section"] = selected_data_section
