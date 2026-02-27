@@ -111,13 +111,14 @@ def run_app():
         except ValueError:
             current_idx = 0
 
-        page_section = st.radio(
-            "Secciones de página",
-            page_sections,
-            index=current_idx,
-            key="page_section_radio",
-            label_visibility="collapsed"
-        )
+        # Sidebar navegación: reemplaza radio por botones
+        for section in page_sections:
+            btn_kwargs = {}
+            if section == st.session_state["page_section"]:
+                btn_kwargs["disabled"] = True
+            if st.sidebar.button(section, key=f"nav_{section}", **btn_kwargs):
+                st.session_state["page_section"] = section
+        page_section = st.session_state["page_section"]
         
         # Update page section in session state
         st.session_state["page_section"] = page_section
