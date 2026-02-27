@@ -131,7 +131,7 @@ def run_app():
             st.session_state["analysis_section"] = "Resumen"
         
         # Show data sections only when in Buscador page (formerly shown in Análisis page)
-        if page_section == "Buscador":
+        if page_section in ["Buscador", "Buscador CL 🇨🇱"]:
             st.markdown("### Secciones de datos")
             data_sections = [
                 "Resumen",  # anteriormente "Análisis"
