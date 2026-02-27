@@ -111,15 +111,29 @@ def run_app():
         except ValueError:
             current_idx = 0
 
-        # Menú navegación principal como lista vertical (st.radio)
+        # Navegación principal como lista de nombres, no radio, no selectbox, no botones
+        st.markdown("### Navegación")
+        for section in page_sections:
+            if section == st.session_state["page_section"]:
+                st.markdown(
+                    f"<div style='color:white; background:#ff6d01; padding:6px 16px; border-radius:7px; font-weight:bold; margin-bottom:4px;'>{section}</div>",
+                    unsafe_allow_html=True,
+                )
+            else:
+                if st.markdown(
+                        f"<div style='color:white; cursor:pointer; padding:6px 16px; border-radius:7px; font-weight:normal; margin-bottom:4px;'>{section}</div>",
+                        unsafe_allow_html=True,
+                ):
+                    # No puedes capturar click; en Streamlit puro, necesitas hack con st.button oculto o usar radio
+                    pass
+        # Cambia la selección abajo con radio oculto para que el usuario pueda interactuar:
         page_section = st.radio(
-            "Navegación",
+            "",
             page_sections,
             index=current_idx,
-            key="page_section_radio"
+            key="page_section_radio_hidden",
+            label_visibility="collapsed",
         )
-        
-        # Update page section in session state
         st.session_state["page_section"] = page_section
         
         st.divider()
