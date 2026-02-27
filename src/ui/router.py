@@ -111,36 +111,16 @@ def run_app():
         except ValueError:
             current_idx = 0
 
-               # Custom navigation: sólo nombres, resaltado con CSS, sin radio ni botones
-        custom_menu_html = "<div class='custom-nav-menu'>"
-        for section in page_sections:
-            if section == st.session_state["page_section"]:
-                # Resaltar el seleccionado (puedes cambiar el color)
-                custom_menu_html += f"""
-                <div style='margin-bottom:0.5rem; background:#ff6d01; color:white; border-radius:6px; padding:4px 10px; font-weight:bold; cursor:pointer;'>{section}</div>
-                """
-            else:
-                # Los demás (como link, pero sin subrayado)
-                # El "href" dispara recarga con 'nav_{section}' en query string, capturado abajo
-                custom_menu_html += f"""
-                <a href='?nav_{section.replace(" ", "_")}=1' style='margin-bottom:0.5rem; display:block; color:white; text-decoration:none; padding:4px 10px; border-radius:6px;'>{section}</a>
-                """
-        custom_menu_html += "</div>"
-        st.markdown(custom_menu_html, unsafe_allow_html=True)
+        # Menú navegación principal sólo como nombres, sin radio ni puntos
+        page_section = st.selectbox(
+            "",
+            page_sections,
+            index=current_idx,
+            key="page_section_selectbox"
+        )
 
-        # Leer del query string si cambiaron de sección
-        import streamlit as st
-        from urllib.parse import parse_qs, urlparse
-
-        query_params = st.experimental_get_query_params()
-        for section in page_sections:
-            key = f'nav_{section.replace(" ", "_")}'
-            if key in query_params:
-                st.session_state["page_section"] = section
-                # Limpia query para evitar doble acción/refresco
-                st.experimental_set_query_params()
-                break
-        page_section = st.session_state["page_section"]
+        st.session_state["page_section"] = page_section
+        st.divider()
         
         # Update page section in session state
         st.session_state["page_section"] = page_section
