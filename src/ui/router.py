@@ -4,6 +4,7 @@ import streamlit as st
 from src.db import init_db, verify_database_integrity
 from src.auth import require_login, is_admin, logout_button
 from src.pages.analysis import page_analysis
+from src.pages.buscador_cl import page_buscador_cl
 from src.pages.resumen import page_resumen
 from src.pages.blogs import page_blogs
 from src.pages.api_keys import page_api_keys
@@ -78,6 +79,14 @@ def run_app():
             background-color: #e66101 !important;
             color: white !important;
         }
+
+        /* Secciones de datos: lista plana sin radio button visible */
+        section[data-testid="stSidebar"] [data-testid="stRadio"] label {
+            padding: 2px 0 !important;
+        }
+        section[data-testid="stSidebar"] [data-testid="stRadio"] [data-testid="stMarkdownContainer"] p {
+            font-size: 0.9rem !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -131,26 +140,28 @@ def run_app():
         if page_section in ["Buscador", "Buscador CL"]:
             st.markdown("### Secciones de datos")
             data_sections = [
-                "Resumen",  # anteriormente "Análisis"
+                "Resumen",
                 "Dividendos",
                 "Balance",
                 "EERR",
                 "EFE",
                 "Valoración por múltiplos",
-                "Pizarra de Valoración",
                 "Análisis Razonado",
             ]
+            if admin:
+                data_sections.insert(-1, "Pizarra de Valoración")
             
             # Get the current analysis section, validate it's in the list
             current_analysis_section = st.session_state.get("analysis_section", "Resumen")
             if current_analysis_section not in data_sections:
                 current_analysis_section = "Resumen"
             
-            selected_data_section = st.selectbox(
-                "Seleccione una sección de datos:",
+            selected_data_section = st.radio(
+                "Secciones de datos",
                 data_sections,
                 index=data_sections.index(current_analysis_section),
-                key="data_section_selector"
+                key="data_section_selector",
+                label_visibility="collapsed"
             )
             
             st.session_state["analysis_section"] = selected_data_section
@@ -183,6 +194,9 @@ def run_app():
             # All other data sections (Dividendos, Balance, etc.) are rendered by page_resumen
             page_resumen()
             
+    elif page_section == "Buscador CL":
+        selected_data_section = st.session_state.get("analysis_section", "Resumen")
+        page_buscador_cl()
     elif page_section == "Comparador ETF":
         page_etf_comparator()
     elif page_section == "Simulador de Dividendos":
