@@ -527,17 +527,42 @@ def _load_ticker_info(ticker: str) -> Dict[str, Any]:
 
 
 def _prepare_financial_df(df: pd.DataFrame, years: int = YEARS) -> pd.DataFrame:
-    """Transpose and prepare financial statement dataframe"""
+    """Transpose and prepare financial statement dataframe
+
+    Handles two input formats:
+    1. YFinance format: index=timestamps, columns=account_names (needs transpose)
+    2. Chile CSV format: index=account_names, columns=year_strings (already transposed)
+    """
     if df is None or df.empty:
         return pd.DataFrame()
-    
+
+    # Detect Chile CSV format: columns are year strings (e.g. "2019", "2020")
+    is_chile_format = False
+    if len(df.columns) > 0:
+        try:
+            year_cols = [int(str(c).strip()) for c in df.columns]
+            if all(1900 <= y <= 2100 for y in year_cols):
+                is_chile_format = True
+        except (ValueError, TypeError):
+            pass
+
     result = df.transpose().copy()
-    result.index = pd.to_datetime(result.index, errors="coerce")
-    result = result.loc[result.index.notna()]
-    result["Year"] = result.index.year
-    result = result.set_index("Year")
+
+    if is_chile_format:
+        # Chile CSV: after transpose, index contains year strings — convert to integers
+        result.index = pd.to_numeric(result.index.astype(str).str.strip(), errors="coerce")
+        result = result.loc[result.index.notna()]
+        result.index = result.index.astype(int)
+        result.index.name = "Year"
+    else:
+        # YFinance format: after transpose, index contains timestamps
+        result.index = pd.to_datetime(result.index, errors="coerce")
+        result = result.loc[result.index.notna()]
+        result["Year"] = result.index.year
+        result = result.set_index("Year")
+
     result = result.sort_index().tail(years)
-    
+
     return result
 
 
