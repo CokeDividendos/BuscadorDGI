@@ -554,14 +554,16 @@ def _prepare_financial_df(df: pd.DataFrame, years: int = YEARS) -> pd.DataFrame:
         result = result.loc[result.index.notna()]
         result.index = result.index.astype(int)
         result.index.name = "Year"
+        # Show ALL available years for Chile CSV data (no .tail() limit)
+        result = result.sort_index()
     else:
         # YFinance format: after transpose, index contains timestamps
         result.index = pd.to_datetime(result.index, errors="coerce")
         result = result.loc[result.index.notna()]
         result["Year"] = result.index.year
         result = result.set_index("Year")
-
-    result = result.sort_index().tail(years)
+        # Keep years limit for YF data
+        result = result.sort_index().tail(years)
 
     return result
 

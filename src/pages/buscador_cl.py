@@ -21,6 +21,7 @@ from src.pages.analysis import (
     _plot_debt_repayment,
     _plot_dividend_evolution,
     _plot_dividend_safety,
+    _plot_drawdown,
     _plot_eps_evolution,
     _plot_equity_evolution,
     _plot_ev_ebitda_evolution,
@@ -29,12 +30,14 @@ from src.pages.analysis import (
     _plot_liabilities_evolution,
     _plot_margins_evolution,
     _plot_per_evolution,
+    _plot_price_variation_5y,
     _plot_ratio_evolution,
     _plot_revenue_evolution,
     _plot_share_buybacks,
     _plot_shares_outstanding,
     _prepare_financial_df,
     _calculate_financial_ratios,
+    _render_52w_gauge,
     _render_gurufocus_valuation_charts,
     _render_interactive_valuation_board,
     YEARS,
@@ -47,7 +50,7 @@ from src.services.chile_data import (
     load_cl_dividends,
     load_cl_financial_statements,
 )
-from src.services.finance_data import get_price_data
+from src.services.finance_data import get_price_data, get_52w_range
 from src.services.logos import logo_candidates
 
 
@@ -128,8 +131,9 @@ def page_buscador_cl() -> None:
         st.warning("No hay tickers chilenos disponibles en el mapa.")
         return
 
-    # Restore previous selection or default to first ticker
-    prev_selection = st.session_state.get("cl_ticker", available_tickers[0])
+    # Restore previous selection or default to ANDINA-B
+    default_ticker = "ANDINA-B" if "ANDINA-B" in available_tickers else available_tickers[0]
+    prev_selection = st.session_state.get("cl_ticker", default_ticker)
     default_idx = available_tickers.index(prev_selection) if prev_selection in available_tickers else 0
 
     c_left, c_mid, c_right = st.columns([1, 2, 1])
@@ -424,6 +428,25 @@ def page_buscador_cl() -> None:
 
 def _render_cl_dividends(cl_ticker: str, yf_ticker: str, financial_data: Dict[str, Any]) -> None:
     """Render Dividendos section for CL ticker."""
+    # Price analysis section
+    st.markdown("## Análisis de Precio")
+    col1, col2 = st.columns(2)
+    with col1:
+        _plot_price_variation_5y(yf_ticker)
+    with col2:
+        _plot_drawdown(yf_ticker)
+
+    st.markdown("### Rango 52 Semanas")
+    range_data = get_52w_range(yf_ticker)
+    _render_52w_gauge(
+        yf_ticker,
+        range_data.get("current_price"),
+        range_data.get("low_52w"),
+        range_data.get("high_52w"),
+    )
+
+    st.divider()
+
     st.markdown("## Valoración por dividendo")
 
     price_daily = _load_cl_price_daily(yf_ticker, YEARS)
