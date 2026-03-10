@@ -192,6 +192,9 @@ def page_resumen() -> None:
                 _render_gurufocus_valuation_charts(ticker)
     
     elif selected_section == "Pizarra de Valoración":
+        if not admin:
+            st.warning("Esta sección es solo para administradores.")
+            return
         st.markdown("## Pizarra de Valoración")
         
         # Get the company website to fetch logo
