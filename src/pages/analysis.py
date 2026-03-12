@@ -146,12 +146,15 @@ def _load_dividend_inputs(ticker: str, years: int) -> Dict[str, Any]:
     return {"price_daily": price_daily, "dividends": dividends, "cashflow": cashflow}
 
 
-def _annual_dividends_last_years(dividends: pd.Series, years: int) -> pd.Series:
+def _annual_dividends_last_years(dividends: pd.Series, years: Optional[int] = YEARS) -> pd.Series:
     if dividends is None or dividends.empty:
         return pd.Series(dtype=float)
 
     ann = dividends.resample("Y").sum().dropna().astype(float)
     ann.index = ann.index.year
+
+    if years is None:
+        return ann.dropna()
 
     current_year = datetime.now().year
     full_years = ann[ann.index < current_year]
@@ -178,23 +181,25 @@ def _cagr_from_annual(annual: pd.Series) -> Optional[float]:
 # =========================================================
 # Gráficos Dividendos
 # =========================================================
-def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: pd.Series) -> None:
+def _plot_dividend_evolution(ticker: str, price_daily: pd.DataFrame, dividends: pd.Series, years: Optional[int] = YEARS) -> None:
     if not isinstance(dividends, pd.Series):
         st.warning("No se pudieron cargar los datos de dividendos.")
         return
 
     # Always use annual view
-    annual = _annual_dividends_last_years(dividends, YEARS)
+    annual = _annual_dividends_last_years(dividends, years)
 
     if annual.empty:
-        st.warning("No hay dividendos suficientes para graficar la evolución (últimos 5 años).")
+        years_label = f"últimos {years} años" if years is not None else "todos los años disponibles"
+        st.warning(f"No hay dividendos suficientes para graficar la evolución ({years_label}).")
         return
 
     cagr = _cagr_from_annual(annual)
+    years_label = f"últimos {years} años" if years is not None else "todos los años disponibles"
     if cagr is None:
-        title = f"Evolución del dividendo anual — {ticker} (últimos {YEARS} años)"
+        title = f"Evolución del dividendo anual — {ticker} ({years_label})"
     else:
-        title = f"Evolución del dividendo anual — {ticker} | CAGR: {cagr:.2f}% (últimos {YEARS} años)"
+        title = f"Evolución del dividendo anual — {ticker} | CAGR: {cagr:.2f}% ({years_label})"
 
     st.markdown(f"**{title}**")
     fig = go.Figure()
@@ -252,7 +257,7 @@ def _pick_cashflow_cols(df: pd.DataFrame) -> Tuple[Optional[str], Optional[str]]
     return fcf_col, div_col
 
 
-def _plot_dividend_safety(ticker: str, cashflow: pd.DataFrame) -> None:
+def _plot_dividend_safety(ticker: str, cashflow: pd.DataFrame, years: Optional[int] = YEARS) -> None:
     if cashflow is None or cashflow.empty:
         st.warning("No hay datos de cashflow suficientes para graficar seguridad del dividendo.")
         return
@@ -268,7 +273,9 @@ def _plot_dividend_safety(ticker: str, cashflow: pd.DataFrame) -> None:
         st.warning("No se encontró la columna de dividendos pagados en cashflow.")
         return
 
-    df = df.sort_index().tail(YEARS)
+    df = df.sort_index()
+    if years is not None:
+        df = df.tail(years)
 
     if fcf_col == "__FCF_DERIVED__":
         ocf_candidates = ["Total Cash From Operating Activities", "Operating Cash Flow", "OperatingCashFlow"]

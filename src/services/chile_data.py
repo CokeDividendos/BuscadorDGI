@@ -72,8 +72,13 @@ def _parse_csv(path: Path) -> pd.DataFrame:
         df.index = df.index.str.strip()
         df.columns = [str(c).strip() for c in df.columns]
 
-        # Convert all values to numeric
+        # Drop columns with empty names or auto-generated "Unnamed: N" headers
+        # (produced by trailing semicolons in CSV files)
+        df = df[[c for c in df.columns if c and not c.startswith("Unnamed:")]]
+
+        # Normalize comma decimals (e.g. "183,53" → "183.53") before numeric conversion
         for col in df.columns:
+            df[col] = df[col].astype(str).str.replace(",", ".", regex=False)
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
         # Drop rows that are entirely NaN or entirely zero
@@ -112,31 +117,82 @@ def load_cl_financial_statements(ticker: str) -> Dict[str, Any]:
 
 def load_cl_dividends(ticker: str) -> pd.Series:
     """
-    Load dividends from dividends.csv if it exists.
-    Returns pd.Series with DatetimeIndex (compatible with yf tk.dividends).
-    Returns empty Series if file not found.
+    Load dividends for a CL ticker.  Supports two file formats:
 
-    Expected CSV format (separator ;):
-        Date;Dividends
-        2024-05-15;50.5
-        2023-05-10;45.2
+    1. ``dividend.csv`` (pivot format, preferred):
+       Separator ``;``, first column = dividend type, remaining columns = years.
+       The row whose index contains "total" (case-insensitive) is used.
+       Example::
+
+           ;2019;2020;2021
+           Provisorio;47;53,46;60,5
+           Total Dividend;94,3;110,66;117,7
+
+    2. ``dividends.csv`` (series format, legacy fallback):
+       Separator ``;``, columns ``Date`` and ``Dividends``.
+       Example::
+
+           Date;Dividends
+           2024-05-15;50.5
+
+    Decimal commas are normalised (``","`` → ``"."``) before numeric conversion.
+    Returns a ``pd.Series`` with ``DatetimeIndex`` compatible with yf dividends.
+    Returns empty Series if no file is found or on error.
     """
-    path = _DATA_CL / ticker.upper() / "dividends.csv"
-    if not path.exists():
-        return pd.Series(dtype=float)
+    ticker_upper = ticker.upper()
+    path_pivot = _DATA_CL / ticker_upper / "dividend.csv"
+    path_series = _DATA_CL / ticker_upper / "dividends.csv"
 
-    try:
-        df = pd.read_csv(path, sep=";", encoding="utf-8-sig", dtype=str)
-        df.columns = [c.strip() for c in df.columns]
-        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-        df["Dividends"] = pd.to_numeric(df["Dividends"], errors="coerce")
-        df = df.dropna(subset=["Date", "Dividends"])
-        df = df.set_index("Date").sort_index()
-        series = df["Dividends"].astype(float)
-        series.index.name = None
-        return series
-    except Exception:
-        return pd.Series(dtype=float)
+    if path_pivot.exists():
+        try:
+            df = pd.read_csv(path_pivot, sep=";", index_col=0, encoding="utf-8-sig", dtype=str)
+            df.index = df.index.astype(str).str.strip()
+            df.columns = [c.strip() for c in df.columns]
+
+            # Find "Total Dividend" row (case-insensitive match on "total")
+            total_row = next(
+                (idx for idx in df.index if "total" in idx.lower()),
+                None,
+            )
+            if total_row is None:
+                return pd.Series(dtype=float)
+
+            row = df.loc[total_row].copy()
+            # Normalize comma decimals
+            row = row.astype(str).str.replace(",", ".", regex=False)
+            row = pd.to_numeric(row, errors="coerce").dropna()
+
+            # Build DatetimeIndex: one entry per year at Dec 31
+            dates = pd.to_datetime(
+                [f"{yr}-12-31" for yr in row.index], errors="coerce"
+            )
+            mask = dates.notna()
+            series = pd.Series(
+                row.values[mask], index=dates[mask], dtype=float
+            )
+            series = series.sort_index()
+            series.index.name = None
+            return series
+        except Exception:
+            return pd.Series(dtype=float)
+
+    if path_series.exists():
+        try:
+            df = pd.read_csv(path_series, sep=";", encoding="utf-8-sig", dtype=str)
+            df.columns = [c.strip() for c in df.columns]
+            df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+            # Normalize comma decimals in the Dividends column
+            df["Dividends"] = df["Dividends"].astype(str).str.replace(",", ".", regex=False)
+            df["Dividends"] = pd.to_numeric(df["Dividends"], errors="coerce")
+            df = df.dropna(subset=["Date", "Dividends"])
+            df = df.set_index("Date").sort_index()
+            series = df["Dividends"].astype(float)
+            series.index.name = None
+            return series
+        except Exception:
+            return pd.Series(dtype=float)
+
+    return pd.Series(dtype=float)
 
 
 def get_cl_yf_ticker(ticker_cl: str) -> str:

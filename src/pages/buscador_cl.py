@@ -274,7 +274,10 @@ def page_buscador_cl() -> None:
     # --- Routing por sección ---
     selected_section = st.session_state.get("analysis_section", "Resumen")
 
-    if selected_section in ("Resumen", "Dividendos"):
+    if selected_section == "Resumen":
+        _render_cl_resumen(yf_ticker)
+
+    elif selected_section == "Dividendos":
         _render_cl_dividends(cl_ticker, yf_ticker, financial_data)
 
     elif selected_section == "Balance":
@@ -426,9 +429,8 @@ def page_buscador_cl() -> None:
                         _plot_ratio_evolution(cl_ticker, selected_ratio_name, selected_ratio_data)
 
 
-def _render_cl_dividends(cl_ticker: str, yf_ticker: str, financial_data: Dict[str, Any]) -> None:
-    """Render Dividendos section for CL ticker."""
-    # Price analysis section
+def _render_cl_resumen(yf_ticker: str) -> None:
+    """Render Resumen section for CL ticker: price variation, drawdown and 52w range."""
     st.markdown("## Análisis de Precio")
     col1, col2 = st.columns(2)
     with col1:
@@ -445,8 +447,9 @@ def _render_cl_dividends(cl_ticker: str, yf_ticker: str, financial_data: Dict[st
         range_data.get("high_52w"),
     )
 
-    st.divider()
 
+def _render_cl_dividends(cl_ticker: str, yf_ticker: str, financial_data: Dict[str, Any]) -> None:
+    """Render Dividendos section for CL ticker: evolution, safety and Geraldine Weiss."""
     st.markdown("## Valoración por dividendo")
 
     price_daily = _load_cl_price_daily(yf_ticker, YEARS)
@@ -459,10 +462,10 @@ def _render_cl_dividends(cl_ticker: str, yf_ticker: str, financial_data: Dict[st
         "📌 Geraldine Weiss",
     ])
     with sub_tabs[0]:
-        _plot_dividend_evolution(cl_ticker, price_daily, dividends)
+        _plot_dividend_evolution(cl_ticker, price_daily, dividends, years=None)
     with sub_tabs[1]:
         # _plot_dividend_safety expects raw cashflow (accounts as index, year cols)
         # which is exactly what load_cl_financial_statements returns
-        _plot_dividend_safety(cl_ticker, cashflow_raw)
+        _plot_dividend_safety(cl_ticker, cashflow_raw, years=None)
     with sub_tabs[2]:
         _plot_geraldine_weiss(cl_ticker, price_daily, dividends)
