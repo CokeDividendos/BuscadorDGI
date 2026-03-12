@@ -346,7 +346,7 @@ def page_buscador_cl() -> None:
                     st.warning("No hay datos suficientes de balance y flujo de efectivo para este análisis.")
             with sub_tabs[1]:
                 if not income_df.empty:
-                    _plot_per_evolution(cl_ticker, income_df, info)
+                    _plot_per_evolution(yf_ticker, income_df, info)
                 else:
                     st.warning("No hay datos suficientes de estado de resultados para este análisis.")
             with sub_tabs[2]:

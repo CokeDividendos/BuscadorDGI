@@ -172,6 +172,8 @@ def load_cl_dividends(ticker: str) -> pd.Series:
             )
             series = series.sort_index()
             series.index.name = None
+            # Only include data from 2019 onwards
+            series = series[series.index >= pd.Timestamp("2019-01-01")]
             return series
         except Exception:
             return pd.Series(dtype=float)
@@ -188,6 +190,8 @@ def load_cl_dividends(ticker: str) -> pd.Series:
             df = df.set_index("Date").sort_index()
             series = df["Dividends"].astype(float)
             series.index.name = None
+            # Only include data from 2019 onwards
+            series = series[series.index >= pd.Timestamp("2019-01-01")]
             return series
         except Exception:
             return pd.Series(dtype=float)
