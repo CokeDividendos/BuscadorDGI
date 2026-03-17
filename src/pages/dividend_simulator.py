@@ -4,6 +4,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
+import math
+
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -19,6 +21,9 @@ COLOR_SECONDARY = "#ff00ff"   # Magenta
 COLOR_TERTIARY = "#01c2ef"    # Cyan
 COLOR_BACKGROUND = "#141f41"  # Dark blue
 COLOR_TEXT = "#ffffff"        # White
+
+CAGR_MIN = 0.0
+CAGR_MAX = 30.0
 
 
 # =========================================================
@@ -382,16 +387,26 @@ def page_dividend_simulator():
         )
         
         # CAGR with automatic value if available
-        default_cagr = auto_cagr if auto_cagr is not None else 7.76
+        _raw_cagr = auto_cagr if auto_cagr is not None else 7.76
+        try:
+            _raw_cagr = float(_raw_cagr)
+            if not math.isfinite(_raw_cagr):
+                raise ValueError()
+        except (TypeError, ValueError):
+            _raw_cagr = 7.76
+        _cagr_clamped = _raw_cagr != max(CAGR_MIN, min(_raw_cagr, CAGR_MAX))
+        default_cagr = max(CAGR_MIN, min(_raw_cagr, CAGR_MAX))
         cagr_dividendo = st.number_input(
             "CAGR del Dividendo (%)" + (f" - Calculado: {auto_cagr:.2f}%" if auto_cagr is not None else ""),
-            min_value=0.0,
-            max_value=30.0,
+            min_value=CAGR_MIN,
+            max_value=CAGR_MAX,
             value=default_cagr,
             step=0.1,
             format="%.2f",
             help="Tasa de crecimiento anual del dividendo" + (" (calculado automáticamente desde el historial)" if auto_cagr is not None else "")
         )
+        if _cagr_clamped and auto_cagr is not None:
+            st.caption(f"⚠️ CAGR calculado ({auto_cagr:.2f}%) fuera del rango permitido ({CAGR_MIN:.0f}%–{CAGR_MAX:.0f}%), ajustado a {default_cagr:.2f}%.")
     
     with col3:
         tipo_distribucion = st.selectbox(
