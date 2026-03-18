@@ -51,7 +51,7 @@ from src.services.chile_data import (
     load_cl_dividends,
     load_cl_financial_statements,
 )
-from src.services.finance_data import get_price_data, get_52w_range
+from src.services.finance_data import get_price_data, get_52w_range, get_price_history
 from src.services.logos import logo_candidates
 
 
@@ -61,18 +61,7 @@ from src.services.logos import logo_candidates
 
 def _load_cl_price_daily(yf_ticker: str, years: int = YEARS) -> pd.DataFrame:
     """Fetch daily price history from YF for the CL ticker (e.g. ANDINA-B.SN)."""
-    try:
-        t = yf.Ticker(yf_ticker)
-        hist = t.history(period=f"{years}y", interval="1d", auto_adjust=False)
-        if isinstance(hist, pd.DataFrame) and not hist.empty:
-            if "Close" not in hist.columns:
-                close_cols = [c for c in hist.columns if str(c).lower() == "close"]
-                if close_cols:
-                    hist["Close"] = hist[close_cols[0]]
-            return hist[["Close"]].dropna()
-    except Exception:
-        pass
-    return pd.DataFrame(columns=["Close"])
+    return get_price_history(yf_ticker, period=f"{years}y", interval="1d", auto_adjust=False)
 
 
 # =========================================================
