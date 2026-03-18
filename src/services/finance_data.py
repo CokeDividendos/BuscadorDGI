@@ -286,11 +286,12 @@ def get_dividend_kpis(ticker: str) -> dict:
             except Exception:
                 annual = None
 
-        # Fallback: use dividendRate from Yahoo Finance info when TTM sum is unavailable
+        # Fallback: use dividendRate from cached profile data (no extra API call)
         if annual is None:
             try:
-                info = tk.info or {}
-                rate = info.get("dividendRate")
+                prof = get_profile_data(t)
+                raw = prof.get("raw") if isinstance(prof, dict) else {}
+                rate = raw.get("dividendRate")
                 if isinstance(rate, (int, float)) and rate > 0:
                     annual = float(rate)
             except Exception:
@@ -360,6 +361,58 @@ def get_dividend_kpis(ticker: str) -> dict:
             return _load()
 
     return _cache_get_or_set(key, ttl, _load)
+
+
+def get_price_history(ticker: str, period: str = "5y", interval: str = "1d", auto_adjust: bool = False) -> "pd.DataFrame":
+    """
+    Centralized, cached function for price history.
+
+    Returns a DataFrame with a single 'Close' column (normalized).
+    Returns an empty DataFrame with 'Close' column if the fetch fails.
+
+    TTL:
+      - "5y"/"1d" or "1y"/"1d" → 24 hours
+      - anything else            → 5 minutes
+    """
+    import pandas as pd
+
+    t = (ticker or "").strip().upper()
+    key = f"yf:history:{t}:{period}:{interval}:{auto_adjust}"
+
+    if period in ("5y", "1y") and interval == "1d":
+        ttl = 60 * 60 * 24  # 24h
+    else:
+        ttl = 60 * 5  # 5 min
+
+    cached = cache_get(key)
+    if cached is not None:
+        try:
+            if isinstance(cached, dict) and cached:
+                return pd.DataFrame.from_dict(cached, orient="tight")
+        except Exception:
+            pass
+        return pd.DataFrame(columns=["Close"])
+
+    # Fetch from yfinance
+    hist = pd.DataFrame(columns=["Close"])
+    try:
+        import yfinance as yf
+        tk = yf.Ticker(t)
+        raw = yf_call(lambda: tk.history(period=period, interval=interval, auto_adjust=auto_adjust))
+        if raw is not None and isinstance(raw, pd.DataFrame) and not raw.empty:
+            if "Close" not in raw.columns:
+                close_cols = [c for c in raw.columns if str(c).lower() == "close"]
+                if close_cols:
+                    raw["Close"] = raw[close_cols[0]]
+            if "Close" in raw.columns:
+                hist = raw[["Close"]].dropna()
+    except Exception:
+        pass
+
+    if not hist.empty:
+        cache_set(key, hist.to_dict(orient="tight"), ttl_seconds=ttl)
+
+    return hist
 
 
 def get_52w_range(ticker: str) -> dict:

@@ -23,6 +23,7 @@ from src.services.finance_data import (
     get_profile_data,
     get_dividend_kpis,
     get_52w_range,
+    get_price_history,
 )
 from src.services.logos import logo_candidates
 from src.services.usage_limits import consume_search, remaining_searches
@@ -117,30 +118,27 @@ def _divk_get(divk: Dict[str, Any], *keys: str) -> Any:
 # =========================================================
 @st.cache_data(ttl=DIVIDENDS_CACHE_TTL_SECONDS, show_spinner=False)
 def _load_dividend_inputs(ticker: str, years: int) -> Dict[str, Any]:
-    t = yf.Ticker(ticker)
+    # Use centralized cached price history (avoids duplicate yf.history calls)
+    price_daily = get_price_history(ticker, period=f"{years}y", interval="1d", auto_adjust=False)
 
+    # Dividends: fetched directly (no centralized cache for Series type)
     try:
-        price_daily = t.history(period=f"{years}y", interval="1d", auto_adjust=False)
+        t = yf.Ticker(ticker)
+        dividends = t.dividends
+        if dividends is None or not isinstance(dividends, pd.Series):
+            dividends = pd.Series(dtype=float)
+        else:
+            dividends = dividends.dropna().astype(float)
     except Exception:
-        price_daily = pd.DataFrame(columns=["Close"])
-
-    if isinstance(price_daily, pd.DataFrame) and not price_daily.empty:
-        if "Close" not in price_daily.columns:
-            close_cols = [c for c in price_daily.columns if str(c).lower() == "close"]
-            if close_cols:
-                price_daily["Close"] = price_daily[close_cols[0]]
-        price_daily = price_daily[["Close"]].dropna()
-    else:
-        price_daily = pd.DataFrame(columns=["Close"])
-
-    dividends = t.dividends
-    if dividends is None or not isinstance(dividends, pd.Series):
         dividends = pd.Series(dtype=float)
-    else:
-        dividends = dividends.dropna().astype(float)
 
-    cashflow = t.cashflow
-    if cashflow is None or not isinstance(cashflow, pd.DataFrame):
+    # Cashflow: reuse the cached financial statements (avoids a separate t.cashflow call)
+    try:
+        stmts = _load_financial_statements(ticker)
+        cashflow = stmts.get("cashflow", pd.DataFrame())
+        if cashflow is None or not isinstance(cashflow, pd.DataFrame):
+            cashflow = pd.DataFrame()
+    except Exception:
         cashflow = pd.DataFrame()
 
     return {"price_daily": price_daily, "dividends": dividends, "cashflow": cashflow}
@@ -2536,30 +2534,13 @@ Cita las fuentes principales."""
 
 
 def _plot_price_variation_5y(ticker: str) -> None:
-    """Plot 5-year price variation chart with caching (24 hours)."""
-    # Check cache first
-    cache_key = f"price_chart_data_{ticker}"
-    cached_data = cache_get(cache_key)
-    
-    if cached_data:
-        # Reconstruct DataFrame with proper metadata using 'tight' orientation
-        hist = pd.DataFrame.from_dict(cached_data, orient='tight')
-    else:
-        try:
-            t = yf.Ticker(ticker)
-            hist = t.history(period="5y", interval="1d")
-            
-            if hist.empty:
-                st.warning("No hay datos de precio disponibles para los últimos 5 años.")
-                return
-            
-            # Cache the data for 24 hours using 'tight' orientation to preserve structure
-            cache_data = hist.to_dict(orient='tight')
-            cache_set(cache_key, cache_data, ttl_seconds=60 * 60 * 24)  # 24 hours
-        except Exception as e:
-            st.error(f"Error al generar el gráfico de precio: {str(e)}")
-            return
-    
+    """Plot 5-year price variation chart using centralized cached price history."""
+    hist = get_price_history(ticker, period="5y", interval="1d", auto_adjust=True)
+
+    if hist.empty:
+        st.warning("No hay datos de precio disponibles para los últimos 5 años.")
+        return
+
     try:
         fig = go.Figure()
         fig.add_trace(
@@ -2592,30 +2573,13 @@ def _plot_price_variation_5y(ticker: str) -> None:
 
 
 def _plot_drawdown(ticker: str) -> None:
-    """Plot drawdown chart with caching (24 hours)."""
-    # Check cache first
-    cache_key = f"drawdown_chart_data_{ticker}"
-    cached_data = cache_get(cache_key)
-    
-    if cached_data:
-        # Reconstruct DataFrame with proper metadata using 'tight' orientation
-        hist = pd.DataFrame.from_dict(cached_data, orient='tight')
-    else:
-        try:
-            t = yf.Ticker(ticker)
-            hist = t.history(period="5y", interval="1d")
-            
-            if hist.empty:
-                st.warning("No hay datos disponibles para calcular el drawdown.")
-                return
-            
-            # Cache the data for 24 hours using 'tight' orientation to preserve structure
-            cache_data = hist.to_dict(orient='tight')
-            cache_set(cache_key, cache_data, ttl_seconds=60 * 60 * 24)  # 24 hours
-        except Exception as e:
-            st.error(f"Error al generar el gráfico de drawdown: {str(e)}")
-            return
-    
+    """Plot drawdown chart using centralized cached price history."""
+    hist = get_price_history(ticker, period="5y", interval="1d", auto_adjust=True)
+
+    if hist.empty:
+        st.warning("No hay datos disponibles para calcular el drawdown.")
+        return
+
     try:
         # Calculate drawdown
         close = hist['Close']
