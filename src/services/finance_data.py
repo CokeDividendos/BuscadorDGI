@@ -188,71 +188,53 @@ def get_key_stats(ticker: str) -> dict:
 
 def _calculate_annual_dividend(divs) -> float | None:
     """
-    Calculate trailing 12-month dividend sum with improved accuracy.
-    
+    Calculate trailing 12-month (TTM) dividend sum.
+
     Strategy:
-    1. Use EXACTLY the last 12 calendar months (not 365 days)
-    2. If less than 12 months of history, extrapolate based on detected frequency
-    3. Detect payment frequency automatically (monthly, quarterly, semi-annual, annual)
-    
+    1. Sum ALL payments that fall within the trailing 365 days from the last payment.
+    2. If the TTM window contains no payments, extrapolate from detected frequency.
+
     Args:
         divs: Pandas Series with dividend history (index = dates, values = dividend amounts)
-    
+
     Returns:
         Annual dividend amount or None if cannot be calculated
     """
     if divs is None or len(divs) == 0:
         return None
-    
+
     try:
         import pandas as pd
-        
-        # Get last payment date
+
+        # Trailing 365-day window from the most recent payment date
         last_date = divs.index.max()
-        
-        # Calculate date exactly 12 months ago
-        start_date = last_date - pd.DateOffset(months=12)
-        
-        # Get dividends from the last 12 calendar months
-        # Note: Using > instead of >= to avoid edge case where 5 quarterly payments
-        # fall within window (e.g., if payment happens exactly on 12-month boundary)
-        div_12m = divs[divs.index > start_date]
-        
-        if len(div_12m) >= 4:
-            # We have at least 4 payments in 12 months, use actual sum
-            return float(div_12m.sum())
-        
-        # Less than 12 months of data - extrapolate based on frequency
+        start_date = last_date - pd.DateOffset(days=365)
+
+        div_ttm = divs[divs.index > start_date]
+
+        if len(div_ttm) >= 1:
+            ttm_sum = float(div_ttm.sum())
+            return ttm_sum  # Return actual sum (0.0 means no dividend, not calculation failure)
+
+        # Fallback: extrapolate from detected payment frequency
         if len(divs) < 2:
-            # Only 1 payment - can't determine frequency reliably
             return None
-        
-        # Detect payment frequency from time between payments
+
         time_diffs = divs.index.to_series().diff().dropna()
         avg_days_between = time_diffs.dt.days.median()
-        
-        # Classify frequency based on threshold constants
+
         if avg_days_between < MONTHLY_THRESHOLD_DAYS:
-            # Monthly (avg ~30 days)
             payments_per_year = 12
         elif avg_days_between < QUARTERLY_THRESHOLD_DAYS:
-            # Quarterly (avg ~90 days)
             payments_per_year = 4
         elif avg_days_between < SEMIANNUAL_THRESHOLD_DAYS:
-            # Semi-annual (avg ~180 days)
             payments_per_year = 2
         else:
-            # Annual (avg ~365 days)
             payments_per_year = 1
-        
-        # Use last payment as reference
+
         last_payment = float(divs.iloc[-1])
-        
-        # Extrapolate annual dividend
-        annual_dividend = last_payment * payments_per_year
-        
-        return annual_dividend
-        
+        return last_payment * payments_per_year
+
     except Exception:
         return None
 
@@ -299,21 +281,27 @@ def get_dividend_kpis(ticker: str) -> dict:
 
         if divs is not None and len(divs) > 0:
             try:
-                # Calculate trailing 12-month dividend with improved accuracy
+                # Calculate trailing 12-month (TTM) dividend
                 annual = _calculate_annual_dividend(divs)
+            except Exception:
+                annual = None
 
-                # Forward dividend: use last payment * detected frequency
-                if annual is not None:
-                    # Use annual as forward (already calculated correctly)
-                    forward_annual = annual
-                else:
-                    # Fallback: use last payment * 4 (assume quarterly)
-                    last_div = float(divs.iloc[-1])
-                    forward_annual = last_div * 4
+        # Fallback: use dividendRate from Yahoo Finance info when TTM sum is unavailable
+        if annual is None:
+            try:
+                info = tk.info or {}
+                rate = info.get("dividendRate")
+                if isinstance(rate, (int, float)) and rate > 0:
+                    annual = float(rate)
+            except Exception:
+                pass
 
+        if annual is not None:
+            try:
+                forward_annual = annual
                 if isinstance(last_price, (int, float)) and last_price:
-                    div_yield = (annual / last_price) * 100 if annual is not None else None
-                    fwd_yield = (forward_annual / last_price) * 100 if forward_annual is not None else None
+                    div_yield = (annual / last_price) * 100
+                    fwd_yield = (forward_annual / last_price) * 100
             except Exception:
                 pass
 
