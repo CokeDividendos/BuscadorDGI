@@ -576,6 +576,239 @@ def _prepare_financial_df(df: pd.DataFrame, years: int = YEARS) -> pd.DataFrame:
 
 
 # =========================================================
+# Financial Table Helpers (expander con traducción al español)
+# =========================================================
+
+# Mapping of common English account names → Spanish labels.
+# Keys are lowercase for case-insensitive matching.
+_ACCOUNT_NAMES_ES: Dict[str, str] = {
+    # ── Balance ──────────────────────────────────────────────
+    "cash and cash equivalents": "Efectivo y Equivalentes",
+    "cash cash equivalents and short term investments": "Efectivo, Equiv. y Inv. CP",
+    "cash equivalents": "Equivalentes de Efectivo",
+    "short term investments": "Inversiones a Corto Plazo",
+    "net receivables": "Cuentas por Cobrar Netas",
+    "accounts receivable": "Cuentas por Cobrar",
+    "gross accounts receivable": "Cuentas por Cobrar Brutas",
+    "allowance for doubtful accounts receivables": "Provisión Incobrables",
+    "inventory": "Inventario",
+    "inventories": "Inventarios",
+    "other current assets": "Otros Activos Corrientes",
+    "current assets": "Activos Corrientes",
+    "total current assets": "Total Activos Corrientes",
+    "net ppe": "PP&E Neto",
+    "properties": "Propiedades",
+    "gross ppe": "PP&E Bruto",
+    "land and improvements": "Terrenos y Mejoras",
+    "machinery furniture equipment": "Maquinaria y Equipos",
+    "buildings and improvements": "Edificios y Mejoras",
+    "leases": "Arrendamientos",
+    "construction in progress": "Obras en Construcción",
+    "other properties": "Otras Propiedades",
+    "accumulated depreciation": "Depreciación Acumulada",
+    "investments and advances": "Inversiones y Anticipos",
+    "long term equity investment": "Inversión en Acciones LP",
+    "investment in financial assets": "Inversión en Activos Financieros",
+    "goodwill": "Plusvalía (Goodwill)",
+    "goodwill and other intangible assets": "Plusvalía e Intangibles",
+    "other intangible assets": "Otros Activos Intangibles",
+    "intangible assets": "Activos Intangibles",
+    "other non current assets": "Otros Activos No Corrientes",
+    "non current assets": "Activos No Corrientes",
+    "total non current assets": "Total Activos No Corrientes",
+    "total assets": "Total Activos",
+    "payables": "Cuentas por Pagar",
+    "accounts payable": "Cuentas por Pagar",
+    "payables and accrued expenses": "Cuentas por Pagar y Devengados",
+    "current accrued expenses": "Gastos Devengados Corrientes",
+    "interest payable": "Intereses por Pagar",
+    "taxes payable": "Impuestos por Pagar",
+    "current debt and capital lease obligation": "Deuda Corriente y Arrendamientos",
+    "current debt": "Deuda Corriente",
+    "capital lease obligations": "Obligaciones de Arrendamiento",
+    "commercial paper": "Papel Comercial",
+    "other current liabilities": "Otros Pasivos Corrientes",
+    "current liabilities": "Pasivos Corrientes",
+    "total current liabilities": "Total Pasivos Corrientes",
+    "long term debt and capital lease obligation": "Deuda LP y Arrendamientos",
+    "long term debt": "Deuda a Largo Plazo",
+    "long term capital lease obligation": "Arrendamientos LP",
+    "other non current liabilities": "Otros Pasivos No Corrientes",
+    "trade and other payables non current": "Otros Pasivos Comerciales LP",
+    "employee benefits": "Beneficios a Empleados",
+    "non current deferred taxes liabilities": "Impuestos Diferidos Pasivos LP",
+    "non current deferred liabilities": "Pasivos Diferidos No Corrientes",
+    "non current liabilities": "Pasivos No Corrientes",
+    "total non current liabilities net minority interest": "Total Pasivos No Corrientes",
+    "total liabilities net minority interest": "Total Pasivos",
+    "total liabilities": "Total Pasivos",
+    "minority interest": "Participación Minoritaria",
+    "common stock equity": "Patrimonio Común",
+    "stockholders equity": "Patrimonio de Accionistas",
+    "shareholders equity": "Patrimonio de Accionistas",
+    "total equity": "Patrimonio Total",
+    "common stock": "Acciones Ordinarias",
+    "additional paid in capital": "Capital Adicional Pagado",
+    "retained earnings": "Utilidades Retenidas",
+    "treasury stock": "Acciones en Tesorería",
+    "other equity adjustments": "Otros Ajustes al Patrimonio",
+    "gains losses not affecting retained earnings": "Ganancias No Realizadas",
+    "total equity gross minority interest": "Patrimonio Total (incl. Minoritario)",
+    "total capitalization": "Capitalización Total",
+    "preferred stock": "Acciones Preferentes",
+    "total debt": "Deuda Total",
+    "net debt": "Deuda Neta",
+    "working capital": "Capital de Trabajo",
+    "invested capital": "Capital Invertido",
+    "tangible book value": "Valor Libro Tangible",
+    "ordinary shares number": "N° Acciones Ordinarias",
+    "treasury shares number": "Acciones en Tesorería (N°)",
+    "share issued": "Acciones Emitidas",
+    # ── Income Statement ──────────────────────────────────────
+    "total revenue": "Ingresos Totales",
+    "revenue": "Ingresos",
+    "operating revenue": "Ingresos Operacionales",
+    "excise taxes": "Impuestos Especiales",
+    "cost of revenue": "Costo de Ventas",
+    "cost of goods sold": "Costo de Ventas",
+    "gross profit": "Utilidad Bruta",
+    "selling general and administrative": "Gastos Generales y de Venta",
+    "general and administrative expense": "Gastos Generales y Administrativos",
+    "selling and marketing expense": "Gastos de Venta y Marketing",
+    "research and development": "Investigación y Desarrollo",
+    "depreciation and amortization in income statement": "D&A (Estado de Resultados)",
+    "depreciation amortization depletion income statement": "D&A y Agotamiento",
+    "operating expense": "Gastos Operacionales",
+    "total operating income as reported": "Utilidad Operacional Reportada",
+    "operating income": "Utilidad Operacional",
+    "ebit": "EBIT",
+    "ebitda": "EBITDA",
+    "normalized ebitda": "EBITDA Normalizado",
+    "reconciled depreciation": "Depreciación Conciliada",
+    "reconciled cost of revenue": "Costo de Ventas Conciliado",
+    "net income from continuing operation net minority interest": "Utilidad Operaciones Continuas",
+    "net income from continuing operations": "Utilidad Operaciones Continuas",
+    "net income including noncontrolling interests": "Utilidad Neta (incl. Minoritarios)",
+    "net income common stockholders": "Utilidad Neta para Accionistas",
+    "net income": "Utilidad Neta",
+    "net non operating interest income expense": "Resultado Financiero Neto",
+    "total non operating income expense": "Total Resultado No Operacional",
+    "total other income expense net": "Otros Ingresos/Gastos Netos",
+    "other income expense": "Otros Ingresos/Gastos",
+    "other non operating income expenses": "Otros Gastos No Operacionales",
+    "interest income non operating": "Ingresos por Intereses",
+    "interest expense non operating": "Gastos por Intereses",
+    "interest income": "Ingresos por Intereses",
+    "interest expense": "Gastos por Intereses",
+    "pretax income": "Utilidad Antes de Impuestos",
+    "tax provision": "Provisión de Impuestos",
+    "income tax expense": "Gasto por Impuesto a la Renta",
+    "tax effect of unusual items": "Efecto Impositivo Ítems Inusuales",
+    "tax rate for calcs": "Tasa Impositiva (Cálculo)",
+    "normalized income": "Utilidad Normalizada",
+    "basic eps": "EPS Básico",
+    "diluted eps": "EPS Diluido",
+    "diluted average shares": "Acciones Promedio Diluidas",
+    "basic average shares": "Acciones Promedio Básicas",
+    "minority interests": "Intereses Minoritarios",
+    # ── Cash Flow ────────────────────────────────────────────
+    "operating cash flow": "Flujo de Caja Operacional",
+    "cash flow from continuing operating activities": "FCO de Actividades Continuas",
+    "net income from continuing operations cashflow": "Utilidad Neta (FCO)",
+    "depreciation and amortization": "Depreciación y Amortización",
+    "depreciation amortization depletion": "D&A y Agotamiento",
+    "deferred income tax": "Impuesto a la Renta Diferido",
+    "stock based compensation": "Compensación en Acciones",
+    "change in working capital": "Cambio en Capital de Trabajo",
+    "changes in cash": "Variaciones de Efectivo",
+    "change in receivables": "Cambio en Cuentas por Cobrar",
+    "change in inventory": "Cambio en Inventario",
+    "change in payables and accrued expense": "Cambio en Cuentas por Pagar",
+    "change in other working capital": "Cambio en Otro Capital de Trabajo",
+    "other non cash items": "Otros Ítems No en Efectivo",
+    "investing cash flow": "Flujo de Caja de Inversión",
+    "cash flow from continuing investing activities": "FCI de Actividades Continuas",
+    "capital expenditure": "Gastos de Capital (CapEx)",
+    "capital expenditure reported": "CapEx Reportado",
+    "purchase of investment": "Compra de Inversiones",
+    "sale of investment": "Venta de Inversiones",
+    "net investment purchase and sale": "Compras/Ventas Netas de Inversión",
+    "purchase of business": "Adquisiciones",
+    "sale of business": "Desinversiones",
+    "net business purchase and sale": "Adquisiciones/Desinversiones Netas",
+    "net ppe purchase and sale": "Compras/Ventas Netas PP&E",
+    "purchase of ppe": "Compra de PP&E",
+    "sale of ppe": "Venta de PP&E",
+    "net intangibles purchase and sale": "Compras/Ventas Netas Intangibles",
+    "net other investing changes": "Otras Variaciones de Inversión",
+    "financing cash flow": "Flujo de Caja de Financiamiento",
+    "cash flow from continuing financing activities": "FCF de Actividades Continuas",
+    "issuance of debt": "Emisión de Deuda",
+    "repayment of debt": "Pago de Deuda",
+    "net long term debt issuance": "Emisión Neta Deuda LP",
+    "long term debt issuance": "Emisión Deuda LP",
+    "long term debt payments": "Pagos Deuda LP",
+    "net short term debt issuance": "Emisión Neta Deuda CP",
+    "short term debt issuance": "Emisión Deuda CP",
+    "short term debt payments": "Pagos Deuda CP",
+    "net issuance payments of debt": "Emisión/Pago Neto de Deuda",
+    "repurchase of capital stock": "Recompra de Acciones",
+    "common stock issuance": "Emisión de Acciones Comunes",
+    "common stock payments": "Pagos de Acciones Comunes",
+    "net common stock issuance": "Emisión Neta de Acciones",
+    "cash dividends paid": "Dividendos Pagados",
+    "preferred stock dividends paid": "Dividendos Acciones Preferentes",
+    "net other financing charges": "Otros Cargos de Financiamiento",
+    "end cash position": "Posición de Efectivo Final",
+    "beginning cash position": "Posición de Efectivo Inicial",
+    "effect of exchange rate changes": "Efecto Tipos de Cambio",
+    "free cash flow": "Flujo de Caja Libre",
+    "income tax paid supplemental data": "Impuestos Pagados (Dato Suplementario)",
+    "interest paid supplemental data": "Intereses Pagados (Dato Suplementario)",
+}
+
+
+def _translate_financial_accounts_es(index: pd.Index) -> pd.Index:
+    """Translate an account-name Index from English to Spanish.
+
+    Unknown names are left unchanged.
+    """
+    return pd.Index(
+        [_ACCOUNT_NAMES_ES.get(str(name).strip().lower(), str(name)) for name in index]
+    )
+
+
+def _render_financial_table_expander(
+    title: str, df_prepared: pd.DataFrame
+) -> None:
+    """Render a collapsible expander with a financial-data table.
+
+    *df_prepared* must have **years as index** and **accounts as columns**
+    (i.e. the output of ``_prepare_financial_df``).  The function transposes
+    it so that rows = accounts and columns = years, translates account names
+    to Spanish, and displays the result inside a ``st.expander``.
+    """
+    if df_prepared is None or df_prepared.empty:
+        return
+
+    with st.expander(title, expanded=False):
+        df_t = df_prepared.T.copy()
+        # Translate account names (index after transpose)
+        df_t.index = _translate_financial_accounts_es(df_t.index)
+        # Format numbers as thousands with no decimals for readability
+        try:
+            formatted = df_t.map(
+                lambda x: f"{x:,.0f}" if pd.notna(x) and isinstance(x, (int, float)) else ("" if pd.isna(x) else str(x))
+            )
+        except AttributeError:
+            # Fallback for older pandas
+            formatted = df_t.applymap(
+                lambda x: f"{x:,.0f}" if pd.notna(x) and isinstance(x, (int, float)) else ("" if pd.isna(x) else str(x))
+            )
+        st.dataframe(formatted, use_container_width=True)
+
+
+# =========================================================
 # Balance Section Charts
 # =========================================================
 def _plot_assets_evolution(ticker: str, balance_df: pd.DataFrame) -> None:

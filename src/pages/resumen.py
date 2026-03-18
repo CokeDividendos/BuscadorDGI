@@ -20,6 +20,7 @@ from src.pages.analysis import (
     _load_dividend_inputs,
     _load_financial_statements,
     _prepare_financial_df,
+    _render_financial_table_expander,
     _plot_dividend_evolution,
     _plot_dividend_safety,
     _plot_geraldine_weiss,
@@ -120,6 +121,7 @@ def page_resumen() -> None:
             with col2:
                 _plot_liabilities_evolution(ticker, balance_df)
                 _plot_equity_evolution(ticker, balance_df)
+            _render_financial_table_expander("📋 Ver tabla Balance", balance_df)
     
     elif selected_section == "EERR":
         st.markdown("## Estado de Resultados")
@@ -136,6 +138,7 @@ def page_resumen() -> None:
             with col2:
                 _plot_margins_evolution(ticker, income_df)
                 _plot_shares_outstanding(ticker, income_df)
+            _render_financial_table_expander("📋 Ver tabla Estado de Resultados", income_df)
     
     elif selected_section == "EFE":
         st.markdown("## Estado de Flujo de Efectivo")
@@ -152,6 +155,7 @@ def page_resumen() -> None:
             with col2:
                 _plot_debt_issuance(ticker, cashflow_df)
                 _plot_share_buybacks(ticker, cashflow_df)
+            _render_financial_table_expander("📋 Ver tabla Flujo de Efectivo", cashflow_df)
     
     elif selected_section == "Valoración por múltiplos":
         st.markdown("## Valoración por múltiplos")

@@ -36,6 +36,7 @@ from src.pages.analysis import (
     _plot_share_buybacks,
     _plot_shares_outstanding,
     _prepare_financial_df,
+    _render_financial_table_expander,
     _calculate_financial_ratios,
     _render_52w_gauge,
     _render_gurufocus_valuation_charts,
@@ -293,6 +294,7 @@ def page_buscador_cl() -> None:
             with col2:
                 _plot_liabilities_evolution(cl_ticker, balance_df)
                 _plot_equity_evolution(cl_ticker, balance_df)
+            _render_financial_table_expander("📋 Ver tabla Balance", balance_df)
 
     elif selected_section == "EERR":
         st.markdown("## Estado de Resultados")
@@ -307,6 +309,7 @@ def page_buscador_cl() -> None:
             with col2:
                 _plot_margins_evolution(cl_ticker, income_df)
                 _plot_shares_outstanding(cl_ticker, income_df)
+            _render_financial_table_expander("📋 Ver tabla Estado de Resultados", income_df)
 
     elif selected_section == "EFE":
         st.markdown("## Estado de Flujo de Efectivo")
@@ -321,6 +324,7 @@ def page_buscador_cl() -> None:
             with col2:
                 _plot_debt_issuance(cl_ticker, cashflow_df)
                 _plot_share_buybacks(cl_ticker, cashflow_df)
+            _render_financial_table_expander("📋 Ver tabla Flujo de Efectivo", cashflow_df)
 
     elif selected_section == "Valoración por múltiplos":
         st.markdown("## Valoración por múltiplos")
