@@ -191,7 +191,10 @@ def _calculate_annual_dividend(divs) -> float | None:
     Calculate trailing 12-month (TTM) dividend sum.
 
     Strategy:
-    1. Sum ALL payments that fall within the trailing 365 days from the last payment.
+    1. Sum ALL payments that fall within the trailing 365 days ending today (UTC).
+       Using today as the end date avoids counting an extra payment that can occur
+       when anchoring the window to the last payment date (e.g. 5 quarterly payments
+       instead of 4 for tickers like NKE).
     2. If the TTM window contains no payments, extrapolate from detected frequency.
 
     Args:
@@ -206,21 +209,29 @@ def _calculate_annual_dividend(divs) -> float | None:
     try:
         import pandas as pd
 
-        # Trailing 365-day window from the most recent payment date
-        last_date = divs.index.max()
-        start_date = last_date - pd.DateOffset(days=365)
+        # Work on a copy with a normalised timezone-naive DatetimeIndex
+        s = divs.copy()
+        if not isinstance(s.index, pd.DatetimeIndex):
+            s.index = pd.to_datetime(s.index, errors="coerce")
+            s = s[s.index.notna()]
 
-        div_ttm = divs[divs.index > start_date]
+        if getattr(s.index, "tz", None) is not None:
+            s.index = s.index.tz_convert("UTC").tz_localize(None)
 
-        if len(div_ttm) >= 1:
-            ttm_sum = float(div_ttm.sum())
-            return ttm_sum  # Return actual sum (0.0 means no dividend, not calculation failure)
+        # Trailing 365-day window anchored to today (UTC), not to the last payment
+        end_date = pd.Timestamp.now("UTC").tz_localize(None)
+        start_date = end_date - pd.DateOffset(days=365)
+
+        ttm = s[(s.index > start_date) & (s.index <= end_date)]
+
+        if len(ttm) >= 1:
+            return float(ttm.sum())
 
         # Fallback: extrapolate from detected payment frequency
-        if len(divs) < 2:
+        if len(s) < 2:
             return None
 
-        time_diffs = divs.index.to_series().diff().dropna()
+        time_diffs = s.index.to_series().diff().dropna()
         avg_days_between = time_diffs.dt.days.median()
 
         if avg_days_between < MONTHLY_THRESHOLD_DAYS:
@@ -232,7 +243,7 @@ def _calculate_annual_dividend(divs) -> float | None:
         else:
             payments_per_year = 1
 
-        last_payment = float(divs.iloc[-1])
+        last_payment = float(s.iloc[-1])
         return last_payment * payments_per_year
 
     except Exception:
