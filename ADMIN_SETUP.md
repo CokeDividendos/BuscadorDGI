@@ -54,3 +54,57 @@ To test with secrets:
 - Use strong passwords for admin accounts
 - On Streamlit Cloud, secrets are encrypted and secure
 - The `data/` directory is excluded from git via `.gitignore`
+
+---
+
+# Upstash Redis Cache (Optional)
+
+The app supports **Upstash Redis** as a cloud cache backend (replaces the local SQLite `kv_cache`).
+This improves performance on Streamlit Cloud by persisting cache across reruns and app restarts.
+
+If Upstash is **not** configured the app continues to use the local SQLite cache with no changes.
+
+## Setup (Streamlit Cloud — Recommended)
+
+1. Create a free database at [console.upstash.com](https://console.upstash.com).
+2. Copy the **REST URL** and **REST Token** from the database details page.
+3. In your Streamlit Cloud app → **Settings → Secrets**, add:
+
+```toml
+[upstash]
+rest_url   = "https://<your-endpoint>.upstash.io"
+rest_token = "<your-token>"
+```
+
+4. Save and restart the app. Cache operations will now use Redis automatically.
+
+## Setup (Local Development)
+
+Create or edit `.streamlit/secrets.toml`:
+
+```toml
+[upstash]
+rest_url   = "https://<your-endpoint>.upstash.io"
+rest_token = "<your-token>"
+```
+
+Or set environment variables:
+
+```bash
+export UPSTASH_REDIS_REST_URL="https://<your-endpoint>.upstash.io"
+export UPSTASH_REDIS_REST_TOKEN="<your-token>"
+```
+
+## Fallback Behavior
+
+| Scenario | Cache backend used |
+|---|---|
+| Upstash configured, reachable | Redis (Upstash) |
+| Upstash configured, network error | SQLite (automatic fallback) |
+| Upstash not configured | SQLite |
+
+## Notes
+
+- Never commit tokens to version control.
+- The free Upstash plan supports up to 10,000 requests/day and 256 MB storage — sufficient for typical usage.
+- TTL is handled natively by Redis (`EX` option on `SET`); keys without TTL never expire.

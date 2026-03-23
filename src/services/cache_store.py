@@ -5,8 +5,13 @@ from datetime import datetime
 from typing import Any, Optional
 
 import pandas as pd
+import requests
 
 from src.db import get_conn
+from src.services import upstash_redis as _redis
+
+# Exceptions that indicate a Redis back-end problem rather than a programming error.
+_REDIS_ERRORS = (RuntimeError, requests.RequestException, OSError)
 
 
 class CacheJSONEncoder(json.JSONEncoder):
@@ -46,7 +51,11 @@ def _ensure_cache_table() -> None:
     conn.close()
 
 
-def cache_get(key: str) -> Optional[Any]:
+# ---------------------------------------------------------------------------
+# SQLite helpers (internal fallback implementations)
+# ---------------------------------------------------------------------------
+
+def _sqlite_get(key: str) -> Optional[Any]:
     _ensure_cache_table()
     conn = get_conn()
     cur = conn.cursor()
@@ -65,7 +74,7 @@ def cache_get(key: str) -> Optional[Any]:
     if ttl is not None:
         ttl = int(ttl)
         if (int(time.time()) - created_at) > ttl:
-            cache_delete(key)
+            _sqlite_delete(key)
             return None
 
     try:
@@ -74,11 +83,10 @@ def cache_get(key: str) -> Optional[Any]:
         return None
 
 
-def cache_set(key: str, value: Any, ttl_seconds: Optional[int] = None) -> None:
+def _sqlite_set(key: str, value_json: str, ttl_seconds: Optional[int] = None) -> None:
     _ensure_cache_table()
     conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
+    conn.execute(
         """
         INSERT INTO kv_cache(key, value_json, created_at, ttl_seconds)
         VALUES (?, ?, ?, ?)
@@ -89,7 +97,7 @@ def cache_set(key: str, value: Any, ttl_seconds: Optional[int] = None) -> None:
         """,
         (
             key,
-            json.dumps(value, ensure_ascii=False, cls=CacheJSONEncoder),
+            value_json,
             int(time.time()),
             int(ttl_seconds) if ttl_seconds is not None else None,
         ),
@@ -98,7 +106,7 @@ def cache_set(key: str, value: Any, ttl_seconds: Optional[int] = None) -> None:
     conn.close()
 
 
-def cache_delete(key: str) -> None:
+def _sqlite_delete(key: str) -> None:
     _ensure_cache_table()
     conn = get_conn()
     conn.execute("DELETE FROM kv_cache WHERE key = ?", (key,))
@@ -106,7 +114,7 @@ def cache_delete(key: str) -> None:
     conn.close()
 
 
-def cache_clear(prefix: Optional[str] = None) -> None:
+def _sqlite_clear(prefix: Optional[str] = None) -> None:
     _ensure_cache_table()
     conn = get_conn()
     cur = conn.cursor()
@@ -116,6 +124,59 @@ def cache_clear(prefix: Optional[str] = None) -> None:
         cur.execute("DELETE FROM kv_cache")
     conn.commit()
     conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Public API — Redis primary, SQLite fallback
+# ---------------------------------------------------------------------------
+
+def cache_get(key: str) -> Optional[Any]:
+    if _redis.is_configured():
+        try:
+            raw = _redis.redis_get(key)
+            if raw is None:
+                return None
+            try:
+                return json.loads(raw)
+            except Exception:
+                return None
+        except _REDIS_ERRORS:
+            pass  # Network / transient error — fall through to SQLite
+    return _sqlite_get(key)
+
+
+def cache_set(key: str, value: Any, ttl_seconds: Optional[int] = None) -> None:
+    value_json = json.dumps(value, ensure_ascii=False, cls=CacheJSONEncoder)
+    if _redis.is_configured():
+        try:
+            _redis.redis_set(key, value_json, ttl_seconds=ttl_seconds)
+            return
+        except _REDIS_ERRORS:
+            pass  # Network / transient error — fall through to SQLite
+    _sqlite_set(key, value_json, ttl_seconds=ttl_seconds)
+
+
+def cache_delete(key: str) -> None:
+    if _redis.is_configured():
+        try:
+            _redis.redis_del(key)
+            return
+        except _REDIS_ERRORS:
+            pass  # Fall through to SQLite
+    _sqlite_delete(key)
+
+
+def cache_clear(prefix: Optional[str] = None) -> None:
+    if _redis.is_configured():
+        try:
+            if prefix:
+                _redis.redis_scan_delete_by_prefix(prefix)
+            else:
+                _redis.redis_scan_delete_by_prefix("")
+            return
+        except _REDIS_ERRORS:
+            pass  # Fall through to SQLite
+    _sqlite_clear(prefix)
 
 
 def cache_clear_all() -> None:
