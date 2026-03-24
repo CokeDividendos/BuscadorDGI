@@ -1,13 +1,23 @@
 # src/pages/buscador_cl.py
+"""
+Página principal del Buscador CL.
+
+Usa la nueva arquitectura de módulos Chile para cargar datos, normalizar EEFF,
+calcular métricas y renderizar gráficos según el tipo de empresa chilena.
+
+Importa funciones de analysis.py solo para componentes visuales genéricos
+(formateo, tablas, gráficos de precio) que no tienen lógica financiera chilena.
+"""
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
 import pandas as pd
 import streamlit as st
-import yfinance as yf
 
 from src.auth import is_admin
+
+# --- Componentes visuales genéricos de analysis.py (solo UI, sin lógica financiera chilena) ---
 from src.pages.analysis import (
     _fmt_large_number,
     _fmt_kpi,
@@ -43,6 +53,8 @@ from src.pages.analysis import (
     _render_interactive_valuation_board,
     YEARS,
 )
+
+# --- Capa de datos Chile ---
 from src.services.chile_data import (
     get_cl_company_name,
     get_cl_tickers_list,
@@ -50,9 +62,31 @@ from src.services.chile_data import (
     is_cl_ticker,
     load_cl_dividends,
     load_cl_financial_statements,
+    load_chile_financials_bundle,
+    get_metrics_cl,
+    get_chart_data_cl,
 )
+
+# --- Perfil de empresa chilena ---
+from src.services.chile_profiles import (
+    get_company_profile_cl,
+    get_profile_type_cl,
+    get_reporting_metadata_cl,
+)
+
+# --- Gráficos Chile ---
+from src.services.chile_charts import get_charts_for_profile_cl
+
 from src.services.finance_data import get_price_data, get_52w_range, get_price_history
 from src.services.logos import logo_candidates
+
+# Etiquetas amigables para cada tipo de perfil
+_PROFILE_LABELS: dict[str, str] = {
+    "normal": "🏭 Empresa Normal",
+    "utility": "⚡ Utility / Regulada",
+    "reit_concesion": "🏢 REIT / Concesión",
+    "financiera": "🏦 Financiera / AFP",
+}
 
 
 # =========================================================
@@ -72,7 +106,7 @@ def page_buscador_cl() -> None:
     """Entry point for the Chilean Stocks Buscador page."""
     admin = is_admin()
 
-    # --- CSS (reuses same styles as page_analysis) ---
+    # --- CSS ---
     st.markdown(
         """
         <style>
@@ -108,6 +142,17 @@ def page_buscador_cl() -> None:
             width: 100%;
             height: 100%;
             object-fit: contain;
+        }
+        .profile-badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            background: rgba(1,194,239,0.15);
+            color: #01c2ef;
+            border: 1px solid rgba(1,194,239,0.4);
+            margin-top: 4px;
         }
         </style>
         """,
@@ -146,17 +191,36 @@ def page_buscador_cl() -> None:
         st.error(f"Ticker '{cl_ticker}' no encontrado en el mapa de empresas chilenas.")
         return
 
-    # --- Datos base ---
+    # --- Cargar perfil y datos normalizados ---
+    profile = get_company_profile_cl(cl_ticker)
+    profile_type = profile.get("profile_type", "normal")
+    meta = get_reporting_metadata_cl(cl_ticker)
+    moneda = meta.get("moneda_reporte", "CLP")
+
     company_name = get_cl_company_name(cl_ticker)
     yf_ticker = get_cl_yf_ticker(cl_ticker)
 
     # Precio desde YF (con .SN)
     price_data = get_price_data(yf_ticker) or {}
     last_price = price_data.get("last_price")
-    currency = price_data.get("currency") or "CLP"
+    currency = price_data.get("currency") or moneda
 
-    # Estados financieros desde CSVs
+    # Estados financieros crudos (para secciones que aún usan lógica análisis EEUU)
     financial_data = load_cl_financial_statements(cl_ticker)
+
+    # Bundle normalizado para métricas y gráficos Chile
+    try:
+        bundle = load_chile_financials_bundle(cl_ticker)
+        balance_norm = bundle["balance_norm"]
+        income_norm = bundle["income_norm"]
+        cashflow_norm = bundle["cashflow_norm"]
+        derived = bundle["derived"]
+    except Exception:
+        bundle = None
+        balance_norm = pd.DataFrame()
+        income_norm = pd.DataFrame()
+        cashflow_norm = pd.DataFrame()
+        derived = {}
 
     # Intento de obtener logo via YF info
     logo_url = ""
@@ -188,71 +252,65 @@ def page_buscador_cl() -> None:
                 st.markdown(f"## {last_price:,.2f} {currency}")
             else:
                 st.markdown("## Precio no disponible")
+            # Mostrar badge de perfil
+            profile_label = _PROFILE_LABELS.get(profile_type, profile_type)
+            sector = meta.get("sector", "")
+            sector_txt = f" · {sector}" if sector else ""
+            st.markdown(
+                f'<span class="profile-badge">{profile_label}{sector_txt}</span>',
+                unsafe_allow_html=True,
+            )
 
-    # KPIs calculados desde CSVs + precio YF
+    # --- KPIs desde datos normalizados ---
     with right:
         st.markdown("### KPIs clave")
         st.markdown('<div class="kpis-container">', unsafe_allow_html=True)
 
-        income_df_raw = financial_data.get("income_stmt", pd.DataFrame())
-        balance_df_raw = financial_data.get("balance_sheet", pd.DataFrame())
-
         try:
             kpi_cols = st.columns(4, gap="large")
+            market_data_for_kpi = {"last_price": last_price, "currency": currency}
 
-            # EPS = Net Income (último año) — shares not available → show Net Income
-            eps_val = None
-            if not income_df_raw.empty:
-                for col in income_df_raw.index:
-                    if "net income" in str(col).lower():
-                        ni_row = pd.to_numeric(income_df_raw.loc[col], errors="coerce").dropna()
-                        if not ni_row.empty:
-                            eps_val = ni_row.iloc[-1]
-                        break
+            from src.services.chile_metrics import compute_metrics_cl
+            kpi_metrics = compute_metrics_cl(
+                balance_norm, income_norm, cashflow_norm, derived,
+                profile_type, market_data_for_kpi
+            ) if bundle is not None else {}
 
-            # PER = Price / EPS (only meaningful if EPS per share available)
+            # KPI 1: Utilidad Neta (o EBITDA para utilities)
             with kpi_cols[0]:
-                _kpi_card("Utilidad Neta", _fmt_large_number(eps_val) if eps_val is not None else "N/D")
+                if profile_type in ("utility", "reit_concesion") and "ebitda_ultimo" in kpi_metrics:
+                    _kpi_card("EBITDA", _fmt_large_number(kpi_metrics["ebitda_ultimo"]))
+                elif "ganancia_neta_ultima" in kpi_metrics:
+                    _kpi_card("Utilidad Neta", _fmt_large_number(kpi_metrics["ganancia_neta_ultima"]))
+                else:
+                    _kpi_card("Utilidad Neta", "N/D")
 
-            # Total Equity
-            eq_val = None
-            if not balance_df_raw.empty:
-                for col in balance_df_raw.index:
-                    if "total equity" in str(col).lower():
-                        eq_row = pd.to_numeric(balance_df_raw.loc[col], errors="coerce").dropna()
-                        if not eq_row.empty:
-                            eq_val = eq_row.iloc[-1]
-                        break
-
+            # KPI 2: Patrimonio (o ROE para financieras)
             with kpi_cols[1]:
-                _kpi_card("Patrimonio", _fmt_large_number(eq_val) if eq_val is not None else "N/D")
+                if profile_type == "financiera" and "roe_ultimo" in kpi_metrics:
+                    roe_val = kpi_metrics["roe_ultimo"]
+                    _kpi_card("ROE", f"{roe_val * 100:.1f}%" if roe_val else "N/D")
+                elif "patrimonio_ultimo" in kpi_metrics:
+                    _kpi_card("Patrimonio", _fmt_large_number(kpi_metrics["patrimonio_ultimo"]))
+                else:
+                    _kpi_card("Patrimonio", "N/D")
 
-            # Total Revenue
-            rev_val = None
-            if not income_df_raw.empty:
-                for col in income_df_raw.index:
-                    if "total revenue" in str(col).lower():
-                        rev_row = pd.to_numeric(income_df_raw.loc[col], errors="coerce").dropna()
-                        if not rev_row.empty:
-                            rev_val = rev_row.iloc[-1]
-                        break
-
+            # KPI 3: Ingresos
             with kpi_cols[2]:
-                _kpi_card("Ingresos", _fmt_large_number(rev_val) if rev_val is not None else "N/D")
+                if "ingresos_ultimo" in kpi_metrics:
+                    _kpi_card("Ingresos", _fmt_large_number(kpi_metrics["ingresos_ultimo"]))
+                else:
+                    _kpi_card("Ingresos", "N/D")
 
-            # Free Cash Flow
-            fcf_val = None
-            cashflow_df_raw = financial_data.get("cashflow", pd.DataFrame())
-            if not cashflow_df_raw.empty:
-                for col in cashflow_df_raw.index:
-                    if "free cash flow" in str(col).lower():
-                        fcf_row = pd.to_numeric(cashflow_df_raw.loc[col], errors="coerce").dropna()
-                        if not fcf_row.empty:
-                            fcf_val = fcf_row.iloc[-1]
-                        break
-
+            # KPI 4: FCL (o Deuda Neta / EBITDA para utilities)
             with kpi_cols[3]:
-                _kpi_card("FCF", _fmt_large_number(fcf_val) if fcf_val is not None else "N/D")
+                if profile_type == "utility" and "deuda_neta_ebitda_ultimo" in kpi_metrics:
+                    dn_eb = kpi_metrics["deuda_neta_ebitda_ultimo"]
+                    _kpi_card("DN/EBITDA", f"{dn_eb:.2f}x" if dn_eb else "N/D")
+                elif "flujo_libre_de_caja_ultimo" in kpi_metrics:
+                    _kpi_card("FCL", _fmt_large_number(kpi_metrics["flujo_libre_de_caja_ultimo"]))
+                else:
+                    _kpi_card("FCL", "N/D")
 
         except Exception:
             pass
@@ -316,44 +374,12 @@ def page_buscador_cl() -> None:
             _render_financial_table_expander("📋 Ver tabla Flujo de Efectivo", cashflow_df)
 
     elif selected_section == "Valoración por múltiplos":
-        st.markdown("## Valoración por múltiplos")
-        balance_df = _prepare_financial_df(financial_data["balance_sheet"], YEARS)
-        income_df = _prepare_financial_df(financial_data["income_stmt"], YEARS)
-        cashflow_df = _prepare_financial_df(financial_data["cashflow"], YEARS)
-        info = _load_ticker_info(yf_ticker)
-
-        if balance_df.empty and income_df.empty and cashflow_df.empty:
-            st.warning("No hay datos financieros suficientes para la valoración por múltiplos.")
-        else:
-            sub_tabs = st.tabs([
-                "💰 Evolución de la Deuda",
-                "📊 Evolución del PER",
-                "📈 Evolución EV/EBITDA",
-                "📊 Uso del FC",
-                "📊 Valoración Gurufocus",
-            ])
-            with sub_tabs[0]:
-                if not balance_df.empty and not cashflow_df.empty:
-                    _plot_debt_fcf_evolution(cl_ticker, balance_df, cashflow_df)
-                else:
-                    st.warning("No hay datos suficientes de balance y flujo de efectivo para este análisis.")
-            with sub_tabs[1]:
-                if not income_df.empty:
-                    _plot_per_evolution(yf_ticker, income_df, info)
-                else:
-                    st.warning("No hay datos suficientes de estado de resultados para este análisis.")
-            with sub_tabs[2]:
-                if not income_df.empty and not balance_df.empty:
-                    _plot_ev_ebitda_evolution(yf_ticker, income_df, balance_df, info)
-                else:
-                    st.warning("No hay datos suficientes para este análisis.")
-            with sub_tabs[3]:
-                if not cashflow_df.empty:
-                    _plot_fc_usage(cl_ticker, cashflow_df)
-                else:
-                    st.warning("No hay datos suficientes de flujo de efectivo para este análisis.")
-            with sub_tabs[4]:
-                _render_gurufocus_valuation_charts(cl_ticker)
+        _render_cl_valoracion(
+            cl_ticker, yf_ticker,
+            financial_data,
+            balance_norm, income_norm, cashflow_norm, derived,
+            profile_type, moneda,
+        )
 
     elif selected_section == "Pizarra de Valoración":
         if not admin:
@@ -369,57 +395,9 @@ def page_buscador_cl() -> None:
             _render_interactive_valuation_board(cl_ticker, logo_url)
 
     elif selected_section == "Análisis Razonado":
-        st.markdown("## Análisis Razonado")
-        balance_df = _prepare_financial_df(financial_data["balance_sheet"], YEARS)
-        income_df = _prepare_financial_df(financial_data["income_stmt"], YEARS)
-        cashflow_df = _prepare_financial_df(financial_data["cashflow"], YEARS)
+        _render_cl_analisis_razonado(cl_ticker, financial_data, balance_norm, income_norm, cashflow_norm, derived, profile_type)
 
-        if balance_df.empty and income_df.empty:
-            st.warning("No hay datos financieros suficientes para el análisis razonado.")
-        else:
-            ratios = _calculate_financial_ratios(balance_df, income_df, cashflow_df, cl_ticker)
 
-            if ratios.empty:
-                st.info("No se pudieron calcular ratios financieros con los datos disponibles.")
-            else:
-                ratio_cols = list(ratios.columns)
-                if not ratio_cols:
-                    st.info("No se pudieron calcular ratios financieros con los datos disponibles.")
-                else:
-                    ratios_transposed = ratios.T
-                    session_key = f"selected_ratio_{cl_ticker}"
-                    if session_key not in st.session_state or st.session_state[session_key] not in ratio_cols:
-                        st.session_state[session_key] = ratio_cols[0]
-
-                    col_table, col_chart = st.columns([1, 1])
-                    with col_table:
-                        st.markdown("### Métricas Financieras")
-                        display_df = ratios_transposed.copy()
-                        try:
-                            display_df = display_df.map(
-                                lambda x: f"{x:.2f}" if pd.notna(x) else "N/D"
-                            )
-                        except AttributeError:
-                            display_df = display_df.applymap(
-                                lambda x: f"{x:.2f}" if pd.notna(x) else "N/D"
-                            )
-                        st.dataframe(display_df, use_container_width=True, height=400)
-                        st.markdown("**Seleccione una métrica para visualizar:**")
-                        default_index = ratio_cols.index(st.session_state[session_key])
-                        selected_metric = st.selectbox(
-                            "Métrica",
-                            ratio_cols,
-                            index=default_index,
-                            key=f"ratio_selector_{cl_ticker}",
-                            label_visibility="collapsed",
-                        )
-                        st.session_state[session_key] = selected_metric
-
-                    with col_chart:
-                        st.markdown("### Gráfico de Evolución")
-                        selected_ratio_name = st.session_state[session_key]
-                        selected_ratio_data = ratios[selected_ratio_name]
-                        _plot_ratio_evolution(cl_ticker, selected_ratio_name, selected_ratio_data)
 
 
 def _render_cl_resumen(yf_ticker: str) -> None:
@@ -462,3 +440,253 @@ def _render_cl_dividends(cl_ticker: str, yf_ticker: str, financial_data: Dict[st
         _plot_dividend_safety(cl_ticker, cashflow_raw, years=None)
     with sub_tabs[2]:
         _plot_geraldine_weiss(cl_ticker, price_daily, dividends)
+
+
+def _render_cl_valoracion(
+    cl_ticker: str,
+    yf_ticker: str,
+    financial_data: Dict[str, Any],
+    balance_norm: pd.DataFrame,
+    income_norm: pd.DataFrame,
+    cashflow_norm: pd.DataFrame,
+    derived: dict,
+    profile_type: str,
+    moneda: str,
+) -> None:
+    """
+    Renderiza la sección de Valoración por múltiplos para empresas chilenas.
+
+    Para perfiles que lo admiten (normal, utility), incluye PER y EV/EBITDA.
+    Para REIT y financieras, omite ratios que no aplican y muestra métricas Chile.
+    """
+    st.markdown("## Valoración por múltiplos")
+
+    # Tabs que aplican a todos
+    tab_labels = ["💰 Métricas CL", "💰 Evolución de la Deuda", "📊 Uso del FC", "📊 Valoración Gurufocus"]
+    # Agregar PER y EV/EBITDA solo para perfiles donde tiene sentido
+    if profile_type in ("normal",):
+        tab_labels.insert(1, "📊 Evolución del PER")
+        tab_labels.insert(2, "📈 Evolución EV/EBITDA")
+    elif profile_type == "utility":
+        tab_labels.insert(1, "📈 Evolución EV/EBITDA")
+
+    sub_tabs = st.tabs(tab_labels)
+    tab_idx = 0
+
+    # Tab: Métricas CL
+    with sub_tabs[tab_idx]:
+        st.markdown(f"### Métricas Chile — {_PROFILE_LABELS.get(profile_type, profile_type)}")
+        if balance_norm.empty and income_norm.empty:
+            st.warning("No hay datos normalizados disponibles para métricas Chile.")
+        else:
+            try:
+                from src.services.chile_metrics import compute_metrics_cl
+                metrics = compute_metrics_cl(
+                    balance_norm, income_norm, cashflow_norm, derived, profile_type
+                )
+                # Mostrar métricas escalares en tabla
+                scalar_metrics = {
+                    k: v for k, v in metrics.items()
+                    if not isinstance(v, pd.Series) and v is not None
+                }
+                if scalar_metrics:
+                    df_m = pd.DataFrame.from_dict(scalar_metrics, orient="index", columns=["Valor"])
+                    df_m.index.name = "Métrica"
+                    try:
+                        df_m["Valor"] = df_m["Valor"].apply(
+                            lambda x: f"{x:.4f}" if isinstance(x, float) else str(x)
+                        )
+                    except Exception:
+                        pass
+                    st.dataframe(df_m, use_container_width=True)
+                else:
+                    st.info("No se calcularon métricas con los datos disponibles.")
+
+                # Gráficos Chile
+                charts = get_charts_for_profile_cl(cl_ticker, metrics, profile_type, moneda)
+                if charts:
+                    import plotly.graph_objects as go
+                    chart_names = list(charts.keys())
+                    col1, col2 = st.columns(2)
+                    for i, name in enumerate(chart_names):
+                        fig = charts[name]
+                        if fig is not None:
+                            with (col1 if i % 2 == 0 else col2):
+                                st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                st.warning(f"Error al calcular métricas Chile: {e}")
+    tab_idx += 1
+
+    # Tab: PER (solo normal)
+    if profile_type == "normal":
+        with sub_tabs[tab_idx]:
+            income_df = _prepare_financial_df(financial_data["income_stmt"], YEARS)
+            if not income_df.empty:
+                info = _load_ticker_info(yf_ticker)
+                _plot_per_evolution(yf_ticker, income_df, info)
+            else:
+                st.warning("No hay datos suficientes de EERR para este análisis.")
+        tab_idx += 1
+
+    # Tab: EV/EBITDA (normal y utility)
+    if profile_type in ("normal", "utility"):
+        with sub_tabs[tab_idx]:
+            income_df = _prepare_financial_df(financial_data["income_stmt"], YEARS)
+            balance_df = _prepare_financial_df(financial_data["balance_sheet"], YEARS)
+            if not income_df.empty and not balance_df.empty:
+                info = _load_ticker_info(yf_ticker)
+                _plot_ev_ebitda_evolution(yf_ticker, income_df, balance_df, info)
+            else:
+                st.warning("No hay datos suficientes para este análisis.")
+        tab_idx += 1
+
+    # Tab: Evolución de la Deuda
+    with sub_tabs[tab_idx]:
+        balance_df = _prepare_financial_df(financial_data["balance_sheet"], YEARS)
+        cashflow_df = _prepare_financial_df(financial_data["cashflow"], YEARS)
+        if not balance_df.empty and not cashflow_df.empty:
+            _plot_debt_fcf_evolution(cl_ticker, balance_df, cashflow_df)
+        else:
+            st.warning("No hay datos suficientes de balance y flujo de efectivo para este análisis.")
+    tab_idx += 1
+
+    # Tab: Uso del FC
+    with sub_tabs[tab_idx]:
+        cashflow_df = _prepare_financial_df(financial_data["cashflow"], YEARS)
+        if not cashflow_df.empty:
+            _plot_fc_usage(cl_ticker, cashflow_df)
+        else:
+            st.warning("No hay datos suficientes de flujo de efectivo para este análisis.")
+    tab_idx += 1
+
+    # Tab: Valoración Gurufocus
+    with sub_tabs[tab_idx]:
+        _render_gurufocus_valuation_charts(cl_ticker)
+
+
+def _render_cl_analisis_razonado(
+    cl_ticker: str,
+    financial_data: Dict[str, Any],
+    balance_norm: pd.DataFrame,
+    income_norm: pd.DataFrame,
+    cashflow_norm: pd.DataFrame,
+    derived: dict,
+    profile_type: str,
+) -> None:
+    """
+    Renderiza la sección de Análisis Razonado para empresas chilenas.
+
+    Muestra métricas Chile normalizadas y ratios calculados con la lógica
+    del perfil de empresa.
+    """
+    st.markdown("## Análisis Razonado")
+
+    # Intentar métricas Chile primero
+    if not balance_norm.empty or not income_norm.empty:
+        try:
+            from src.services.chile_metrics import compute_metrics_cl
+            metrics = compute_metrics_cl(
+                balance_norm, income_norm, cashflow_norm, derived, profile_type
+            )
+            series_metrics = {
+                k: v for k, v in metrics.items()
+                if isinstance(v, pd.Series) and not v.empty
+            }
+
+            if series_metrics:
+                st.markdown(f"### Métricas por perfil: {_PROFILE_LABELS.get(profile_type, profile_type)}")
+                metric_names = list(series_metrics.keys())
+
+                # Tabla de métricas series
+                rows = {}
+                for name, s in series_metrics.items():
+                    s_clean = pd.to_numeric(s, errors="coerce")
+                    rows[name] = s_clean
+                df_series = pd.DataFrame(rows)
+                df_series.index.name = "Año"
+
+                try:
+                    df_display = df_series.T.map(lambda x: f"{x:.4f}" if pd.notna(x) else "N/D")
+                except AttributeError:
+                    df_display = df_series.T.applymap(lambda x: f"{x:.4f}" if pd.notna(x) else "N/D")
+
+                col_table, col_chart = st.columns([1, 1])
+                with col_table:
+                    st.dataframe(df_display, use_container_width=True, height=400)
+                    st.markdown("**Seleccione una métrica para visualizar:**")
+                    session_key = f"cl_metric_{cl_ticker}"
+                    if session_key not in st.session_state or st.session_state[session_key] not in metric_names:
+                        st.session_state[session_key] = metric_names[0]
+                    default_index = metric_names.index(st.session_state[session_key])
+                    selected_metric = st.selectbox(
+                        "Métrica CL",
+                        metric_names,
+                        index=default_index,
+                        key=f"cl_metric_selector_{cl_ticker}",
+                        label_visibility="collapsed",
+                    )
+                    st.session_state[session_key] = selected_metric
+
+                with col_chart:
+                    st.markdown("### Gráfico de Evolución")
+                    selected_series = series_metrics[selected_metric]
+                    _plot_ratio_evolution(cl_ticker, selected_metric, selected_series)
+
+                return
+        except Exception:
+            pass
+
+    # Fallback: usar ratios del análisis EEUU si los normalizados no están disponibles
+    balance_df = _prepare_financial_df(financial_data["balance_sheet"], YEARS)
+    income_df = _prepare_financial_df(financial_data["income_stmt"], YEARS)
+    cashflow_df = _prepare_financial_df(financial_data["cashflow"], YEARS)
+
+    if balance_df.empty and income_df.empty:
+        st.warning("No hay datos financieros suficientes para el análisis razonado.")
+        return
+
+    ratios = _calculate_financial_ratios(balance_df, income_df, cashflow_df, cl_ticker)
+
+    if ratios.empty:
+        st.info("No se pudieron calcular ratios financieros con los datos disponibles.")
+        return
+
+    ratio_cols = list(ratios.columns)
+    if not ratio_cols:
+        st.info("No se pudieron calcular ratios financieros con los datos disponibles.")
+        return
+
+    ratios_transposed = ratios.T
+    session_key = f"selected_ratio_{cl_ticker}"
+    if session_key not in st.session_state or st.session_state[session_key] not in ratio_cols:
+        st.session_state[session_key] = ratio_cols[0]
+
+    col_table, col_chart = st.columns([1, 1])
+    with col_table:
+        st.markdown("### Métricas Financieras")
+        display_df = ratios_transposed.copy()
+        try:
+            display_df = display_df.map(
+                lambda x: f"{x:.2f}" if pd.notna(x) else "N/D"
+            )
+        except AttributeError:
+            display_df = display_df.applymap(
+                lambda x: f"{x:.2f}" if pd.notna(x) else "N/D"
+            )
+        st.dataframe(display_df, use_container_width=True, height=400)
+        st.markdown("**Seleccione una métrica para visualizar:**")
+        default_index = ratio_cols.index(st.session_state[session_key])
+        selected_metric = st.selectbox(
+            "Métrica",
+            ratio_cols,
+            index=default_index,
+            key=f"ratio_selector_{cl_ticker}",
+            label_visibility="collapsed",
+        )
+        st.session_state[session_key] = selected_metric
+
+    with col_chart:
+        st.markdown("### Gráfico de Evolución")
+        selected_ratio_name = st.session_state[session_key]
+        selected_ratio_data = ratios[selected_ratio_name]
+        _plot_ratio_evolution(cl_ticker, selected_ratio_name, selected_ratio_data)
