@@ -1,9 +1,22 @@
 # src/services/chile_data.py
+"""
+Capa orquestadora de datos para Buscador CL.
+
+Coordina la carga de archivos, normalización de EEFF, cálculo de métricas
+y generación de gráficos para empresas chilenas.
+
+Arquitectura interna:
+  chile_data (orquestador)
+    ├── chile_profiles    → perfiles por ticker
+    ├── chile_normalizer  → mapeo a cuentas canónicas en español
+    ├── chile_metrics     → métricas por profile_type
+    └── chile_charts      → gráficos por profile_type
+"""
 from __future__ import annotations
 
 import pandas as pd
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 # Rutas base
 _REPO_ROOT = Path(__file__).parent.parent.parent
@@ -206,3 +219,151 @@ def get_cl_yf_ticker(ticker_cl: str) -> str:
     Examples: ANDINA-B -> ANDINA-B.SN, FALABELLA -> FALABELLA.SN
     """
     return f"{ticker_cl.upper()}.SN"
+
+
+# ---------------------------------------------------------------------------
+# Capa de orquestación: normalización + métricas + gráficos
+# ---------------------------------------------------------------------------
+
+
+def load_chile_financials_bundle(ticker: str) -> dict:
+    """
+    Carga los EEFF crudos de un ticker chileno y los normaliza al
+    esquema canónico en español.
+
+    Orquesta chile_profiles, chile_normalizer y chile_schema.
+
+    Args:
+        ticker: Código de la empresa (e.g. 'ANDINA-B').
+
+    Returns:
+        dict con:
+          - 'balance_raw': DataFrame crudo
+          - 'income_raw': DataFrame crudo
+          - 'cashflow_raw': DataFrame crudo
+          - 'balance_norm': DataFrame normalizado (cuentas canónicas)
+          - 'income_norm': DataFrame normalizado
+          - 'cashflow_norm': DataFrame normalizado
+          - 'derived': dict de cuentas derivadas
+          - 'profile': dict del perfil de la empresa
+    """
+    from src.services.chile_profiles import get_company_profile_cl
+    from src.services.chile_normalizer import (
+        normalize_balance_cl,
+        normalize_income_cl,
+        normalize_cashflow_cl,
+        derive_missing_accounts_cl,
+        load_account_map_cl,
+    )
+
+    profile = get_company_profile_cl(ticker)
+    profile_type = profile.get("profile_type", "normal")
+
+    # Cargar datos crudos
+    raw = load_cl_financial_statements(ticker)
+    balance_raw = raw.get("balance_sheet", pd.DataFrame())
+    income_raw = raw.get("income_stmt", pd.DataFrame())
+    cashflow_raw = raw.get("cashflow", pd.DataFrame())
+
+    # Cargar mapa de cuentas una sola vez
+    account_map = load_account_map_cl()
+
+    # Normalizar
+    balance_norm = normalize_balance_cl(balance_raw, profile_type, account_map)
+    income_norm = normalize_income_cl(income_raw, profile_type, account_map)
+    cashflow_norm = normalize_cashflow_cl(cashflow_raw, profile_type, account_map)
+
+    # Derivar cuentas faltantes
+    derived = derive_missing_accounts_cl(balance_norm, income_norm, cashflow_norm, profile_type)
+
+    return {
+        "balance_raw": balance_raw,
+        "income_raw": income_raw,
+        "cashflow_raw": cashflow_raw,
+        "balance_norm": balance_norm,
+        "income_norm": income_norm,
+        "cashflow_norm": cashflow_norm,
+        "derived": derived,
+        "profile": profile,
+    }
+
+
+def get_normalized_financials_cl(ticker: str) -> dict:
+    """
+    Retorna los EEFF normalizados (cuentas canónicas en español) de un ticker chileno.
+
+    Args:
+        ticker: Código de la empresa.
+
+    Returns:
+        dict con 'balance', 'income', 'cashflow', 'derived', 'profile'.
+    """
+    bundle = load_chile_financials_bundle(ticker)
+    return {
+        "balance": bundle["balance_norm"],
+        "income": bundle["income_norm"],
+        "cashflow": bundle["cashflow_norm"],
+        "derived": bundle["derived"],
+        "profile": bundle["profile"],
+    }
+
+
+def get_metrics_cl(ticker: str, market_data: Optional[dict] = None) -> dict:
+    """
+    Calcula y retorna las métricas financieras de un ticker chileno.
+
+    Usa la lógica diferenciada por profile_type.
+
+    Args:
+        ticker: Código de la empresa.
+        market_data: Dict con precio, market_cap, shares_outstanding, etc.
+
+    Returns:
+        Dict con métricas calculadas según el perfil de la empresa.
+    """
+    from src.services.chile_metrics import compute_metrics_cl
+
+    bundle = load_chile_financials_bundle(ticker)
+    profile_type = bundle["profile"].get("profile_type", "normal")
+
+    return compute_metrics_cl(
+        balance_df=bundle["balance_norm"],
+        income_df=bundle["income_norm"],
+        cashflow_df=bundle["cashflow_norm"],
+        derived=bundle["derived"],
+        profile_type=profile_type,
+        market_data=market_data,
+    )
+
+
+def get_chart_data_cl(ticker: str, market_data: Optional[dict] = None) -> dict:
+    """
+    Genera y retorna los gráficos específicos para un ticker chileno.
+
+    Selecciona los gráficos adecuados según el profile_type.
+
+    Args:
+        ticker: Código de la empresa.
+        market_data: Dict con datos de mercado para enriquecer métricas.
+
+    Returns:
+        Dict donde la clave es el nombre del gráfico y el valor es la figura Plotly.
+    """
+    from src.services.chile_charts import get_charts_for_profile_cl
+    from src.services.chile_metrics import compute_metrics_cl
+
+    bundle = load_chile_financials_bundle(ticker)
+    profile = bundle["profile"]
+    profile_type = profile.get("profile_type", "normal")
+    moneda = profile.get("moneda_reporte", "CLP")
+
+    metrics = compute_metrics_cl(
+        balance_df=bundle["balance_norm"],
+        income_df=bundle["income_norm"],
+        cashflow_df=bundle["cashflow_norm"],
+        derived=bundle["derived"],
+        profile_type=profile_type,
+        market_data=market_data,
+    )
+
+    return get_charts_for_profile_cl(ticker, metrics, profile_type, moneda)
