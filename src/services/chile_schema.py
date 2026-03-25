@@ -4,10 +4,21 @@ Esquema contable canónico para empresas chilenas.
 
 Define las cuentas estándar en español para Balance General,
 Estado de Resultados y Estado de Flujo de Efectivo.
+También define las claves de metadatos aceptadas en la sección METADATA
+del formato EEFF_Chile_<TICKER>.csv.
 Estas cuentas son el eje central de toda la lógica de Buscador CL.
 """
 
 from __future__ import annotations
+
+# ---------------------------------------------------------------------------
+# Cuentas de metadatos (sección METADATA del CSV único)
+# ---------------------------------------------------------------------------
+
+METADATA_ACCOUNTS_CL: list[str] = [
+    "acciones_promedio",
+    "acciones_en_circulacion",
+]
 
 # ---------------------------------------------------------------------------
 # Cuentas canónicas del Balance General
@@ -102,6 +113,11 @@ CASHFLOW_ACCOUNTS_CL: list[str] = [
 # ---------------------------------------------------------------------------
 
 
+def get_metadata_accounts_cl() -> list[str]:
+    """Retorna lista de claves de metadatos del CSV único chileno."""
+    return list(METADATA_ACCOUNTS_CL)
+
+
 def get_balance_accounts_cl() -> list[str]:
     """Retorna lista de cuentas canónicas del Balance General chileno."""
     return list(BALANCE_ACCOUNTS_CL)
@@ -123,10 +139,11 @@ def get_all_accounts_cl() -> dict[str, list[str]]:
     agrupadas por tipo de estado financiero.
 
     Returns:
-        dict con claves 'balance', 'income', 'cashflow', cada una
+        dict con claves 'metadata', 'balance', 'income', 'cashflow', cada una
         conteniendo la lista de cuentas canónicas correspondiente.
     """
     return {
+        "metadata": get_metadata_accounts_cl(),
         "balance": get_balance_accounts_cl(),
         "income": get_income_accounts_cl(),
         "cashflow": get_cashflow_accounts_cl(),

@@ -24,10 +24,18 @@ import pandas as pd
 # ---------------------------------------------------------------------------
 
 _REPO_ROOT = Path(__file__).parent.parent.parent
-_PROFILES_PATH = _REPO_ROOT / "data" / "chile_company_profiles.csv"
+_PROFILES_PATH = _REPO_ROOT / "data" / "chile_tickers_map.csv"
 
 # Tipos de perfil válidos
 PROFILE_TYPES = {"normal", "utility", "reit_concesion", "financiera"}
+
+# Método de valoración derivado del profile_type
+_VALUATION_METHOD: dict[str, str] = {
+    "normal": "per_ev_ebitda",
+    "utility": "ev_ebitda",
+    "reit_concesion": "ev_ebitda",
+    "financiera": "pb",
+}
 
 # Perfil por defecto cuando no se encuentra el ticker
 _DEFAULT_PROFILE: dict = {
@@ -37,6 +45,7 @@ _DEFAULT_PROFILE: dict = {
     "moneda_reporte": "CLP",
     "unidad_reporte": 1,
     "sector": "",
+    "formato_eerr": "",
     "valuation_method": "per_ev_ebitda",
 }
 
@@ -47,44 +56,47 @@ _DEFAULT_PROFILE: dict = {
 
 def load_chile_company_profiles() -> pd.DataFrame:
     """
-    Carga el archivo data/chile_company_profiles.csv.
+    Carga el archivo data/chile_tickers_map.csv.
 
     Returns:
         DataFrame con columnas: ticker, nombre_empresa, profile_type,
-        moneda_reporte, unidad_reporte, sector, valuation_method.
+        moneda_reporte, unidad_reporte, sector, formato_eerr, valuation_method.
         Retorna DataFrame vacío si el archivo no existe.
     """
+    _EMPTY_COLS = [
+        "ticker",
+        "nombre_empresa",
+        "profile_type",
+        "moneda_reporte",
+        "unidad_reporte",
+        "sector",
+        "formato_eerr",
+        "valuation_method",
+    ]
     if not _PROFILES_PATH.exists():
-        return pd.DataFrame(
-            columns=[
-                "ticker",
-                "nombre_empresa",
-                "profile_type",
-                "moneda_reporte",
-                "unidad_reporte",
-                "sector",
-                "valuation_method",
-            ]
-        )
+        return pd.DataFrame(columns=_EMPTY_COLS)
     try:
         df = pd.read_csv(_PROFILES_PATH, sep=",", dtype=str).fillna("")
+        df.columns = [c.strip() for c in df.columns]
         df["ticker"] = df["ticker"].str.strip().str.upper()
+        # Normalizar nombre_empresa desde columna "nombre" si existe
+        if "nombre" in df.columns and "nombre_empresa" not in df.columns:
+            df = df.rename(columns={"nombre": "nombre_empresa"})
+        elif "nombre" in df.columns:
+            df["nombre_empresa"] = df["nombre_empresa"].where(
+                df["nombre_empresa"] != "", df["nombre"]
+            )
         # Asegurar que unidad_reporte sea numérico
         unit_numeric = pd.to_numeric(df["unidad_reporte"], errors="coerce").fillna(1)
         df["unidad_reporte"] = unit_numeric.clip(lower=1).round().astype(int)
+        # Derivar valuation_method desde profile_type
+        df["valuation_method"] = df["profile_type"].map(_VALUATION_METHOD).fillna("per_ev_ebitda")
+        # Asegurar columna formato_eerr
+        if "formato_eerr" not in df.columns:
+            df["formato_eerr"] = ""
         return df
     except Exception:
-        return pd.DataFrame(
-            columns=[
-                "ticker",
-                "nombre_empresa",
-                "profile_type",
-                "moneda_reporte",
-                "unidad_reporte",
-                "sector",
-                "valuation_method",
-            ]
-        )
+        return pd.DataFrame(columns=_EMPTY_COLS)
 
 
 # ---------------------------------------------------------------------------
@@ -101,7 +113,7 @@ def get_company_profile_cl(ticker: str) -> dict:
 
     Returns:
         dict con: ticker, nombre_empresa, profile_type, moneda_reporte,
-        unidad_reporte, sector, valuation_method.
+        unidad_reporte, sector, formato_eerr, valuation_method.
         Si el ticker no existe, retorna perfil por defecto (tipo 'normal').
     """
     df = load_chile_company_profiles()
@@ -145,13 +157,14 @@ def get_reporting_metadata_cl(ticker: str) -> dict:
         ticker: Código de la empresa.
 
     Returns:
-        dict con: moneda_reporte, unidad_reporte, sector, valuation_method.
-        Valores por defecto: CLP, 1, '', 'per_ev_ebitda'.
+        dict con: moneda_reporte, unidad_reporte, sector, formato_eerr, valuation_method.
+        Valores por defecto: CLP, 1, '', '', 'per_ev_ebitda'.
     """
     profile = get_company_profile_cl(ticker)
     return {
         "moneda_reporte": profile.get("moneda_reporte", "CLP"),
         "unidad_reporte": int(profile.get("unidad_reporte", 1)),
         "sector": profile.get("sector", ""),
+        "formato_eerr": profile.get("formato_eerr", ""),
         "valuation_method": profile.get("valuation_method", "per_ev_ebitda"),
     }

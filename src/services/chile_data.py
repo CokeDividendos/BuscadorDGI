@@ -53,6 +53,97 @@ def get_cl_tickers_list() -> list:
     return df["ticker"].tolist()
 
 
+def _parse_eeff_chile_csv(path: Path) -> dict:
+    """
+    Parse an EEFF_Chile_<TICKER>.csv file.
+
+    Expected format::
+
+        Seccion;Cuenta;2019;2020;2021;...
+        METADATA;acciones_promedio;946570604;...
+        BALANCE;efectivo_y_equivalentes;157567986;...
+        EERR;ingresos;1779025115;...
+        EFE;flujo_operacional;255148474;...
+
+    - Separator: ``;``
+    - First column ``Seccion`` (or ``Sección``): one of METADATA, BALANCE, EERR, EFE
+    - Second column ``Cuenta``: canonical Spanish account name
+    - Remaining columns: year values
+
+    Returns a dict with keys ``"METADATA"``, ``"BALANCE"``, ``"EERR"``, ``"EFE"``,
+    each containing a DataFrame with canonical account names as index and year strings
+    as columns.  Returns DataFrames of empty shape for any missing section.
+    """
+    empty: dict = {
+        "METADATA": pd.DataFrame(),
+        "BALANCE": pd.DataFrame(),
+        "EERR": pd.DataFrame(),
+        "EFE": pd.DataFrame(),
+    }
+
+    if not path.exists():
+        return empty
+
+    try:
+        df = pd.read_csv(
+            path,
+            sep=";",
+            encoding="utf-8-sig",
+            dtype=str,
+        )
+
+        # Normalize column names
+        df.columns = [str(c).strip() for c in df.columns]
+
+        # Drop auto-generated "Unnamed: N" trailing columns
+        df = df[[c for c in df.columns if not c.startswith("Unnamed:")]]
+
+        # Find the section column (Seccion or Sección)
+        seccion_col = None
+        for candidate in ("Seccion", "Sección", "seccion", "sección"):
+            if candidate in df.columns:
+                seccion_col = candidate
+                break
+
+        if seccion_col is None or "Cuenta" not in df.columns:
+            return empty
+
+        df[seccion_col] = df[seccion_col].astype(str).str.strip().str.upper()
+        df["Cuenta"] = df["Cuenta"].astype(str).str.strip()
+
+        # Drop separator / empty rows
+        df = df[~df["Cuenta"].str.startswith("===", na=False)]
+        df = df[df["Cuenta"].notna()]
+        df = df[df["Cuenta"] != ""]
+        df = df[df["Cuenta"] != "nan"]
+
+        year_cols = [c for c in df.columns if c not in (seccion_col, "Cuenta")]
+
+        result: dict = {}
+        for section in ("METADATA", "BALANCE", "EERR", "EFE"):
+            subset = df[df[seccion_col] == section][["Cuenta"] + year_cols].copy()
+            if subset.empty:
+                result[section] = pd.DataFrame()
+                continue
+
+            subset = subset.set_index("Cuenta")
+
+            # Normalize comma decimals before numeric conversion
+            for col in subset.columns:
+                subset[col] = subset[col].astype(str).str.replace(",", ".", regex=False)
+                subset[col] = pd.to_numeric(subset[col], errors="coerce")
+
+            # Drop rows that are entirely NaN
+            subset = subset.dropna(how="all")
+
+            result[section] = subset
+
+        return result
+
+    except Exception:
+        return empty
+
+
 def _parse_csv(path: Path) -> pd.DataFrame:
     """
     Parse a financial statement CSV.
@@ -190,7 +281,18 @@ def load_cl_financial_statements(ticker: str) -> Dict[str, Any]:
     """
     Load balance sheet, income statement and cashflow for a CL ticker.
 
-    Looks first for a single combined CSV at::
+    Looks first for the new unified CSV at::
+
+        data/chile/financials/<TICKER>/EEFF_Chile_<TICKER>.csv
+
+    with the format::
+
+        Seccion;Cuenta;2019;2020;...
+        BALANCE;efectivo_y_equivalentes;...
+        EERR;ingresos;...
+        EFE;flujo_operacional;...
+
+    Falls back to a legacy single combined CSV at::
 
         data/chile/financials/<TICKER>.csv
 
@@ -198,8 +300,6 @@ def load_cl_financial_statements(ticker: str) -> Dict[str, Any]:
 
         statement_type;Cuenta;2019;2020;...
         balance;Cash And Cash Equivalents;...
-        income;Total Revenue;...
-        cashflow;Operating Cash Flow;...
 
     Falls back to the legacy three-file layout inside a per-ticker folder::
 
@@ -210,18 +310,27 @@ def load_cl_financial_statements(ticker: str) -> Dict[str, Any]:
     Returns the same structure as _load_financial_statements() in analysis.py:
     {"balance_sheet": df, "income_stmt": df, "cashflow": df}
 
-    DataFrames have account names as index and year strings as columns,
-    matching the orientation returned by yfinance (so _prepare_financial_df
-    and all chart functions work without modification).
+    DataFrames have account names as index and year strings as columns.
     """
     ticker_upper = ticker.upper()
 
-    # ── New single-file format ──────────────────────────────────────────────
+    # ── New EEFF_Chile_<TICKER>.csv format ────────────────────────────────
+    eeff_path = _DATA_CL / ticker_upper / f"EEFF_Chile_{ticker_upper}.csv"
+    if eeff_path.exists():
+        sections = _parse_eeff_chile_csv(eeff_path)
+        return {
+            "balance_sheet": sections.get("BALANCE", pd.DataFrame()),
+            "income_stmt": sections.get("EERR", pd.DataFrame()),
+            "cashflow": sections.get("EFE", pd.DataFrame()),
+            "_eeff_sections": sections,  # keep full sections for normalizer
+        }
+
+    # ── Legacy single-file combined format ───────────────────────────────
     combined_path = _DATA_CL / f"{ticker_upper}.csv"
     if combined_path.exists():
         return _parse_combined_csv(combined_path)
 
-    # ── Legacy three-file format (fallback) ─────────────────────────────────
+    # ── Legacy three-file format (fallback) ─────────────────────────────
     folder = _DATA_CL / ticker_upper
     return {
         "balance_sheet": _parse_csv(folder / "balance.csv"),
@@ -335,6 +444,11 @@ def load_chile_financials_bundle(ticker: str) -> dict:
 
     Orquesta chile_profiles, chile_normalizer y chile_schema.
 
+    Cuando existe el formato EEFF_Chile_<TICKER>.csv, usa
+    normalize_from_sections() que reindexará directamente a las cuentas
+    canónicas (sin mapa de cuentas). En formatos legacy, aplica el flujo
+    antiguo con chile_account_map.csv.
+
     Args:
         ticker: Código de la empresa (e.g. 'ANDINA-B').
 
@@ -354,6 +468,7 @@ def load_chile_financials_bundle(ticker: str) -> dict:
         normalize_balance_cl,
         normalize_income_cl,
         normalize_cashflow_cl,
+        normalize_from_sections,
         derive_missing_accounts_cl,
         load_account_map_cl,
     )
@@ -361,19 +476,22 @@ def load_chile_financials_bundle(ticker: str) -> dict:
     profile = get_company_profile_cl(ticker)
     profile_type = profile.get("profile_type", "normal")
 
-    # Cargar datos crudos
+    # Cargar datos (raw puede incluir _eeff_sections si viene del nuevo formato)
     raw = load_cl_financial_statements(ticker)
     balance_raw = raw.get("balance_sheet", pd.DataFrame())
     income_raw = raw.get("income_stmt", pd.DataFrame())
     cashflow_raw = raw.get("cashflow", pd.DataFrame())
 
-    # Cargar mapa de cuentas una sola vez
-    account_map = load_account_map_cl()
-
-    # Normalizar
-    balance_norm = normalize_balance_cl(balance_raw, profile_type, account_map)
-    income_norm = normalize_income_cl(income_raw, profile_type, account_map)
-    cashflow_norm = normalize_cashflow_cl(cashflow_raw, profile_type, account_map)
+    # Si tenemos secciones del nuevo EEFF_Chile format, usar normalizer directo
+    eeff_sections = raw.get("_eeff_sections")
+    if eeff_sections is not None:
+        balance_norm, income_norm, cashflow_norm = normalize_from_sections(eeff_sections)
+    else:
+        # Flujo legacy: mapeo desde nombres crudos a canónicos con account_map
+        account_map = load_account_map_cl()
+        balance_norm = normalize_balance_cl(balance_raw, profile_type, account_map)
+        income_norm = normalize_income_cl(income_raw, profile_type, account_map)
+        cashflow_norm = normalize_cashflow_cl(cashflow_raw, profile_type, account_map)
 
     # Derivar cuentas faltantes
     derived = derive_missing_accounts_cl(balance_norm, income_norm, cashflow_norm, profile_type)
