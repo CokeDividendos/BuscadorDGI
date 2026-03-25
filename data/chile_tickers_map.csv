@@ -1,23 +1,6 @@
-ticker,nombre,cmf_rut_sin_dv,cmf_rut_dv,notas
-SQM-B,Sociedad Química y Minera de Chile S.A.,93007000,9,CMF usa sociedad[]=RUT sin DV
-LTM,LATAM Airlines Group S.A.,89862200,2,
-FALABELLA,Falabella S.A.,90749000,9,
-CENCOSUD,Cencosud S.A.,93834000,5,
-COPEC,Empresas Copec S.A.,90690000,9,
-CCU,Compañía Cervecerías Unidas S.A.,90413000,1,
-COLBUN,Colbún S.A.,96505760,9,
-ENELCHILE,Enel Chile S.A.,76536353,5,
-ENELGXCH, Enel Generación S.A., 91081000,6,
-ENELAM,Enel Américas S.A.,94271000,3,
-AGUAS-A,Aguas Andinas S.A.,61808000,5,
-HABITAT,A.F.P. HABITAT S.A., 98000100,8,
-PARAUCO,Parque Arauco S.A.,94627000,8,
-ANDINA-B,Embotelladora Andina S.A.,91144000,8,
-VAPORES,Grupo Empresas Navieras S.A.,95134000,6,
-SMU,SMU S.A.,76012676,4,
-SONDA,Sonda S.A.,83628100,4,
-CONCHATORO,Viña Concha y Toro S.A.,90227000,0,
-BSANTANDER,Banco Santander Chile,97036000,K,RUT con DV K
-BCHILE,Banco de Chile,97004000,5,
-ITAUCL,Banco Itaú Chile,97023000,9,
-ZOFRI,Zona Franca de Iquique,70285500,4,
+ticker,nombre,cmf_rut_sin_dv,cmf_rut_dv,profile_type,moneda_reporte,unidad_reporte,sector,formato_eerr
+ANDINA-B,Embotelladora Andina S.A.,91144000,8,normal,CLP,1000,Consumo,por_funcion
+CONCHATORO,Viña Concha y Toro S.A.,90227000,0,normal,CLP,1000,Consumo,por_funcion
+COLBUN,Colbún S.A.,96505760,9,utility,USD,1000000,Utilities,por_naturaleza
+ZOFRI,Zona Franca de Iquique S.A.,70285500,4,reit_concesion,CLP,1000,Inmobiliario,por_funcion
+HABITAT,Administradora de Fondos de Pensiones Habitat S.A.,98000100,8,financiera,CLP,1000,Financiero,por_naturaleza_financiera
