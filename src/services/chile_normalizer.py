@@ -25,6 +25,7 @@ from src.services.chile_schema import (
     BALANCE_ACCOUNTS_CL,
     CASHFLOW_ACCOUNTS_CL,
     INCOME_ACCOUNTS_CL,
+    METADATA_ACCOUNTS_CL,
 )
 
 # ---------------------------------------------------------------------------
@@ -293,6 +294,85 @@ def _normalize_statement(
     result.columns = year_cols[: len(result.columns)]
     result = result.apply(pd.to_numeric, errors="coerce")
 
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Normalización directa desde secciones del formato EEFF_Chile
+# ---------------------------------------------------------------------------
+
+
+def normalize_from_sections(
+    sections: dict,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Normaliza los EEFF directamente desde las secciones del formato EEFF_Chile.
+
+    Los DataFrames de entrada ya usan nombres de cuentas canónicos en español.
+    Esta función solo:
+    1. Reindexea cada sección a la lista completa de cuentas canónicas (NaN para faltantes).
+    2. Garantiza conversión numérica y orden de columnas (años de mayor a menor).
+
+    Args:
+        sections: Dict con claves ``'BALANCE'``, ``'EERR'``, ``'EFE'`` (y opcionalmente
+                  ``'METADATA'``), cada uno siendo un DataFrame con cuentas canónicas
+                  como índice y años como columnas.
+
+    Returns:
+        Tupla ``(balance_norm, income_norm, cashflow_norm)``, DataFrames normalizados
+        con cuentas canónicas como índice.  Cuentas ausentes en el CSV aparecen
+        como filas de NaN.
+    """
+    balance_norm = _reindex_to_canonical(
+        sections.get("BALANCE", pd.DataFrame()), BALANCE_ACCOUNTS_CL
+    )
+    income_norm = _reindex_to_canonical(
+        sections.get("EERR", pd.DataFrame()), INCOME_ACCOUNTS_CL
+    )
+    cashflow_norm = _reindex_to_canonical(
+        sections.get("EFE", pd.DataFrame()), CASHFLOW_ACCOUNTS_CL
+    )
+    return balance_norm, income_norm, cashflow_norm
+
+
+def _reindex_to_canonical(df: Optional[pd.DataFrame], canonical_accounts: list[str]) -> pd.DataFrame:
+    """
+    Reindexea un DataFrame de sección a la lista completa de cuentas canónicas.
+
+    Las cuentas presentes en canonical_accounts pero ausentes en el DataFrame
+    aparecen como filas de NaN.  Se conservan solo las columnas de año (4 dígitos)
+    ordenadas de mayor a menor.
+
+    Args:
+        df: DataFrame con cuentas como índice y años como columnas.
+        canonical_accounts: Lista ordenada de cuentas canónicas destino.
+
+    Returns:
+        DataFrame reindexado con orden canónico.
+    """
+    if df is None or df.empty:
+        return pd.DataFrame(index=canonical_accounts)
+
+    df = df.copy()
+    # Estandarizar columnas
+    df.columns = [str(c).strip() for c in df.columns]
+    df = df[[c for c in df.columns if c and not c.startswith("Unnamed:")]]
+
+    # Conversión numérica explícita
+    for col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # Ordenar columnas de año de mayor a menor
+    year_cols = sorted(
+        [c for c in df.columns if re.match(r"^\d{4}$", c)],
+        reverse=True,
+    )
+    other_cols = [c for c in df.columns if c not in year_cols]
+    df = df[year_cols + other_cols]
+
+    # Reindexar a cuentas canónicas (introduce NaN para ausentes)
+    result = df.reindex(canonical_accounts)
+    result.index.name = "cuenta"
     return result
 
 
