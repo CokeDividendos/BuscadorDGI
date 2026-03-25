@@ -104,9 +104,108 @@ def _parse_csv(path: Path) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def _parse_combined_csv(path: Path) -> Dict[str, pd.DataFrame]:
+    """
+    Parse a combined financial statements CSV.
+
+    Expected format::
+
+        statement_type;Cuenta;2019;2020;2021;...
+        balance;Cash And Cash Equivalents;157567986;...
+        income;Total Revenue;1779025115;...
+        cashflow;Operating Cash Flow;255148474;...
+
+    - Separator: ``;``
+    - First column ``statement_type``: one of ``balance``, ``income``, ``cashflow``
+    - Second column ``Cuenta``: account name (becomes DataFrame index)
+    - Remaining columns: year values
+
+    Returns a dict with keys ``"balance_sheet"``, ``"income_stmt"``, ``"cashflow"``,
+    each containing a DataFrame with account names as index and year strings as columns.
+    Returns DataFrames of empty shape for any missing statement type.
+    """
+    empty: Dict[str, pd.DataFrame] = {
+        "balance_sheet": pd.DataFrame(),
+        "income_stmt": pd.DataFrame(),
+        "cashflow": pd.DataFrame(),
+    }
+
+    if not path.exists():
+        return empty
+
+    try:
+        df = pd.read_csv(
+            path,
+            sep=";",
+            encoding="utf-8-sig",
+            dtype=str,
+        )
+
+        # Normalise column names
+        df.columns = [str(c).strip() for c in df.columns]
+
+        # Drop auto-generated "Unnamed: N" trailing columns
+        df = df[[c for c in df.columns if not c.startswith("Unnamed:")]]
+
+        if "statement_type" not in df.columns or "Cuenta" not in df.columns:
+            return empty
+
+        df["statement_type"] = df["statement_type"].astype(str).str.strip()
+        df["Cuenta"] = df["Cuenta"].astype(str).str.strip()
+
+        # Drop separator / empty rows
+        df = df[~df["Cuenta"].str.startswith("===", na=False)]
+        df = df[df["Cuenta"] != ""]
+        df = df[df["Cuenta"] != "nan"]
+
+        year_cols = [c for c in df.columns if c not in ("statement_type", "Cuenta")]
+
+        result: Dict[str, pd.DataFrame] = {}
+        for stmt_key, stmt_label in (
+            ("balance_sheet", "balance"),
+            ("income_stmt", "income"),
+            ("cashflow", "cashflow"),
+        ):
+            subset = df[df["statement_type"] == stmt_label][["Cuenta"] + year_cols].copy()
+            subset = subset.set_index("Cuenta")
+
+            # Normalize comma decimals before numeric conversion
+            for col in subset.columns:
+                subset[col] = subset[col].astype(str).str.replace(",", ".", regex=False)
+                subset[col] = pd.to_numeric(subset[col], errors="coerce")
+
+            # Drop rows that are entirely NaN or entirely zero
+            subset = subset[~(subset.fillna(0) == 0).all(axis=1)]
+            subset = subset.dropna(how="all")
+
+            result[stmt_key] = subset
+
+        return result
+
+    except Exception:
+        return empty
+
+
 def load_cl_financial_statements(ticker: str) -> Dict[str, Any]:
     """
-    Load balance sheet, income statement and cashflow from local CSVs.
+    Load balance sheet, income statement and cashflow for a CL ticker.
+
+    Looks first for a single combined CSV at::
+
+        data/chile/financials/<TICKER>.csv
+
+    with the format::
+
+        statement_type;Cuenta;2019;2020;...
+        balance;Cash And Cash Equivalents;...
+        income;Total Revenue;...
+        cashflow;Operating Cash Flow;...
+
+    Falls back to the legacy three-file layout inside a per-ticker folder::
+
+        data/chile/financials/<TICKER>/balance.csv
+        data/chile/financials/<TICKER>/income.csv
+        data/chile/financials/<TICKER>/cashflow.csv
 
     Returns the same structure as _load_financial_statements() in analysis.py:
     {"balance_sheet": df, "income_stmt": df, "cashflow": df}
@@ -115,16 +214,19 @@ def load_cl_financial_statements(ticker: str) -> Dict[str, Any]:
     matching the orientation returned by yfinance (so _prepare_financial_df
     and all chart functions work without modification).
     """
-    folder = _DATA_CL / ticker.upper()
+    ticker_upper = ticker.upper()
 
-    balance_sheet = _parse_csv(folder / "balance.csv")
-    income_stmt = _parse_csv(folder / "income.csv")
-    cashflow = _parse_csv(folder / "cashflow.csv")
+    # ── New single-file format ──────────────────────────────────────────────
+    combined_path = _DATA_CL / f"{ticker_upper}.csv"
+    if combined_path.exists():
+        return _parse_combined_csv(combined_path)
 
+    # ── Legacy three-file format (fallback) ─────────────────────────────────
+    folder = _DATA_CL / ticker_upper
     return {
-        "balance_sheet": balance_sheet,
-        "income_stmt": income_stmt,
-        "cashflow": cashflow,
+        "balance_sheet": _parse_csv(folder / "balance.csv"),
+        "income_stmt": _parse_csv(folder / "income.csv"),
+        "cashflow": _parse_csv(folder / "cashflow.csv"),
     }
 
 
