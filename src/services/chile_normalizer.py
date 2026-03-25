@@ -335,7 +335,7 @@ def normalize_from_sections(
     return balance_norm, income_norm, cashflow_norm
 
 
-def _reindex_to_canonical(df: pd.DataFrame, canonical_accounts: list[str]) -> pd.DataFrame:
+def _reindex_to_canonical(df: Optional[pd.DataFrame], canonical_accounts: list[str]) -> pd.DataFrame:
     """
     Reindexea un DataFrame de sección a la lista completa de cuentas canónicas.
 

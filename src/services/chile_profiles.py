@@ -80,12 +80,10 @@ def load_chile_company_profiles() -> pd.DataFrame:
         df.columns = [c.strip() for c in df.columns]
         df["ticker"] = df["ticker"].str.strip().str.upper()
         # Normalizar nombre_empresa desde columna "nombre" si existe
-        if "nombre" in df.columns and "nombre_empresa" not in df.columns:
-            df = df.rename(columns={"nombre": "nombre_empresa"})
-        elif "nombre" in df.columns:
-            df["nombre_empresa"] = df["nombre_empresa"].where(
-                df["nombre_empresa"] != "", df["nombre"]
-            )
+        if "nombre_empresa" not in df.columns:
+            df = df.rename(columns={"nombre": "nombre_empresa"}) if "nombre" in df.columns else df
+            if "nombre_empresa" not in df.columns:
+                df["nombre_empresa"] = ""
         # Asegurar que unidad_reporte sea numérico
         unit_numeric = pd.to_numeric(df["unidad_reporte"], errors="coerce").fillna(1)
         df["unidad_reporte"] = unit_numeric.clip(lower=1).round().astype(int)

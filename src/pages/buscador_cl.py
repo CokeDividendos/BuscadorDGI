@@ -334,12 +334,13 @@ def page_buscador_cl() -> None:
             st.warning("No hay datos de balance disponibles para este ticker.")
         else:
             col1, col2 = st.columns(2)
+            balance_df = _prepare_financial_df(balance_norm, YEARS)
             with col1:
-                _plot_assets_evolution(cl_ticker, _prepare_financial_df(financial_data.get("balance_sheet", balance_norm), YEARS))
-                _plot_debt_evolution(cl_ticker, _prepare_financial_df(financial_data.get("balance_sheet", balance_norm), YEARS))
+                _plot_assets_evolution(cl_ticker, balance_df)
+                _plot_debt_evolution(cl_ticker, balance_df)
             with col2:
-                _plot_liabilities_evolution(cl_ticker, _prepare_financial_df(financial_data.get("balance_sheet", balance_norm), YEARS))
-                _plot_equity_evolution(cl_ticker, _prepare_financial_df(financial_data.get("balance_sheet", balance_norm), YEARS))
+                _plot_liabilities_evolution(cl_ticker, balance_df)
+                _plot_equity_evolution(cl_ticker, balance_df)
             _render_financial_table_expander("📋 Ver tabla Balance", balance_norm)
 
     elif selected_section == "EERR":
@@ -348,12 +349,13 @@ def page_buscador_cl() -> None:
             st.warning("No hay datos de estado de resultados disponibles para este ticker.")
         else:
             col1, col2 = st.columns(2)
+            income_df = _prepare_financial_df(income_norm, YEARS)
             with col1:
-                _plot_revenue_evolution(cl_ticker, _prepare_financial_df(financial_data.get("income_stmt", income_norm), YEARS))
-                _plot_eps_evolution(cl_ticker, _prepare_financial_df(financial_data.get("income_stmt", income_norm), YEARS))
+                _plot_revenue_evolution(cl_ticker, income_df)
+                _plot_eps_evolution(cl_ticker, income_df)
             with col2:
-                _plot_margins_evolution(cl_ticker, _prepare_financial_df(financial_data.get("income_stmt", income_norm), YEARS))
-                _plot_shares_outstanding(cl_ticker, _prepare_financial_df(financial_data.get("income_stmt", income_norm), YEARS))
+                _plot_margins_evolution(cl_ticker, income_df)
+                _plot_shares_outstanding(cl_ticker, income_df)
             _render_financial_table_expander("📋 Ver tabla Estado de Resultados", income_norm)
 
     elif selected_section == "EFE":
@@ -362,18 +364,18 @@ def page_buscador_cl() -> None:
             st.warning("No hay datos de flujo de efectivo disponibles para este ticker.")
         else:
             col1, col2 = st.columns(2)
+            cashflow_df = _prepare_financial_df(cashflow_norm, YEARS)
             with col1:
-                _plot_cashflow_vs_capex(cl_ticker, _prepare_financial_df(financial_data.get("cashflow", cashflow_norm), YEARS))
-                _plot_debt_repayment(cl_ticker, _prepare_financial_df(financial_data.get("cashflow", cashflow_norm), YEARS))
+                _plot_cashflow_vs_capex(cl_ticker, cashflow_df)
+                _plot_debt_repayment(cl_ticker, cashflow_df)
             with col2:
-                _plot_debt_issuance(cl_ticker, _prepare_financial_df(financial_data.get("cashflow", cashflow_norm), YEARS))
-                _plot_share_buybacks(cl_ticker, _prepare_financial_df(financial_data.get("cashflow", cashflow_norm), YEARS))
+                _plot_debt_issuance(cl_ticker, cashflow_df)
+                _plot_share_buybacks(cl_ticker, cashflow_df)
             _render_financial_table_expander("📋 Ver tabla Flujo de Efectivo", cashflow_norm)
 
     elif selected_section == "Valoración por múltiplos":
         _render_cl_valoracion(
             cl_ticker, yf_ticker,
-            financial_data,
             balance_norm, income_norm, cashflow_norm, derived,
             profile_type, moneda,
         )
@@ -442,7 +444,6 @@ def _render_cl_dividends(cl_ticker: str, yf_ticker: str, financial_data: Dict[st
 def _render_cl_valoracion(
     cl_ticker: str,
     yf_ticker: str,
-    financial_data: Dict[str, Any],
     balance_norm: pd.DataFrame,
     income_norm: pd.DataFrame,
     cashflow_norm: pd.DataFrame,
@@ -517,7 +518,7 @@ def _render_cl_valoracion(
     # Tab: PER (solo normal)
     if profile_type == "normal":
         with sub_tabs[tab_idx]:
-            income_df = _prepare_financial_df(financial_data.get("income_stmt", pd.DataFrame()), YEARS)
+            income_df = _prepare_financial_df(income_norm, YEARS)
             if not income_df.empty:
                 info = _load_ticker_info(yf_ticker)
                 _plot_per_evolution(yf_ticker, income_df, info)
@@ -528,8 +529,8 @@ def _render_cl_valoracion(
     # Tab: EV/EBITDA (normal y utility)
     if profile_type in ("normal", "utility"):
         with sub_tabs[tab_idx]:
-            income_df = _prepare_financial_df(financial_data.get("income_stmt", pd.DataFrame()), YEARS)
-            balance_df = _prepare_financial_df(financial_data.get("balance_sheet", pd.DataFrame()), YEARS)
+            income_df = _prepare_financial_df(income_norm, YEARS)
+            balance_df = _prepare_financial_df(balance_norm, YEARS)
             if not income_df.empty and not balance_df.empty:
                 info = _load_ticker_info(yf_ticker)
                 _plot_ev_ebitda_evolution(yf_ticker, income_df, balance_df, info)
@@ -539,8 +540,8 @@ def _render_cl_valoracion(
 
     # Tab: Evolución de la Deuda
     with sub_tabs[tab_idx]:
-        balance_df = _prepare_financial_df(financial_data.get("balance_sheet", pd.DataFrame()), YEARS)
-        cashflow_df = _prepare_financial_df(financial_data.get("cashflow", pd.DataFrame()), YEARS)
+        balance_df = _prepare_financial_df(balance_norm, YEARS)
+        cashflow_df = _prepare_financial_df(cashflow_norm, YEARS)
         if not balance_df.empty and not cashflow_df.empty:
             _plot_debt_fcf_evolution(cl_ticker, balance_df, cashflow_df)
         else:
@@ -549,7 +550,7 @@ def _render_cl_valoracion(
 
     # Tab: Uso del FC
     with sub_tabs[tab_idx]:
-        cashflow_df = _prepare_financial_df(financial_data.get("cashflow", pd.DataFrame()), YEARS)
+        cashflow_df = _prepare_financial_df(cashflow_norm, YEARS)
         if not cashflow_df.empty:
             _plot_fc_usage(cl_ticker, cashflow_df)
         else:
