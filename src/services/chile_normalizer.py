@@ -2,14 +2,17 @@
 """
 Normalización de estados financieros chilenos.
 
-Toma DataFrames crudos con nombres variados (en inglés o español) y
-los mapea a cuentas canónicas en español definidas en chile_schema.py.
+Este módulo soporta dos mundos:
 
-El mapeo se configura desde data/chile_account_map.csv, permitiendo:
-- Coincidencia exact / contains / regex
-- Prioridades (menor número = mayor prioridad)
-- Reglas generales ('all') y específicas por profile_type
-- Derivación de cuentas faltantes (e.g., EBITDA desde EBIT + D&A)
+1) Formatos crudos / heredados
+2) Formato final EEFF_Chile_<TICKER>.csv con esquema amplio en español
+
+Para el formato final, la lógica correcta NO es reindexar directo al esquema
+operativo, sino:
+- leer el esquema amplio
+- traducirlo a las cuentas operativas cortas
+- derivar cuentas faltantes
+- entregar DataFrames compatibles con chile_metrics.py y chile_charts.py
 """
 
 from __future__ import annotations
@@ -24,30 +27,21 @@ import pandas as pd
 from src.services.chile_schema import (
     BALANCE_ACCOUNTS_CL,
     CASHFLOW_ACCOUNTS_CL,
+    CSV_BALANCE_ACCOUNTS_CL,
+    CSV_CASHFLOW_ACCOUNTS_CL,
+    CSV_INCOME_ACCOUNTS_CL,
     INCOME_ACCOUNTS_CL,
-    METADATA_ACCOUNTS_CL,
 )
-
-# ---------------------------------------------------------------------------
-# Constantes
-# ---------------------------------------------------------------------------
 
 _REPO_ROOT = Path(__file__).parent.parent.parent
 _ACCOUNT_MAP_PATH = _REPO_ROOT / "data" / "chile_account_map.csv"
 
-# ---------------------------------------------------------------------------
-# Carga del mapa de cuentas
-# ---------------------------------------------------------------------------
 
+# =============================================================================
+# MAPA LEGACY OPCIONAL
+# =============================================================================
 
 def load_account_map_cl() -> pd.DataFrame:
-    """
-    Carga data/chile_account_map.csv.
-
-    Columnas: statement_type, profile_type, canonical_account,
-              match_type, source_pattern, priority.
-    Retorna DataFrame vacío si el archivo no existe.
-    """
     if not _ACCOUNT_MAP_PATH.exists():
         return pd.DataFrame(
             columns=[
@@ -62,15 +56,12 @@ def load_account_map_cl() -> pd.DataFrame:
     try:
         df = pd.read_csv(_ACCOUNT_MAP_PATH, sep=",", dtype=str).fillna("")
         df["priority"] = pd.to_numeric(df["priority"], errors="coerce").fillna(99).astype(int)
-        # Normalizar a minúsculas para comparaciones
         df["source_pattern"] = df["source_pattern"].str.strip().str.lower()
         df["match_type"] = df["match_type"].str.strip().str.lower()
         df["profile_type"] = df["profile_type"].str.strip().str.lower()
         df["statement_type"] = df["statement_type"].str.strip().str.lower()
         df["canonical_account"] = df["canonical_account"].str.strip().str.lower()
-        # Ordenar por prioridad
-        df = df.sort_values("priority").reset_index(drop=True)
-        return df
+        return df.sort_values("priority").reset_index(drop=True)
     except Exception:
         return pd.DataFrame(
             columns=[
@@ -90,112 +81,260 @@ def map_raw_account_to_canonical(
     profile_type: str,
     account_map: Optional[pd.DataFrame] = None,
 ) -> Optional[str]:
-    """
-    Mapea un nombre de cuenta crudo a su nombre canónico en español.
-
-    Busca primero reglas específicas del perfil y luego reglas generales ('all').
-    Dentro de cada grupo, respeta el orden de prioridad del CSV.
-
-    Args:
-        raw_name: Nombre de la cuenta tal como aparece en el CSV fuente.
-        statement_type: 'balance', 'income' o 'cashflow'.
-        profile_type: Tipo de perfil ('normal', 'utility', etc.).
-        account_map: DataFrame del mapa (se carga automáticamente si es None).
-
-    Returns:
-        Nombre canónico en español, o None si no hay coincidencia.
-    """
     if account_map is None:
         account_map = load_account_map_cl()
 
     if account_map.empty:
         return None
 
-    raw_lower = raw_name.strip().lower()
-    stmt_lower = statement_type.strip().lower()
-    ptype_lower = profile_type.strip().lower()
+    raw_lower = str(raw_name).strip().lower()
+    stmt_lower = str(statement_type).strip().lower()
+    ptype_lower = str(profile_type).strip().lower()
 
-    # Filtrar por statement_type
     subset = account_map[account_map["statement_type"] == stmt_lower]
 
-    # Evaluar primero reglas específicas del perfil, luego las generales
     for pt_filter in [ptype_lower, "all"]:
         candidates = subset[subset["profile_type"] == pt_filter]
-
         for _, row in candidates.iterrows():
             pattern = row["source_pattern"]
             match_type = row["match_type"]
-
             try:
-                if match_type == "exact":
-                    if raw_lower == pattern:
-                        return row["canonical_account"]
-                elif match_type == "contains":
-                    if pattern in raw_lower:
-                        return row["canonical_account"]
-                elif match_type == "regex":
-                    if re.search(pattern, raw_lower):
-                        return row["canonical_account"]
+                if match_type == "exact" and raw_lower == pattern:
+                    return row["canonical_account"]
+                if match_type == "contains" and pattern in raw_lower:
+                    return row["canonical_account"]
+                if match_type == "regex" and re.search(pattern, raw_lower):
+                    return row["canonical_account"]
             except Exception:
                 continue
 
     return None
 
 
-# ---------------------------------------------------------------------------
-# Normalización por estado financiero
-# ---------------------------------------------------------------------------
-
+# =============================================================================
+# UTILIDADES
+# =============================================================================
 
 def standardize_year_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Estandariza las columnas de años de un DataFrame financiero.
-
-    Convierte columnas a string, elimina columnas sin nombre o con prefijo
-    'Unnamed', y ordena de mayor a menor año (más reciente primero).
-
-    Args:
-        df: DataFrame con cuentas como índice y años como columnas.
-
-    Returns:
-        DataFrame con columnas de año ordenadas.
-    """
-    if df.empty:
-        return df
+    if df is None or df.empty:
+        return pd.DataFrame()
 
     df = df.copy()
-    # Limpiar columnas
     df.columns = [str(c).strip() for c in df.columns]
     df = df[[c for c in df.columns if c and not c.startswith("Unnamed")]]
 
-    # Intentar ordenar columnas que parecen años (4 dígitos)
-    year_cols = [c for c in df.columns if re.match(r"^\d{4}$", c)]
+    year_cols = [c for c in df.columns if re.match(r"^\d{4}$", str(c))]
     other_cols = [c for c in df.columns if c not in year_cols]
+    year_cols = sorted(year_cols, reverse=True)
 
-    if year_cols:
-        year_cols_sorted = sorted(year_cols, reverse=True)  # más reciente primero
-        df = df[year_cols_sorted + other_cols]
+    return df[year_cols + other_cols]
 
-    return df
 
+def _clean_section_df(df: Optional[pd.DataFrame]) -> pd.DataFrame:
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    out = df.copy()
+    out.index = [str(i).strip() for i in out.index]
+    out = standardize_year_columns(out)
+
+    for col in out.columns:
+        out[col] = (
+            out[col]
+            .astype(str)
+            .str.replace(".", "", regex=False)  # quita miles tipo 1.234
+            .str.replace(",", ".", regex=False)  # decimal coma -> punto
+            .replace({"nan": np.nan, "None": np.nan, "": np.nan})
+        )
+        out[col] = pd.to_numeric(out[col], errors="coerce")
+
+    out = out[~out.index.duplicated(keep="first")]
+    return out
+
+
+def _sum_existing_rows(df: pd.DataFrame, accounts: list[str]) -> Optional[pd.Series]:
+    if df is None or df.empty:
+        return None
+    rows = [acc for acc in accounts if acc in df.index]
+    if not rows:
+        return None
+    numeric = df.loc[rows].apply(pd.to_numeric, errors="coerce")
+    return numeric.sum(axis=0, min_count=1)
+
+
+def _first_existing_row(df: pd.DataFrame, accounts: list[str]) -> Optional[pd.Series]:
+    if df is None or df.empty:
+        return None
+    for acc in accounts:
+        if acc in df.index:
+            return pd.to_numeric(df.loc[acc], errors="coerce")
+    return None
+
+
+def _build_operating_df(source_df: pd.DataFrame, mapping: dict[str, list[str]], ordered_accounts: list[str]) -> pd.DataFrame:
+    if source_df is None or source_df.empty:
+        return pd.DataFrame(index=ordered_accounts)
+
+    rows: dict[str, pd.Series] = {}
+    all_cols = list(source_df.columns)
+
+    for target, candidates in mapping.items():
+        series = _sum_existing_rows(source_df, candidates)
+        if series is None:
+            series = _first_existing_row(source_df, candidates)
+        if series is None:
+            series = pd.Series(index=all_cols, dtype=float)
+        rows[target] = series
+
+    out = pd.DataFrame(rows).T
+    out = out.reindex(ordered_accounts)
+    out.index.name = "cuenta"
+    out = standardize_year_columns(out)
+    return out
+
+
+# =============================================================================
+# MAPEO DESDE CSV AMPLIO -> ESQUEMA OPERATIVO CORTO
+# =============================================================================
+
+BALANCE_WIDE_TO_SHORT: dict[str, list[str]] = {
+    "efectivo_y_equivalentes": ["efectivo_y_equivalentes"],
+    "inversiones_corto_plazo": [
+        "activos_financieros_a_valor_razonable_corrientes",
+        "otros_activos_financieros_corrientes",
+    ],
+    "deudores_comerciales": [
+        "deudores_comerciales_y_otras_cuentas_por_cobrar_corrientes",
+        "deudores_comerciales_y_otras_cuentas_por_cobrar_no_corrientes",
+        "cuentas_por_cobrar_a_entidades_relacionadas_corrientes",
+        "cuentas_por_cobrar_a_entidades_relacionadas_no_corrientes",
+    ],
+    "inventarios": ["inventarios"],
+    "otros_activos_corrientes": [
+        "otros_activos_no_financieros_corrientes",
+        "activos_por_impuestos_corrientes",
+        "pagos_anticipados_corrientes",
+        "activos_biologicos_corrientes",
+        "otros_activos_corrientes",
+    ],
+    "activos_corrientes": ["total_activos_corrientes"],
+    "propiedades_planta_y_equipo": ["propiedades_planta_y_equipo"],
+    "propiedades_de_inversion": ["propiedades_de_inversion"],
+    "activos_biologicos": ["activos_biologicos_no_corrientes", "activos_biologicos_corrientes"],
+    "intangibles": ["activos_intangibles"],
+    "goodwill": ["plusvalia"],
+    "otros_activos_no_corrientes": [
+        "otros_activos_financieros_no_corrientes",
+        "inversiones_contabilizadas_usando_metodo_de_participacion",
+        "activos_por_derecho_de_uso",
+        "activos_por_impuestos_diferidos",
+        "pagos_anticipados_no_corrientes",
+        "otros_activos_no_corrientes",
+        "encaje",
+    ],
+    "activos_no_corrientes": ["total_activos_no_corrientes"],
+    "activos_totales": ["total_activos"],
+    "cuentas_por_pagar": [
+        "acreedores_comerciales_y_otras_cuentas_por_pagar_corrientes",
+        "acreedores_comerciales_y_otras_cuentas_por_pagar_no_corrientes",
+        "cuentas_por_pagar_a_entidades_relacionadas_corrientes",
+        "cuentas_por_pagar_a_entidades_relacionadas_no_corrientes",
+    ],
+    "deuda_financiera_corto_plazo": ["prestamos_y_obligaciones_financieras_corrientes"],
+    "pasivos_arrendamiento_corriente": ["pasivos_por_arrendamiento_corrientes"],
+    "otros_pasivos_corrientes": [
+        "otros_pasivos_financieros_corrientes",
+        "provisiones_corrientes",
+        "pasivos_por_impuestos_corrientes",
+        "pasivos_acumulados_o_devengados_corrientes",
+        "provisiones_corrientes_por_beneficios_a_los_empleados",
+        "otros_pasivos_no_financieros_corrientes",
+    ],
+    "pasivos_corrientes": ["total_pasivos_corrientes"],
+    "deuda_financiera_largo_plazo": ["prestamos_y_obligaciones_financieras_no_corrientes"],
+    "pasivos_arrendamiento_no_corriente": ["pasivos_por_arrendamiento_no_corrientes"],
+    "impuestos_diferidos": ["pasivos_por_impuestos_diferidos"],
+    "otros_pasivos_no_corrientes": [
+        "otros_pasivos_financieros_no_corrientes",
+        "otras_provisiones_no_corrientes",
+        "obligaciones_por_beneficios_post_empleo",
+        "provisiones_no_corrientes_por_beneficios_a_los_empleados",
+        "otros_pasivos_no_financieros_no_corrientes",
+    ],
+    "pasivos_no_corrientes": ["total_pasivos_no_corrientes"],
+    "pasivos_totales": ["total_pasivos"],
+    "ganancias_acumuladas": ["resultados_retenidos_o_ganancias_acumuladas"],
+    "participaciones_no_controladoras": ["participaciones_no_controladoras"],
+    "patrimonio_total": ["total_patrimonio", "patrimonio_atribuible_a_los_propietarios_de_la_controladora"],
+}
+
+INCOME_WIDE_TO_SHORT: dict[str, list[str]] = {
+    "ingresos": ["ingresos_ordinarios", "ingresos_por_comisiones"],
+    "costo_de_ventas": ["costo_de_ventas", "materias_primas_y_consumibles_utilizados"],
+    "ganancia_bruta": ["ganancia_bruta"],
+    "gastos_de_administracion": ["gastos_de_administracion", "gastos_de_personal"],
+    "gastos_de_distribucion": ["costos_de_distribucion"],
+    "otros_ingresos_operacionales": [
+        "otros_ingresos_operacionales",
+        "rentabilidad_del_encaje",
+        "prima_seguro_invalidez_y_sobrevivencia",
+    ],
+    "otros_gastos_operacionales": [
+        "perdidas_por_deterioro_reversiones_neto",
+        "otros_gastos_varios_de_operacion",
+        "otros_gastos_por_funcion_o_naturaleza",
+    ],
+    "resultado_operacional": ["resultado_operacional"],
+    "depreciacion_y_amortizacion": ["depreciacion_y_amortizacion"],
+    "ebit": ["ebit", "resultado_operacional"],
+    "ebitda": ["ebitda"],
+    "ingresos_financieros": ["ingresos_financieros"],
+    "costos_financieros": ["costos_financieros"],
+    "resultado_por_tipo_de_cambio": ["diferencias_de_cambio", "resultados_por_unidades_de_reajuste"],
+    "participacion_en_asociadas": ["participacion_en_ganancias_perdidas_de_asociadas_y_negocios_conjuntos"],
+    "resultado_antes_de_impuestos": ["resultado_antes_de_impuestos"],
+    "impuesto_a_las_ganancias": ["gasto_ingreso_por_impuestos_a_las_ganancias"],
+    "ganancia_neta": [
+        "ganancia_neta",
+        "ganancia_neta_de_actividades_continuadas",
+    ],
+    "ganancia_neta_controladora": [
+        "ganancia_neta_controladora",
+        "ganancia_atribuible_a_los_propietarios_de_la_controladora",
+    ],
+    "eps_basico": ["ganancia_por_accion_basica_total"],
+    "acciones_promedio": ["acciones_promedio_ponderado_basico"],
+}
+
+CASHFLOW_WIDE_TO_SHORT: dict[str, list[str]] = {
+    "flujo_operacional": ["flujo_neto_actividades_de_operacion"],
+    "intereses_recibidos": ["intereses_recibidos_clasificados_como_operacion"],
+    "intereses_pagados": ["intereses_pagados_clasificados_como_operacion"],
+    "impuestos_pagados": ["impuestos_a_las_ganancias_pagados"],
+    "capex": ["capex"],  # si viene ya cargado
+    "venta_de_activos": [
+        "ventas_de_propiedades_planta_y_equipo",
+        "ventas_de_activos_financieros",
+        "ventas_de_cuotas_del_encaje",
+    ],
+    "adquisiciones": ["pagos_por_adquisicion_de_filiales_o_negocios"],
+    "dividendos_pagados": ["dividendos_pagados"],
+    "deuda_emitida": ["obtencion_de_prestamos"],
+    "deuda_pagada": ["pago_de_prestamos"],
+    "pagos_de_arrendamiento": ["pago_de_pasivos_por_arrendamiento"],
+    "flujo_libre_de_caja": ["flujo_libre_de_caja"],  # si viene ya cargado
+}
+
+
+# =============================================================================
+# NORMALIZACIÓN LEGACY (se mantiene)
+# =============================================================================
 
 def normalize_balance_cl(
     df_raw: pd.DataFrame,
     profile_type: str,
     account_map: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
-    """
-    Normaliza el Balance General crudo a cuentas canónicas en español.
-
-    Args:
-        df_raw: DataFrame crudo con cuentas como índice y años como columnas.
-        profile_type: Tipo de empresa ('normal', 'utility', 'reit_concesion', 'financiera').
-        account_map: Mapa de cuentas (se carga si es None).
-
-    Returns:
-        DataFrame normalizado con cuentas canónicas como índice.
-        Cuentas sin mapeo se descartan con trazabilidad interna.
-    """
     return _normalize_statement(df_raw, "balance", profile_type, BALANCE_ACCOUNTS_CL, account_map)
 
 
@@ -204,17 +343,6 @@ def normalize_income_cl(
     profile_type: str,
     account_map: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
-    """
-    Normaliza el Estado de Resultados crudo a cuentas canónicas en español.
-
-    Args:
-        df_raw: DataFrame crudo con cuentas como índice y años como columnas.
-        profile_type: Tipo de empresa.
-        account_map: Mapa de cuentas (se carga si es None).
-
-    Returns:
-        DataFrame normalizado con cuentas canónicas como índice.
-    """
     return _normalize_statement(df_raw, "income", profile_type, INCOME_ACCOUNTS_CL, account_map)
 
 
@@ -223,17 +351,6 @@ def normalize_cashflow_cl(
     profile_type: str,
     account_map: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
-    """
-    Normaliza el Estado de Flujo de Efectivo crudo a cuentas canónicas en español.
-
-    Args:
-        df_raw: DataFrame crudo con cuentas como índice y años como columnas.
-        profile_type: Tipo de empresa.
-        account_map: Mapa de cuentas (se carga si es None).
-
-    Returns:
-        DataFrame normalizado con cuentas canónicas como índice.
-    """
     return _normalize_statement(df_raw, "cashflow", profile_type, CASHFLOW_ACCOUNTS_CL, account_map)
 
 
@@ -244,142 +361,91 @@ def _normalize_statement(
     canonical_accounts: list[str],
     account_map: Optional[pd.DataFrame],
 ) -> pd.DataFrame:
-    """
-    Implementación interna de normalización para cualquier tipo de estado financiero.
-
-    Cuando varios nombres crudos mapean a la misma cuenta canónica,
-    se usa la primera fila encontrada (respetando el orden de prioridad del CSV).
-    """
     if df_raw is None or df_raw.empty:
         return pd.DataFrame()
 
     if account_map is None:
         account_map = load_account_map_cl()
 
-    # Estandarizar columnas de años
     df_raw = standardize_year_columns(df_raw)
     if df_raw.empty:
         return pd.DataFrame()
 
-    year_cols = list(df_raw.columns)
-
-    # Mapear cada cuenta cruda a su nombre canónico
-    # Construir mapa: canonical -> primera fila cruda que coincide
     mapped: dict[str, pd.Series] = {}
-    unmapped: list[str] = []
 
     for raw_account in df_raw.index:
         canonical = map_raw_account_to_canonical(
             str(raw_account), statement_type, profile_type, account_map
         )
         if canonical and canonical not in mapped:
-            mapped[canonical] = df_raw.loc[raw_account]
-        elif canonical is None:
-            unmapped.append(str(raw_account))
+            mapped[canonical] = pd.to_numeric(df_raw.loc[raw_account], errors="coerce")
 
     if not mapped:
-        return pd.DataFrame()
+        return pd.DataFrame(index=canonical_accounts)
 
-    # Construir DataFrame normalizado con solo las cuentas canónicas que existen
-    rows = {}
-    for account in canonical_accounts:
-        if account in mapped:
-            rows[account] = mapped[account]
-
-    if not rows:
-        return pd.DataFrame()
-
-    result = pd.DataFrame(rows).T
+    result = pd.DataFrame(mapped).T
     result.index.name = "cuenta"
-    result.columns = year_cols[: len(result.columns)]
-    result = result.apply(pd.to_numeric, errors="coerce")
-
+    result = result.reindex(canonical_accounts)
+    result = standardize_year_columns(result)
     return result
 
 
-# ---------------------------------------------------------------------------
-# Normalización directa desde secciones del formato EEFF_Chile
-# ---------------------------------------------------------------------------
-
+# =============================================================================
+# NORMALIZACIÓN DESDE CSV AMPLIO FINAL
+# =============================================================================
 
 def normalize_from_sections(
     sections: dict,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
-    Normaliza los EEFF directamente desde las secciones del formato EEFF_Chile.
+    Traduce el CSV amplio final al esquema operativo corto.
 
-    Los DataFrames de entrada ya usan nombres de cuentas canónicos en español.
-    Esta función solo:
-    1. Reindexea cada sección a la lista completa de cuentas canónicas (NaN para faltantes).
-    2. Garantiza conversión numérica y orden de columnas (años de mayor a menor).
-
-    Args:
-        sections: Dict con claves ``'BALANCE'``, ``'EERR'``, ``'EFE'`` (y opcionalmente
-                  ``'METADATA'``), cada uno siendo un DataFrame con cuentas canónicas
-                  como índice y años como columnas.
-
-    Returns:
-        Tupla ``(balance_norm, income_norm, cashflow_norm)``, DataFrames normalizados
-        con cuentas canónicas como índice.  Cuentas ausentes en el CSV aparecen
-        como filas de NaN.
+    Entrada:
+        sections["BALANCE"], sections["EERR"], sections["EFE"]
+    Salida:
+        balance_norm, income_norm, cashflow_norm
     """
-    balance_norm = _reindex_to_canonical(
-        sections.get("BALANCE", pd.DataFrame()), BALANCE_ACCOUNTS_CL
-    )
-    income_norm = _reindex_to_canonical(
-        sections.get("EERR", pd.DataFrame()), INCOME_ACCOUNTS_CL
-    )
-    cashflow_norm = _reindex_to_canonical(
-        sections.get("EFE", pd.DataFrame()), CASHFLOW_ACCOUNTS_CL
-    )
+    balance_src = _clean_section_df(sections.get("BALANCE"))
+    income_src = _clean_section_df(sections.get("EERR"))
+    cashflow_src = _clean_section_df(sections.get("EFE"))
+
+    balance_norm = _build_operating_df(balance_src, BALANCE_WIDE_TO_SHORT, BALANCE_ACCOUNTS_CL)
+    income_norm = _build_operating_df(income_src, INCOME_WIDE_TO_SHORT, INCOME_ACCOUNTS_CL)
+    cashflow_norm = _build_operating_df(cashflow_src, CASHFLOW_WIDE_TO_SHORT, CASHFLOW_ACCOUNTS_CL)
+
+    # Derivación temprana de CAPEX desde el CSV amplio si no vino informado
+    if "capex" in cashflow_norm.index:
+        capex_row = pd.to_numeric(cashflow_norm.loc["capex"], errors="coerce")
+        if capex_row.dropna().empty:
+            derived_capex = _derive_capex_from_wide_cashflow(cashflow_src)
+            if derived_capex is not None:
+                cashflow_norm.loc["capex"] = derived_capex
+
+    # Si acciones_promedio viene en EERR, mantenerlo también como metadata lógica interna
     return balance_norm, income_norm, cashflow_norm
 
 
-def _reindex_to_canonical(df: Optional[pd.DataFrame], canonical_accounts: list[str]) -> pd.DataFrame:
-    """
-    Reindexea un DataFrame de sección a la lista completa de cuentas canónicas.
+def _derive_capex_from_wide_cashflow(cashflow_src: pd.DataFrame) -> Optional[pd.Series]:
+    if cashflow_src is None or cashflow_src.empty:
+        return None
 
-    Las cuentas presentes en canonical_accounts pero ausentes en el DataFrame
-    aparecen como filas de NaN.  Se conservan solo las columnas de año (4 dígitos)
-    ordenadas de mayor a menor.
+    capex_components = [
+        "compras_de_propiedades_planta_y_equipo",
+        "compras_de_activos_intangibles",
+        "compras_de_propiedades_de_inversion",
+    ]
 
-    Args:
-        df: DataFrame con cuentas como índice y años como columnas.
-        canonical_accounts: Lista ordenada de cuentas canónicas destino.
+    series = _sum_existing_rows(cashflow_src, capex_components)
+    if series is None:
+        return None
 
-    Returns:
-        DataFrame reindexado con orden canónico.
-    """
-    if df is None or df.empty:
-        return pd.DataFrame(index=canonical_accounts)
-
-    df = df.copy()
-    # Estandarizar columnas
-    df.columns = [str(c).strip() for c in df.columns]
-    df = df[[c for c in df.columns if c and not c.startswith("Unnamed:")]]
-
-    # Conversión numérica explícita
-    for col in df.columns:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-
-    # Ordenar columnas de año de mayor a menor
-    year_cols = sorted(
-        [c for c in df.columns if re.match(r"^\d{4}$", c)],
-        reverse=True,
-    )
-    other_cols = [c for c in df.columns if c not in year_cols]
-    df = df[year_cols + other_cols]
-
-    # Reindexar a cuentas canónicas (introduce NaN para ausentes)
-    result = df.reindex(canonical_accounts)
-    result.index.name = "cuenta"
-    return result
+    # Normalizamos CAPEX a negativo, porque derive_missing_accounts_cl usa FCF = op + capex
+    return -series.abs()
 
 
-# ---------------------------------------------------------------------------
-# Derivación de cuentas faltantes
-# ---------------------------------------------------------------------------
-
+# =============================================================================
+# DERIVACIÓN DE CUENTAS FALTANTES
+# =============================================================================
 
 def derive_missing_accounts_cl(
     balance_df: pd.DataFrame,
@@ -387,76 +453,49 @@ def derive_missing_accounts_cl(
     cashflow_df: pd.DataFrame,
     profile_type: str,
 ) -> dict:
-    """
-    Deriva cuentas canónicas faltantes cuando es razonable hacerlo.
-
-    Reglas de derivación:
-    - EBITDA = ebit + depreciacion_y_amortizacion (si EBITDA no existe)
-    - EBIT = resultado_operacional (si EBIT no existe)
-    - flujo_libre_de_caja = flujo_operacional + capex (capex suele ser negativo)
-    - deuda_financiera_total = corto_plazo + largo_plazo
-
-    Args:
-        balance_df: Balance normalizado.
-        income_df: EERR normalizado.
-        cashflow_df: EFE normalizado.
-        profile_type: Tipo de empresa.
-
-    Returns:
-        dict con cuentas derivadas como DataFrames de series temporales.
-        Sólo incluye cuentas que fueron efectivamente derivadas.
-    """
     derived: dict = {}
 
-    # --- Derivar EBIT desde resultado_operacional ---
-    if not income_df.empty:
-        if "ebit" not in income_df.index and "resultado_operacional" in income_df.index:
-            derived["ebit"] = income_df.loc["resultado_operacional"]
+    # EBIT desde resultado_operacional
+    if not income_df.empty and "resultado_operacional" in income_df.index:
+        ebit_existing = pd.to_numeric(income_df.loc["ebit"], errors="coerce") if "ebit" in income_df.index else None
+        if ebit_existing is None or ebit_existing.dropna().empty:
+            derived["ebit"] = pd.to_numeric(income_df.loc["resultado_operacional"], errors="coerce")
 
-        # --- Derivar EBITDA desde EBIT + D&A ---
-        ebit_source = income_df.loc["ebit"] if "ebit" in income_df.index else derived.get("ebit")
-        da_source = income_df.loc["depreciacion_y_amortizacion"] if "depreciacion_y_amortizacion" in income_df.index else None
+    # EBITDA desde EBIT + D&A
+    ebit_source = None
+    if "ebit" in income_df.index:
+        ebit_source = pd.to_numeric(income_df.loc["ebit"], errors="coerce")
+        if ebit_source.dropna().empty and "ebit" in derived:
+            ebit_source = pd.to_numeric(derived["ebit"], errors="coerce")
+    elif "ebit" in derived:
+        ebit_source = pd.to_numeric(derived["ebit"], errors="coerce")
 
-        if "ebitda" not in income_df.index and ebit_source is not None and da_source is not None:
-            try:
-                ebitda = pd.to_numeric(ebit_source, errors="coerce") + pd.to_numeric(da_source, errors="coerce").abs()
-                derived["ebitda"] = ebitda
-            except Exception:
-                pass
+    da_source = None
+    if "depreciacion_y_amortizacion" in income_df.index:
+        da_source = pd.to_numeric(income_df.loc["depreciacion_y_amortizacion"], errors="coerce")
 
-    # --- Derivar flujo_libre_de_caja ---
-    if not cashflow_df.empty:
-        if "flujo_libre_de_caja" not in cashflow_df.index:
-            op_source = cashflow_df.loc["flujo_operacional"] if "flujo_operacional" in cashflow_df.index else None
-            capex_source = cashflow_df.loc["capex"] if "capex" in cashflow_df.index else None
+    if ebit_source is not None and da_source is not None:
+        ebitda_existing = pd.to_numeric(income_df.loc["ebitda"], errors="coerce") if "ebitda" in income_df.index else None
+        if ebitda_existing is None or ebitda_existing.dropna().empty:
+            derived["ebitda"] = ebit_source + da_source.abs()
 
-            if op_source is not None and capex_source is not None:
-                try:
-                    op = pd.to_numeric(op_source, errors="coerce")
-                    capex = pd.to_numeric(capex_source, errors="coerce")
-                    # CAPEX es típicamente negativo en los datos; FCF = op + capex
-                    fcf = op + capex
-                    # Si el resultado es negativo pero el capex era positivo, ajustar
-                    if (fcf < 0).all() and (capex > 0).all():
-                        fcf = op - capex
-                    derived["flujo_libre_de_caja"] = fcf
-                except Exception:
-                    pass
+    # Deuda financiera total
+    cp_debt = pd.to_numeric(balance_df.loc["deuda_financiera_corto_plazo"], errors="coerce") if "deuda_financiera_corto_plazo" in balance_df.index else None
+    lp_debt = pd.to_numeric(balance_df.loc["deuda_financiera_largo_plazo"], errors="coerce") if "deuda_financiera_largo_plazo" in balance_df.index else None
 
-    # --- Derivar deuda_financiera_total (útil para métricas) ---
-    if not balance_df.empty:
-        cp_debt = balance_df.loc["deuda_financiera_corto_plazo"] if "deuda_financiera_corto_plazo" in balance_df.index else None
-        lp_debt = balance_df.loc["deuda_financiera_largo_plazo"] if "deuda_financiera_largo_plazo" in balance_df.index else None
+    if cp_debt is not None or lp_debt is not None:
+        cp = cp_debt if cp_debt is not None else pd.Series(index=balance_df.columns, dtype=float)
+        lp = lp_debt if lp_debt is not None else pd.Series(index=balance_df.columns, dtype=float)
+        derived["deuda_financiera_total"] = cp.abs().fillna(0) + lp.abs().fillna(0)
 
-        if cp_debt is not None and lp_debt is not None:
-            try:
-                deuda_total = pd.to_numeric(cp_debt, errors="coerce").abs() + pd.to_numeric(lp_debt, errors="coerce").abs()
-                derived["deuda_financiera_total"] = deuda_total
-            except Exception:
-                pass
-        elif lp_debt is not None:
-            derived["deuda_financiera_total"] = pd.to_numeric(lp_debt, errors="coerce").abs()
-        elif cp_debt is not None:
-            derived["deuda_financiera_total"] = pd.to_numeric(cp_debt, errors="coerce").abs()
+    # Flujo libre de caja
+    op_source = pd.to_numeric(cashflow_df.loc["flujo_operacional"], errors="coerce") if "flujo_operacional" in cashflow_df.index else None
+    capex_source = pd.to_numeric(cashflow_df.loc["capex"], errors="coerce") if "capex" in cashflow_df.index else None
+
+    if op_source is not None and capex_source is not None:
+        fcf_existing = pd.to_numeric(cashflow_df.loc["flujo_libre_de_caja"], errors="coerce") if "flujo_libre_de_caja" in cashflow_df.index else None
+        if fcf_existing is None or fcf_existing.dropna().empty:
+            # Convención: capex negativo
+            derived["flujo_libre_de_caja"] = op_source + capex_source
 
     return derived
