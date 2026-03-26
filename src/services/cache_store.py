@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 from typing import Any, Optional
 
+import numpy as np
 import pandas as pd
 import requests
 
@@ -16,21 +17,39 @@ _REDIS_ERRORS = (RuntimeError, requests.RequestException, OSError)
 
 class CacheJSONEncoder(json.JSONEncoder):
     """
-    Custom JSON encoder that handles pandas Timestamps and datetime objects.
+    Custom JSON encoder that handles pandas Timestamps, datetime objects, and numpy types.
     
     This encoder converts:
     - pandas.Timestamp -> ISO format string
     - datetime objects -> ISO format string
+    - numpy integers (int8, int16, int32, int64, etc.) -> int
+    - numpy floats (float16, float32, float64, etc.) -> float
+    - numpy booleans -> bool
+    - numpy arrays -> list
+    - pandas NA / NaT -> None
     
     Note: NaN and Infinity values are handled by Python's json module by default.
     """
     def default(self, obj):
+        # Handle pandas NA / NaT first (NaT is a subclass of datetime, check before datetime)
+        if obj is pd.NA or obj is pd.NaT:
+            return None
         # Handle pandas Timestamp
-        if isinstance(obj, pd.Timestamp):
+        elif isinstance(obj, pd.Timestamp):
             return obj.isoformat()
         # Handle datetime objects
         elif isinstance(obj, datetime):
             return obj.isoformat()
+        # Handle numpy scalar types and arrays (identified by module to avoid false positives)
+        elif type(obj).__module__ == "numpy":
+            if isinstance(obj, np.integer):
+                return int(obj)
+            if isinstance(obj, np.floating):
+                return float(obj)
+            if isinstance(obj, np.bool_):
+                return bool(obj)
+            if isinstance(obj, np.ndarray):
+                return obj.tolist()
         # Let the base class handle other types or raise TypeError
         return super().default(obj)
 
