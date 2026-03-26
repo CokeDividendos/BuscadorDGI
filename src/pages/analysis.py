@@ -148,7 +148,7 @@ def _annual_dividends_last_years(dividends: pd.Series, years: Optional[int] = YE
     if dividends is None or dividends.empty:
         return pd.Series(dtype=float)
 
-    ann = dividends.resample("Y").sum().dropna().astype(float)
+    ann = dividends.resample("YE").sum().dropna().astype(float)
     ann.index = ann.index.year
 
     if years is None:
@@ -372,7 +372,7 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
         st.warning("No hay fechas válidas en el precio diario para Geraldine Weiss.")
         return
 
-    monthly = price_daily.resample("M").last().copy()
+    monthly = price_daily.resample("ME").last().copy()
     monthly["Year"] = monthly.index.year
 
     current_year = datetime.now().year
@@ -454,51 +454,74 @@ def _plot_geraldine_weiss(ticker: str, price_daily: pd.DataFrame, dividends: pd.
 # =========================================================
 # Financial Statements Data Loaders
 # =========================================================
+def _reconstruct_df_from_tight(tight_dict: Any) -> pd.DataFrame:
+    """Safely reconstruct a DataFrame from a cached tight-format dict.
+
+    Falls back to an empty DataFrame on any error (e.g., stale or corrupt cache entry).
+    """
+    if not tight_dict or not isinstance(tight_dict, dict):
+        return pd.DataFrame()
+    try:
+        return pd.DataFrame.from_dict(tight_dict, orient="tight")
+    except Exception:
+        return pd.DataFrame()
+
+
 def _load_financial_statements(ticker: str) -> Dict[str, Any]:
     """Load balance sheet, income statement, and cash flow data with caching (3 months)"""
+    _EMPTY = {"balance_sheet": pd.DataFrame(), "income_stmt": pd.DataFrame(), "cashflow": pd.DataFrame()}
+
     # Check cache first
     cache_key = f"financial_statements_{ticker}"
-    cached_data = cache_get(cache_key)
-    
-    if cached_data:
-        # Reconstruct DataFrames from cached data with proper orientation
-        return {
-            "balance_sheet": pd.DataFrame.from_dict(cached_data["balance_sheet"], orient='tight') if cached_data["balance_sheet"] else pd.DataFrame(),
-            "income_stmt": pd.DataFrame.from_dict(cached_data["income_stmt"], orient='tight') if cached_data["income_stmt"] else pd.DataFrame(),
-            "cashflow": pd.DataFrame.from_dict(cached_data["cashflow"], orient='tight') if cached_data["cashflow"] else pd.DataFrame(),
-        }
-    
+    try:
+        cached_data = cache_get(cache_key)
+    except Exception:
+        cached_data = None
+
+    if cached_data and isinstance(cached_data, dict) and "cashflow" in cached_data:
+        try:
+            return {
+                "balance_sheet": _reconstruct_df_from_tight(cached_data.get("balance_sheet")),
+                "income_stmt": _reconstruct_df_from_tight(cached_data.get("income_stmt")),
+                "cashflow": _reconstruct_df_from_tight(cached_data.get("cashflow")),
+            }
+        except Exception:
+            pass  # Fall through to re-fetch from yfinance
+
     ticker_obj = yf.Ticker(ticker)
-    
+
     try:
         balance_sheet = ticker_obj.balance_sheet
         if balance_sheet is None or not isinstance(balance_sheet, pd.DataFrame):
             balance_sheet = pd.DataFrame()
     except Exception:
         balance_sheet = pd.DataFrame()
-    
+
     try:
         income_stmt = ticker_obj.income_stmt
         if income_stmt is None or not isinstance(income_stmt, pd.DataFrame):
             income_stmt = pd.DataFrame()
     except Exception:
         income_stmt = pd.DataFrame()
-    
+
     try:
         cashflow = ticker_obj.cashflow
         if cashflow is None or not isinstance(cashflow, pd.DataFrame):
             cashflow = pd.DataFrame()
     except Exception:
         cashflow = pd.DataFrame()
-    
+
     # Cache the data for 3 months using 'tight' orientation to preserve index/column structure
-    cache_data = {
-        "balance_sheet": balance_sheet.to_dict(orient='tight') if not balance_sheet.empty else None,
-        "income_stmt": income_stmt.to_dict(orient='tight') if not income_stmt.empty else None,
-        "cashflow": cashflow.to_dict(orient='tight') if not cashflow.empty else None,
-    }
-    cache_set(cache_key, cache_data, ttl_seconds=FINANCIAL_STATEMENTS_CACHE_TTL)
-    
+    try:
+        cache_data = {
+            "balance_sheet": balance_sheet.to_dict(orient="tight") if not balance_sheet.empty else None,
+            "income_stmt": income_stmt.to_dict(orient="tight") if not income_stmt.empty else None,
+            "cashflow": cashflow.to_dict(orient="tight") if not cashflow.empty else None,
+        }
+        cache_set(cache_key, cache_data, ttl_seconds=FINANCIAL_STATEMENTS_CACHE_TTL)
+    except Exception:
+        pass  # Caching is best-effort; never crash the app on a serialization error
+
     return {
         "balance_sheet": balance_sheet,
         "income_stmt": income_stmt,
@@ -1630,10 +1653,8 @@ def _plot_per_evolution(ticker: str, income_df: pd.DataFrame, info: Dict[str, An
             st.warning("No hay datos de precio disponibles.")
             return
         
-        price_yearly = price_data.resample("Y").last()["Close"]
+        price_yearly = price_data.resample("YE").last()["Close"]
         price_yearly.index = price_yearly.index.year
-        
-        # Create dataframe
         df_per = pd.DataFrame({"EPS": eps_series, "Precio": price_yearly}).dropna()
         if df_per.empty:
             st.warning("No hay datos suficientes para calcular el PER histórico.")
@@ -1803,7 +1824,7 @@ def _plot_ev_ebitda_evolution(ticker: str, income_df: pd.DataFrame, balance_df: 
             t = yf.Ticker(ticker)
             price_data = t.history(period="max")
             if not price_data.empty:
-                price_yearly = price_data.resample("Y").last()["Close"]
+                price_yearly = price_data.resample("YE").last()["Close"]
                 price_yearly.index = price_yearly.index.year
                 
                 # Calculate historical market cap = shares * price

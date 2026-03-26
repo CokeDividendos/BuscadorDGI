@@ -91,7 +91,11 @@ def page_resumen() -> None:
         selected_section = "Dividendos"
     
     if selected_section == "Dividendos":
-        inputs = _load_dividend_inputs(ticker, YEARS)
+        try:
+            inputs = _load_dividend_inputs(ticker, YEARS)
+        except Exception as e:
+            st.error(f"Error al cargar datos de dividendos: {type(e).__name__}. Intente nuevamente.")
+            return
         price_daily = inputs["price_daily"]
         dividends = inputs["dividends"]
         cashflow = inputs["cashflow"]
@@ -99,12 +103,20 @@ def page_resumen() -> None:
         st.markdown("## Valoración por dividendo")
         sub_tabs = st.tabs(["📈 Evolución del dividendo", "🛡️ Seguridad del dividendo", "📌 Geraldine Weiss"])
         with sub_tabs[0]:
-            _plot_dividend_evolution(ticker, price_daily, dividends)
+            try:
+                _plot_dividend_evolution(ticker, price_daily, dividends)
+            except Exception as e:
+                st.warning(f"No se pudo graficar la evolución del dividendo ({type(e).__name__}).")
         with sub_tabs[1]:
-            _plot_dividend_safety(ticker, cashflow)
+            try:
+                _plot_dividend_safety(ticker, cashflow)
+            except Exception as e:
+                st.warning(f"No se pudo graficar la seguridad del dividendo ({type(e).__name__}).")
         with sub_tabs[2]:
-            # Don't pass annual_div since it's not available in this simplified view
-            _plot_geraldine_weiss(ticker, price_daily, dividends)
+            try:
+                _plot_geraldine_weiss(ticker, price_daily, dividends)
+            except Exception as e:
+                st.warning(f"No se pudo graficar el análisis Geraldine Weiss ({type(e).__name__}).")
     
     elif selected_section == "Balance":
         st.markdown("## Balance")
