@@ -8,3 +8,4 @@ requests-cache>=1.1.0
 yfinance>=0.2.38
 openai>=1.12.0
 Pillow>=10.0.0
+streamlit-option-menu>=0.4.0
