@@ -81,6 +81,23 @@ def run_app():
             color: white !important;
         }
 
+        /* Transición suave al abrir/cerrar el sidebar */
+        section[data-testid="stSidebar"] ~ section.main {
+            transition: margin-left 0.3s ease, width 0.3s ease !important;
+        }
+
+        /* Sidebar oculto → contenido se expande a pantalla completa */
+        section[data-testid="stSidebar"][aria-expanded="false"] ~ section.main {
+            margin-left: 0rem !important;
+            width: 100% !important;
+        }
+
+        section[data-testid="stSidebar"][aria-expanded="false"] ~ section.main div.block-container {
+            padding-left: 1.5rem !important;
+            padding-right: 1.5rem !important;
+            max-width: 100% !important;
+        }
+
         /* option_menu: estilos generales del contenedor */
         .nav-link {
             border-radius: 8px !important;
@@ -136,7 +153,7 @@ def run_app():
         page_section = option_menu(
             menu_title="Navegación",
             options=page_sections,
-            icons=["search", "search", "bar-chart-line", "calculator", "journal-text", "key"] + (["person-gear"] if admin else []),
+            icons=["search", "globe2", "bar-chart-line", "calculator", "journal-text", "key"] + (["person-gear"] if admin else []),
             default_index=current_idx,
             key="page_section_radio",
             styles={
