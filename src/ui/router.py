@@ -1,5 +1,6 @@
 # src/ui/router.py
 import streamlit as st
+from streamlit_option_menu import option_menu
 
 from src.db import init_db, verify_database_integrity
 from src.auth import require_login, is_admin, logout_button
@@ -80,12 +81,42 @@ def run_app():
             color: white !important;
         }
 
-        /* Secciones de datos: lista plana sin radio button visible */
-        section[data-testid="stSidebar"] [data-testid="stRadio"] label {
-            padding: 2px 0 !important;
+        /* Transición suave al abrir/cerrar el sidebar */
+        section[data-testid="stSidebar"] ~ section.main {
+            transition: margin-left 0.3s ease, width 0.3s ease !important;
         }
-        section[data-testid="stSidebar"] [data-testid="stRadio"] [data-testid="stMarkdownContainer"] p {
-            font-size: 0.9rem !important;
+
+        /* Sidebar oculto → contenido se expande a pantalla completa */
+        section[data-testid="stSidebar"][aria-expanded="false"] ~ section.main {
+            margin-left: 0rem !important;
+            width: 100% !important;
+        }
+
+        section[data-testid="stSidebar"][aria-expanded="false"] ~ section.main div.block-container {
+            padding-left: 1.5rem !important;
+            padding-right: 1.5rem !important;
+            max-width: 100% !important;
+        }
+
+        /* option_menu: estilos generales del contenedor */
+        .nav-link {
+            border-radius: 8px !important;
+            margin-bottom: 2px !important;
+            font-size: 0.88rem !important;
+            transition: background-color 0.2s ease !important;
+        }
+
+        /* Hover sutil sobre cada ítem */
+        .nav-link:hover {
+            background-color: rgba(255, 122, 0, 0.18) !important;
+            color: #ffffff !important;
+        }
+
+        /* Ítem seleccionado en naranja */
+        .nav-link-selected {
+            background-color: #ff7a00 !important;
+            color: #ffffff !important;
+            font-weight: 600 !important;
         }
         </style>
         """,
@@ -118,12 +149,31 @@ def run_app():
         except ValueError:
             current_idx = 0
 
-        # Menú navegación principal como lista vertical (st.radio)
-        page_section = st.radio(
-            "### Navegación",
-            page_sections,
-            index=current_idx,
-            key="page_section_radio"
+        # Menú navegación principal con option_menu
+        page_section = option_menu(
+            menu_title="Navegación",
+            options=page_sections,
+            icons=["search", "globe2", "bar-chart-line", "calculator", "journal-text", "key"] + (["person-gear"] if admin else []),
+            default_index=current_idx,
+            key="page_section_radio",
+            styles={
+                "container": {"padding": "4px 0", "background-color": "transparent"},
+                "menu-title": {"font-size": "0.85rem", "color": "#aaaaaa", "font-weight": "600", "padding-left": "8px", "margin-bottom": "4px"},
+                "icon": {"color": "#cccccc", "font-size": "0.85rem"},
+                "nav-link": {
+                    "font-size": "0.88rem",
+                    "color": "#e0e0e0",
+                    "padding": "7px 12px",
+                    "border-radius": "8px",
+                    "margin-bottom": "2px",
+                    "--hover-color": "rgba(255, 122, 0, 0.18)",
+                },
+                "nav-link-selected": {
+                    "background-color": "#ff7a00",
+                    "color": "#ffffff",
+                    "font-weight": "600",
+                },
+            },
         )
         
         # Update page section in session state
@@ -138,7 +188,6 @@ def run_app():
         
         # Show data sections only when in Buscador page (formerly shown in Análisis page)
         if page_section in ["Buscador", "Buscador CL"]:
-            st.markdown("### Secciones de datos")
             data_sections = [
                 "Resumen",
                 "Dividendos",
@@ -156,12 +205,34 @@ def run_app():
             if current_analysis_section not in data_sections:
                 current_analysis_section = "Resumen"
             
-            selected_data_section = st.radio(
-                "Secciones de datos",
-                data_sections,
-                index=data_sections.index(current_analysis_section),
+            data_icons = ["clipboard-data", "currency-dollar", "bank", "graph-up", "cash-stack", "calculator", "file-text"]
+            if admin:
+                data_icons.insert(-1, "easel")
+
+            selected_data_section = option_menu(
+                menu_title="Secciones de datos",
+                options=data_sections,
+                icons=data_icons,
+                default_index=data_sections.index(current_analysis_section),
                 key="data_section_selector",
-                label_visibility="collapsed"
+                styles={
+                    "container": {"padding": "4px 0", "background-color": "transparent"},
+                    "menu-title": {"font-size": "0.85rem", "color": "#aaaaaa", "font-weight": "600", "padding-left": "8px", "margin-bottom": "4px"},
+                    "icon": {"color": "#cccccc", "font-size": "0.82rem"},
+                    "nav-link": {
+                        "font-size": "0.85rem",
+                        "color": "#e0e0e0",
+                        "padding": "6px 12px",
+                        "border-radius": "8px",
+                        "margin-bottom": "2px",
+                        "--hover-color": "rgba(255, 122, 0, 0.18)",
+                    },
+                    "nav-link-selected": {
+                        "background-color": "#ff7a00",
+                        "color": "#ffffff",
+                        "font-weight": "600",
+                    },
+                },
             )
             
             st.session_state["analysis_section"] = selected_data_section
