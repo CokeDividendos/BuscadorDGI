@@ -64,12 +64,36 @@ def get_price_data(ticker: str) -> dict:
         import yfinance as yf
         tk = yf.Ticker(t)
 
-        fast = yf_call(lambda: getattr(tk, "fast_info", {}) or {})
-        price = fast.get("last_price") or fast.get("last") or None
-        currency = fast.get("currency")
-        exchange = fast.get("exchange")
+        # fast_info es un proxy con propiedades lazy: cada .get() puede
+        # disparar una llamada de red y lanzar curl_cffi.requests.exceptions.Timeout.
+        # Envolver cada acceso individualmente para no perder los datos parciales.
+        price = None
+        currency = None
+        exchange = None
+        try:
+            fast = yf_call(lambda: getattr(tk, "fast_info", None))
+            if fast is not None:
+                try:
+                    price = fast.get("last_price") or fast.get("last") or None
+                except Exception:
+                    pass
+                try:
+                    currency = fast.get("currency")
+                except Exception:
+                    pass
+                try:
+                    exchange = fast.get("exchange")
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
-        hist = yf_call(lambda: tk.history(period="2d", interval="1d", auto_adjust=True))
+        hist = None
+        try:
+            hist = yf_call(lambda: tk.history(period="2d", interval="1d", auto_adjust=True))
+        except Exception:
+            pass
+
         net = pct = vol = asof = None
 
         if hist is not None and not hist.empty:
@@ -102,7 +126,20 @@ def get_price_data(ticker: str) -> dict:
             "asof": asof,
         }
 
-    return _cache_get_or_set(key, ttl, _load)
+    try:
+        return _cache_get_or_set(key, ttl, _load)
+    except Exception:
+        return {
+            "ticker": t,
+            "exchange": None,
+            "asset_class": "STOCKS",
+            "last_price": None,
+            "net_change": None,
+            "pct_change": None,
+            "volume": None,
+            "currency": None,
+            "asof": None,
+        }
 
 def get_profile_data(ticker: str) -> dict:
     t = ticker.strip().upper()
@@ -167,7 +204,10 @@ def get_profile_data(ticker: str) -> dict:
             "raw": merged,
         }
 
-    return _cache_get_or_set(key, ttl, _load)
+    try:
+        return _cache_get_or_set(key, ttl, _load)
+    except Exception:
+        return {}
 
 def get_key_stats(ticker: str) -> dict:
     t = ticker.strip().upper()
@@ -184,7 +224,10 @@ def get_key_stats(ticker: str) -> dict:
 
         return {"beta": beta, "pe_ttm": pe, "eps_ttm": eps, "target_1y": target}
 
-    return _cache_get_or_set(key, ttl, _load)
+    try:
+        return _cache_get_or_set(key, ttl, _load)
+    except Exception:
+        return {}
 
 def _calculate_annual_dividend(divs) -> float | None:
     """
@@ -355,7 +398,17 @@ def get_dividend_kpis(ticker: str) -> dict:
             "next_div": next_div,
         }
 
-    return _cache_get_or_set(key, ttl, _load)
+    try:
+        return _cache_get_or_set(key, ttl, _load)
+    except Exception:
+        return {
+            "div_yield": None,
+            "fwd_div_yield": None,
+            "annual_div": None,
+            "payout": None,
+            "ex_date": None,
+            "next_div": None,
+        }
 
 
 def get_price_history(ticker: str, period: str = "5y", interval: str = "1d", auto_adjust: bool = False) -> "pd.DataFrame":
@@ -473,4 +526,7 @@ def get_52w_range(ticker: str) -> dict:
             "current_price": float(current_price) if current_price is not None else None,
         }
     
-    return _cache_get_or_set(key, ttl, _load)
+    try:
+        return _cache_get_or_set(key, ttl, _load)
+    except Exception:
+        return {"low_52w": None, "high_52w": None, "current_price": None}
