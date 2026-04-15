@@ -122,21 +122,21 @@ def _load_dividend_inputs(ticker: str, years: int) -> Dict[str, Any]:
     # Use centralized cached price history (avoids duplicate yf.history calls)
     price_daily = get_price_history(ticker, period=f"{years}y", interval="1d", auto_adjust=False)
 
-    # Dividends: use yf_call for retry logic, consistent with get_price_history.
-    # Wrapping with yf_call means transient network errors are retried (up to 4x
-    # with exponential backoff) before giving up. If all retries fail, YFError
-    # propagates and @st.cache_data will NOT cache the failure, so the next render
-    # will try again instead of serving a stale empty Series for 30 days.
     dividends = pd.Series(dtype=float)
     try:
-        t = yf.Ticker(ticker)
-        raw_divs = yf_call(lambda: t.get_dividends())
-        if isinstance(raw_divs, pd.Series) and not raw_divs.empty:
-            dividends = raw_divs.dropna().astype(float)
-        # If raw_divs is empty but no error, the ticker genuinely pays no dividends — caching is valid
+        tk = yf.Ticker(ticker)
+        # Use history() instead of get_dividends() to avoid the internal chain:
+        # get_dividends() -> get_history_metadata() -> self.info -> HTTP timeout (30s)
+        # history() is a single direct HTTP call, same as get_price_history, and is reliable.
+        raw_hist = yf_call(lambda: tk.history(period="10y", auto_adjust=False))
+        if raw_hist is not None and not raw_hist.empty and "Dividends" in raw_hist.columns:
+            raw_divs = raw_hist["Dividends"]
+            raw_divs = raw_divs[raw_divs > 0].dropna().astype(float)
+            if not raw_divs.empty:
+                dividends = raw_divs
+        # If no dividends in history, ticker genuinely pays no dividends — caching empty is valid
     except Exception:
-        # Re-raise so @st.cache_data does not cache transient network/rate-limit failures
-        raise
+        raise  # Re-raise so @st.cache_data does not cache transient failures
 
     # Cashflow: reuse the cached financial statements (avoids a separate t.cashflow call)
     try:
