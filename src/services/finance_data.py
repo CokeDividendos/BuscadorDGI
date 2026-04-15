@@ -284,9 +284,9 @@ def get_dividend_kpis(ticker: str) -> dict:
         ex_date = None
         next_div = None
 
-        # Dividendos históricos
+        # Dividendos históricos — usar yf_call con retry para tolerar rate limiting transitorio
         try:
-            divs = tk.dividends
+            divs = yf_call(lambda: tk.get_dividends())
         except Exception:
             divs = None
 
@@ -355,21 +355,7 @@ def get_dividend_kpis(ticker: str) -> dict:
             "next_div": next_div,
         }
 
-    # usa tu caché SQLite si ya tienes helpers tipo _cache_get_or_set / cache_get / cache_set
-    try:
-        return _cache_get_or_set(key, ttl, _load)  # si existe en tu finance_data.py
-    except Exception:
-        # fallback simple si no existe
-        try:
-            from src.services.cache_store import cache_get, cache_set
-            hit = cache_get(key)
-            if hit is not None:
-                return hit
-            val = _load()
-            cache_set(key, val, ttl_seconds=ttl)
-            return val
-        except Exception:
-            return _load()
+    return _cache_get_or_set(key, ttl, _load)
 
 
 def get_price_history(ticker: str, period: str = "5y", interval: str = "1d", auto_adjust: bool = False) -> "pd.DataFrame":

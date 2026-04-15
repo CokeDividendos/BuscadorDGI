@@ -33,7 +33,7 @@ from src.services.yf_client import yf_call
 # Constantes
 # =========================================================
 YEARS = 5
-DIVIDENDS_CACHE_TTL_SECONDS = 60 * 60 * 24 * 30  # 30 días
+DIVIDENDS_CACHE_TTL_SECONDS = 60 * 60 * 24  # 24 horas (evita cachear fallos transitorios por 30 días)
 FINANCIAL_STATEMENTS_CACHE_TTL = 60 * 60 * 24 * 90  # 3 months for balance, income, cashflow
 
 # Retry configuration for yfinance API calls
@@ -131,10 +131,12 @@ def _load_dividend_inputs(ticker: str, years: int) -> Dict[str, Any]:
     try:
         t = yf.Ticker(ticker)
         raw_divs = yf_call(lambda: t.get_dividends())
-        if isinstance(raw_divs, pd.Series):
+        if isinstance(raw_divs, pd.Series) and not raw_divs.empty:
             dividends = raw_divs.dropna().astype(float)
+        # If raw_divs is empty but no error, the ticker genuinely pays no dividends — caching is valid
     except Exception:
-        pass
+        # Re-raise so @st.cache_data does not cache transient network/rate-limit failures
+        raise
 
     # Cashflow: reuse the cached financial statements (avoids a separate t.cashflow call)
     try:
