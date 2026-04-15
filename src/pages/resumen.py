@@ -100,6 +100,12 @@ def page_resumen() -> None:
         dividends = inputs["dividends"]
         cashflow = inputs["cashflow"]
 
+        if dividends.empty:
+            st.info(
+                "ℹ️ No se encontraron dividendos históricos para este ticker. "
+                "Es posible que no pague dividendos o que los datos no estén disponibles en este momento."
+            )
+
         st.markdown("## Valoración por dividendo")
         sub_tabs = st.tabs(["📈 Evolución del dividendo", "🛡️ Seguridad del dividendo", "📌 Geraldine Weiss"])
         with sub_tabs[0]:

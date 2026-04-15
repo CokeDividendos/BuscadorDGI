@@ -27,6 +27,7 @@ from src.services.finance_data import (
 )
 from src.services.logos import logo_candidates
 from src.services.usage_limits import consume_search, remaining_searches
+from src.services.yf_client import yf_call
 
 # =========================================================
 # Constantes
@@ -121,16 +122,19 @@ def _load_dividend_inputs(ticker: str, years: int) -> Dict[str, Any]:
     # Use centralized cached price history (avoids duplicate yf.history calls)
     price_daily = get_price_history(ticker, period=f"{years}y", interval="1d", auto_adjust=False)
 
-    # Dividends: fetched directly (no centralized cache for Series type)
+    # Dividends: use yf_call for retry logic, consistent with get_price_history.
+    # Wrapping with yf_call means transient network errors are retried (up to 4x
+    # with exponential backoff) before giving up. If all retries fail, YFError
+    # propagates and @st.cache_data will NOT cache the failure, so the next render
+    # will try again instead of serving a stale empty Series for 30 days.
+    dividends = pd.Series(dtype=float)
     try:
         t = yf.Ticker(ticker)
-        dividends = t.dividends
-        if dividends is None or not isinstance(dividends, pd.Series):
-            dividends = pd.Series(dtype=float)
-        else:
-            dividends = dividends.dropna().astype(float)
+        raw_divs = yf_call(lambda: t.get_dividends())
+        if isinstance(raw_divs, pd.Series):
+            dividends = raw_divs.dropna().astype(float)
     except Exception:
-        dividends = pd.Series(dtype=float)
+        pass
 
     # Cashflow: reuse the cached financial statements (avoids a separate t.cashflow call)
     try:

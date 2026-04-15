@@ -371,8 +371,6 @@ def get_dividend_kpis(ticker: str) -> dict:
         except Exception:
             return _load()
 
-    return _cache_get_or_set(key, ttl, _load)
-
 
 def get_price_history(ticker: str, period: str = "5y", interval: str = "1d", auto_adjust: bool = False) -> "pd.DataFrame":
     """
