@@ -103,7 +103,7 @@ def page_resumen() -> None:
         if dividends.empty:
             st.info(
                 "ℹ️ No se encontraron dividendos históricos para este ticker. "
-                "Si el ticker sí paga dividendos, intente limpiar el caché o buscar nuevamente."
+                "Es posible que no pague dividendos o que los datos no estén disponibles en este momento."
             )
 
         st.markdown("## Valoración por dividendo")

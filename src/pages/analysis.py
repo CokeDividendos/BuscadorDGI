@@ -134,7 +134,7 @@ def _load_dividend_inputs(ticker: str, years: int) -> Dict[str, Any]:
         if isinstance(raw_divs, pd.Series):
             dividends = raw_divs.dropna().astype(float)
     except Exception:
-        dividends = pd.Series(dtype=float)
+        pass
 
     # Cashflow: reuse the cached financial statements (avoids a separate t.cashflow call)
     try:
