@@ -61,7 +61,6 @@ from src.services.chile_data import (
     get_cl_yf_ticker,
     is_cl_ticker,
     load_cl_dividends,
-    load_cl_financial_statements,
     load_chile_financials_bundle,
     get_metrics_cl,
     get_chart_data_cl,
@@ -205,22 +204,28 @@ def page_buscador_cl() -> None:
     last_price = price_data.get("last_price")
     currency = price_data.get("currency") or moneda
 
-    # Estados financieros crudos (para secciones que aún usan lógica análisis EEUU)
-    financial_data = load_cl_financial_statements(cl_ticker)
-
-    # Bundle normalizado para métricas y gráficos Chile
+    # Bundle normalizado para métricas y gráficos Chile.
+    # Los datos crudos (balance_raw, income_raw, cashflow_raw) son equivalentes
+    # a lo que retornaba load_cl_financial_statements(), evitando una carga doble.
     try:
         bundle = load_chile_financials_bundle(cl_ticker)
         balance_norm = bundle["balance_norm"]
         income_norm = bundle["income_norm"]
         cashflow_norm = bundle["cashflow_norm"]
         derived = bundle["derived"]
+        # financial_data mantiene la misma interfaz que usaba load_cl_financial_statements()
+        financial_data = {
+            "balance_sheet": bundle["balance_raw"],
+            "income_stmt": bundle["income_raw"],
+            "cashflow": bundle["cashflow_raw"],
+        }
     except Exception:
         bundle = None
         balance_norm = pd.DataFrame()
         income_norm = pd.DataFrame()
         cashflow_norm = pd.DataFrame()
         derived = {}
+        financial_data = {"balance_sheet": pd.DataFrame(), "income_stmt": pd.DataFrame(), "cashflow": pd.DataFrame()}
 
     # Intento de obtener logo via YF info
     logo_url = ""

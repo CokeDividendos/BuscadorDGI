@@ -18,10 +18,60 @@ import pandas as pd
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from src.services.cache_store import cache_get, cache_set
+
+# TTL para el bundle normalizado de datos chilenos (7 días).
+# Los datos provienen de archivos CSV estáticos que rara vez cambian.
+_CL_BUNDLE_CACHE_TTL = 60 * 60 * 24 * 7  # 7 días
+
 # Rutas base
 _REPO_ROOT = Path(__file__).parent.parent.parent
 _DATA_CL = _REPO_ROOT / "data" / "chile" / "financials"
 _TICKERS_MAP = _REPO_ROOT / "data" / "chile_tickers_map.csv"
+
+
+# ---------------------------------------------------------------------------
+# Helpers de serialización para caché
+# ---------------------------------------------------------------------------
+
+def _df_to_cache(df: pd.DataFrame) -> Optional[dict]:
+    """Serializa un DataFrame a dict para almacenar en caché."""
+    if df is None or df.empty:
+        return None
+    try:
+        return df.to_dict(orient="tight")
+    except Exception:
+        return None
+
+
+def _cache_to_df(data: Optional[dict]) -> pd.DataFrame:
+    """Reconstruye un DataFrame desde datos de caché."""
+    if not data:
+        return pd.DataFrame()
+    try:
+        return pd.DataFrame.from_dict(data, orient="tight")
+    except Exception:
+        return pd.DataFrame()
+
+
+def _series_to_cache(s: Any) -> Optional[dict]:
+    """Serializa una pandas Series a dict para almacenar en caché."""
+    if s is None:
+        return None
+    try:
+        return dict(s)
+    except Exception:
+        return None
+
+
+def _cache_to_series(data: Optional[dict]) -> pd.Series:
+    """Reconstruye una pandas Series desde datos de caché."""
+    if not data:
+        return pd.Series(dtype=float)
+    try:
+        return pd.Series(data)
+    except Exception:
+        return pd.Series(dtype=float)
 
 
 def _load_tickers_map() -> pd.DataFrame:
@@ -449,6 +499,9 @@ def load_chile_financials_bundle(ticker: str) -> dict:
     canónicas (sin mapa de cuentas). En formatos legacy, aplica el flujo
     antiguo con chile_account_map.csv.
 
+    Los resultados se almacenan en caché (Redis/SQLite) por ``_CL_BUNDLE_CACHE_TTL``
+    segundos para evitar re-parseo y re-normalización en cada carga de página.
+
     Args:
         ticker: Código de la empresa (e.g. 'ANDINA-B').
 
@@ -460,9 +513,32 @@ def load_chile_financials_bundle(ticker: str) -> dict:
           - 'balance_norm': DataFrame normalizado (cuentas canónicas)
           - 'income_norm': DataFrame normalizado
           - 'cashflow_norm': DataFrame normalizado
-          - 'derived': dict de cuentas derivadas
+          - 'derived': dict de cuentas derivadas (valores como pandas Series)
           - 'profile': dict del perfil de la empresa
     """
+    ticker_upper = ticker.upper()
+    cache_key = f"cl:bundle:{ticker_upper}"
+
+    # ── Intentar recuperar desde caché ───────────────────────────────────
+    cached = cache_get(cache_key)
+    if cached:
+        try:
+            return {
+                "balance_raw": _cache_to_df(cached.get("balance_raw")),
+                "income_raw": _cache_to_df(cached.get("income_raw")),
+                "cashflow_raw": _cache_to_df(cached.get("cashflow_raw")),
+                "balance_norm": _cache_to_df(cached.get("balance_norm")),
+                "income_norm": _cache_to_df(cached.get("income_norm")),
+                "cashflow_norm": _cache_to_df(cached.get("cashflow_norm")),
+                "derived": {
+                    k: _cache_to_series(v)
+                    for k, v in (cached.get("derived") or {}).items()
+                },
+                "profile": cached.get("profile", {}),
+            }
+        except Exception:
+            pass  # Si la reconstrucción falla, continuar y recalcular
+
     from src.services.chile_profiles import get_company_profile_cl
     from src.services.chile_normalizer import (
         normalize_balance_cl,
@@ -496,7 +572,7 @@ def load_chile_financials_bundle(ticker: str) -> dict:
     # Derivar cuentas faltantes
     derived = derive_missing_accounts_cl(balance_norm, income_norm, cashflow_norm, profile_type)
 
-    return {
+    bundle = {
         "balance_raw": balance_raw,
         "income_raw": income_raw,
         "cashflow_raw": cashflow_raw,
@@ -506,6 +582,24 @@ def load_chile_financials_bundle(ticker: str) -> dict:
         "derived": derived,
         "profile": profile,
     }
+
+    # ── Guardar en caché ──────────────────────────────────────────────────
+    try:
+        cache_data = {
+            "balance_raw": _df_to_cache(balance_raw),
+            "income_raw": _df_to_cache(income_raw),
+            "cashflow_raw": _df_to_cache(cashflow_raw),
+            "balance_norm": _df_to_cache(balance_norm),
+            "income_norm": _df_to_cache(income_norm),
+            "cashflow_norm": _df_to_cache(cashflow_norm),
+            "derived": {k: _series_to_cache(v) for k, v in derived.items()},
+            "profile": profile,
+        }
+        cache_set(cache_key, cache_data, ttl_seconds=_CL_BUNDLE_CACHE_TTL)
+    except Exception:
+        pass  # El fallo al cachear no debe interrumpir la respuesta al usuario
+
+    return bundle
 
 
 def get_normalized_financials_cl(ticker: str) -> dict:
